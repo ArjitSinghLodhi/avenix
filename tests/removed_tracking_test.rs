@@ -1,25 +1,28 @@
 use avenix::prelude::*;
 use rusty_fork::rusty_fork_test;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Component)]
 enum EntityTag {
     RemovalTarget,
     DespawnTarget,
     UntouchedNeighbor,
 }
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct Position {
     x: f32,
     y: f32,
 }
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct Velocity {
     x: f32,
     y: f32,
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }
@@ -55,10 +58,10 @@ fn apply_frame_1_mutations(
         for (entity, tag) in view.iter() {
             match tag {
                 EntityTag::RemovalTarget => {
-                    commands.remove_components::<(Velocity,)>(entity.clone());
+                    commands.remove_components::<Velocity>(entity.clone());
                 }
                 EntityTag::DespawnTarget => {
-                    commands.remove_components::<(Velocity,)>(entity.clone());
+                    commands.remove_components::<Velocity>(entity.clone());
                     commands.despawn(entity.clone());
                 }
                 EntityTag::UntouchedNeighbor => {}

@@ -2,12 +2,16 @@ use avenix::prelude::*;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+#[derive(Component)]
 pub struct Foo(pub f32);
+#[derive(Component)]
 pub struct Velocity {
     pub x: f32,
     pub y: f32,
 }
+#[derive(Component)]
 pub struct BenchmarkTarget;
+#[derive(Resource)]
 pub struct BenchmarkTargets {
     pub entities: Vec<Entity>,
 }

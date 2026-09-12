@@ -1,8 +1,10 @@
 use avenix::prelude::*;
 use std::time::Duration;
 
+#[derive(Component)]
 struct ThreadMarker(u32);
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct Position {
     x: f32,

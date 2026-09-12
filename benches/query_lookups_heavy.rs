@@ -2,7 +2,7 @@ use avenix::prelude::*;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-#[derive(Default)]
+#[derive(Default, Component)]
 pub struct HeavyTransform {
     pub matrix: [f32; 16],
     pub inverse: [f32; 16],
@@ -10,11 +10,14 @@ pub struct HeavyTransform {
     pub padding: [f32; 16],
 }
 
+#[derive(Component)]
 pub struct Velocity {
     pub x: f32,
     pub y: f32,
 }
+#[derive(Component)]
 pub struct BenchmarkTarget;
+#[derive(Resource)]
 pub struct BenchmarkTargets {
     pub entities: Vec<Entity>,
 }

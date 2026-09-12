@@ -1,9 +1,14 @@
 use avenix::prelude::*;
 
+#[derive(Component)]
 struct PlayerTag;
+#[derive(Component)]
 struct EnemyTag;
+#[derive(Component)]
 struct BossTag;
+#[derive(Component)]
 struct TargetEntity(Entity);
+#[derive(Component)]
 struct Health(i32);
 
 fn main() {

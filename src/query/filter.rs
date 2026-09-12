@@ -1,14 +1,15 @@
 use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
+    ecs::Component,
     system::{AccessHashSet, AccessVec},
     world::archetypes::Archetype,
 };
 
 pub trait StructuralQueryFilter: QueryFilter {}
 
-impl<T: 'static> StructuralQueryFilter for With<T> {}
-impl<T: 'static> StructuralQueryFilter for Without<T> {}
+impl<T: Component> StructuralQueryFilter for With<T> {}
+impl<T: Component> StructuralQueryFilter for Without<T> {}
 impl<T: QueryFilter + StructuralQueryFilter> StructuralQueryFilter for Or<T> where Or<T>: QueryFilter
 {}
 impl<T: QueryFilter + StructuralQueryFilter> StructuralQueryFilter for Not<T> {}
@@ -26,8 +27,8 @@ pub trait QueryFilter {
 }
 
 #[derive(Debug)]
-pub struct With<T>(PhantomData<T>);
-impl<T: 'static> QueryFilter for With<T> {
+pub struct With<T: Component>(PhantomData<T>);
+impl<T: Component> QueryFilter for With<T> {
     fn matches(types: &AccessHashSet<TypeId>) -> bool {
         types.contains(&TypeId::of::<T>())
     }
@@ -37,8 +38,8 @@ impl<T: 'static> QueryFilter for With<T> {
 }
 
 #[derive(Debug)]
-pub struct Without<T>(PhantomData<T>);
-impl<T: 'static> QueryFilter for Without<T> {
+pub struct Without<T: Component>(PhantomData<T>);
+impl<T: Component> QueryFilter for Without<T> {
     fn matches(types: &AccessHashSet<TypeId>) -> bool {
         !types.contains(&TypeId::of::<T>())
     }

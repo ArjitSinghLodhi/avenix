@@ -8,6 +8,7 @@ fn test_runner_once(app: &mut App) {
     }
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }

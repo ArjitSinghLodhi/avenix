@@ -1,24 +1,26 @@
 use avenix::prelude::*;
 
-pub struct Parent {
-    pub children: Vec<Entity>,
+#[derive(Component)]
+struct Parent {
+    children: Vec<Entity>,
 }
 
-pub struct Child {
-    pub parent: Entity,
+#[derive(Component)]
+struct Child {
+    parent: Entity,
 }
 
-pub struct LinkTo {
-    pub parent: Entity,
+#[derive(Component)]
+struct LinkTo {
+    parent: Entity,
 }
 
-pub struct ShiftParent {
-    pub new_parent: Entity,
-}
-
-pub struct AlphaCommander;
-pub struct BetaCommander;
-pub struct MinionSubUnit;
+#[derive(Component)]
+struct AlphaCommander;
+#[derive(Component)]
+struct BetaCommander;
+#[derive(Component)]
+struct MinionSubUnit;
 
 pub struct HierarchyPlugin;
 
@@ -43,13 +45,13 @@ fn automatic_hierarchy_linker_system(
 
                 commands.insert_components(
                     child_entity.clone(),
-                    (Child {
+                    Child {
                         parent: parent_target,
-                    },),
+                    },
                 );
             }
 
-            commands.remove_components::<(LinkTo,)>(child_entity.clone());
+            commands.remove_components::<LinkTo>(child_entity.clone());
         }
     }
 }
@@ -68,9 +70,9 @@ fn hirearchy_cleanup(
             println!("Hierarchy Plugin: Parent matched. Queueing recursive child deletion!");
             while let Some(child_handle) = parent_comp.children.pop() {
                 commands2.despawn(child_handle.clone());
-                commands2.remove_components::<(Child,)>(child_handle.clone());
+                commands2.remove_components::<Child>(child_handle.clone());
             }
-            commands2.remove_components::<(Parent,)>(entity.clone());
+            commands2.remove_components::<Parent>(entity.clone());
         }
     }
 
@@ -80,7 +82,7 @@ fn hirearchy_cleanup(
                 println!(
                     "Hierarchy Plugin: Parent is dying. Stripping Child component from entity silently..."
                 );
-                commands2.remove_components::<(Child,)>(child_entity.clone());
+                commands2.remove_components::<Child>(child_entity.clone());
             }
         }
     }
@@ -90,12 +92,13 @@ fn hirearchy_cleanup(
                 println!(
                     "Hierarchy Plugin: Target parent is dying before linkage completes. Stripping LinkTo component safely..."
                 );
-                commands2.remove_components::<(LinkTo,)>(child_entity.clone());
+                commands2.remove_components::<LinkTo>(child_entity.clone());
             }
         }
     }
 }
 
+#[derive(Resource)]
 pub struct FrameStepper {
     pub current_frame: u32,
 }
@@ -144,7 +147,7 @@ fn setup_scene_graph(mut commands: Commands) {
             children: Vec::new(),
         },
     ));
-    commands.spawn((MinionSubUnit,));
+    commands.spawn(MinionSubUnit);
 }
 
 fn trigger_runtime_lifecycle_stages(
@@ -164,9 +167,9 @@ fn trigger_runtime_lifecycle_stages(
                         println!("System (Update): Binding LinkTo component onto child target...");
                         commands.insert_components(
                             child_entity.clone(),
-                            (LinkTo {
+                            LinkTo {
                                 parent: parent_id.clone(),
-                            },),
+                            },
                         );
                     }
                 }

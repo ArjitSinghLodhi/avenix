@@ -1,7 +1,7 @@
 use avenix::prelude::*;
 use rusty_fork::rusty_fork_test;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Component)]
 enum EntityTag {
     AdderTarget,
     InserterTarget,
@@ -9,21 +9,25 @@ enum EntityTag {
 }
 
 #[allow(dead_code)]
+#[derive(Component)]
 struct Position {
     x: f32,
     y: f32,
 }
 #[allow(dead_code)]
+#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,
 }
 #[allow(dead_code)]
+#[derive(Component)]
 struct Acceleration {
     x: f32,
     y: f32,
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }
@@ -51,10 +55,10 @@ fn apply_frame_1_mutations(
         for (entity, tag) in view.iter() {
             match tag {
                 EntityTag::AdderTarget => {
-                    commands.add_components(entity.clone(), (Velocity { x: 10.0, y: 10.0 },));
+                    commands.add_components(entity.clone(), Velocity { x: 10.0, y: 10.0 });
                 }
                 EntityTag::InserterTarget => {
-                    commands.insert_components(entity.clone(), (Acceleration { x: 5.0, y: 5.0 },));
+                    commands.insert_components(entity.clone(), Acceleration { x: 5.0, y: 5.0 });
                 }
                 EntityTag::DenseNeighbor => {}
             }
@@ -156,7 +160,7 @@ fn apply_frame_2_redundant_insert(
     for view in query.iter() {
         for (entity, tag) in view.iter() {
             if *tag == EntityTag::InserterTarget {
-                commands.insert_components(entity.clone(), (Acceleration { x: 99.0, y: 99.0 },));
+                commands.insert_components(entity.clone(), Acceleration { x: 99.0, y: 99.0 });
             }
         }
     }

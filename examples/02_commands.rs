@@ -9,10 +9,13 @@ fn test_runner_once(app: &mut App) {
     app.update();
 }
 
+#[derive(Component)]
 struct Position {
     x: f32,
     y: f32,
 }
+
+#[derive(Component)]
 struct Speed(f32);
 
 fn main() {

@@ -1,15 +1,15 @@
 use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
 use std::{any::TypeId, marker::PhantomData};
-
-use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
+use crate::ecs::Component;
 #[cfg(feature = "reactivity")]
 use crate::{
     reactivity::{ChangedMarker, Mut},
     world::storage::CurrentBufferIdx,
 };
+use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
 
-impl<T: 'static> QueryData for &T {
+impl<T: Component> QueryData for &T {
     type Item<'w> = &'w T;
     type ReadOnlyItem<'w> = &'w T;
     type Fetch = *const T;
@@ -35,7 +35,7 @@ impl<T: 'static> QueryData for &T {
 }
 
 #[cfg(not(feature = "reactivity"))]
-impl<T: 'static> QueryData for &mut T {
+impl<T: Component> QueryData for &mut T {
     type Item<'w> = &'w mut T;
     type ReadOnlyItem<'w> = &'w T;
     type Fetch = *mut T;
@@ -63,7 +63,7 @@ impl<T: 'static> QueryData for &mut T {
 }
 
 #[cfg(feature = "reactivity")]
-impl<T: 'static> QueryData for &mut T {
+impl<T: Component> QueryData for &mut T {
     type Item<'w> = Mut<'w, T>;
     type ReadOnlyItem<'w> = &'w T;
     type Fetch = (*mut T, *mut ChangedMarker<T>, u8, bool);
@@ -136,7 +136,7 @@ impl QueryData for Entity {
     }
 }
 
-impl<T: 'static> QueryData for Option<&T> {
+impl<T: Component> QueryData for Option<&T> {
     type Item<'w> = Option<&'w T>;
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch = Option<*const T>;
@@ -174,7 +174,7 @@ impl<T: 'static> QueryData for Option<&T> {
 }
 
 #[cfg(not(feature = "reactivity"))]
-impl<T: 'static> QueryData for Option<&mut T> {
+impl<T: Component> QueryData for Option<&mut T> {
     type Item<'w> = Option<&'w mut T>;
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch = Option<*mut T>;
@@ -225,7 +225,7 @@ impl<T: 'static> QueryData for Option<&mut T> {
 
 #[cfg(feature = "reactivity")]
 
-impl<T: 'static> QueryData for Option<&mut T> {
+impl<T: Component> QueryData for Option<&mut T> {
     type Item<'w> = Option<Mut<'w, T>>;
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch = Option<(*mut T, *mut ChangedMarker<T>, u8, bool)>;
@@ -294,9 +294,9 @@ impl<T: 'static> QueryData for Option<&mut T> {
     }
 }
 
-pub struct Has<T: 'static>(PhantomData<T>);
+pub struct Has<T: Component>(PhantomData<T>);
 
-impl<T: 'static> QueryData for Has<T> {
+impl<T: Component> QueryData for Has<T> {
     type Item<'w> = bool;
     type ReadOnlyItem<'w> = bool;
     type Fetch = bool;

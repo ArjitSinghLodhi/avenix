@@ -6,7 +6,7 @@ use std::{
 };
 
 #[cfg(feature = "events")]
-use crate::events::{EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS};
+use crate::events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS};
 use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
@@ -218,7 +218,7 @@ impl World {
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
     #[cfg(feature = "events")]
-    pub fn get_par_event_writer<T: 'static + Send + Sync>(&mut self) -> ParallelEventWriter<T> {
+    pub fn get_par_event_writer<T: Event>(&mut self) -> ParallelEventWriter<T> {
         ParallelEventWriter {
             write_buffer: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
         }
@@ -230,7 +230,7 @@ impl World {
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
     #[cfg(feature = "events")]
-    pub fn get_par_event_reader<T: 'static + Send + Sync>(&mut self) -> ParallelEventReader<T> {
+    pub fn get_par_event_reader<T: Event>(&mut self) -> ParallelEventReader<T> {
         ParallelEventReader {
             read_buffer: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
         }

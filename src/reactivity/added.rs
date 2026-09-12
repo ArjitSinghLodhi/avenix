@@ -4,13 +4,14 @@ use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
 
 use crate::{
+    ecs::Component,
     extensions::ComponentColumn,
     query::{QueryData, QueryFilter},
     reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta},
     world::storage::CurrentBufferIdx,
 };
 
-pub(crate) fn register_added_tracked_component<T: 'static>() {
+pub(crate) fn register_added_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.write();
     tracked.insert(
         TypeId::of::<T>(),
@@ -47,6 +48,8 @@ pub struct AddedMarker<T> {
     phantom: PhantomData<T>,
 }
 
+impl<T: Component> Component for AddedMarker<T> {}
+
 /// A query filter that matches components of type `T` that were newly added during the previous frame.
 ///
 /// # Architecture & Timing
@@ -59,9 +62,9 @@ pub struct AddedMarker<T> {
 /// * **Frame 3 (Purge):** The addition state is unconditionally cleared and resets to `false`.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Added<T>(std::marker::PhantomData<T>);
+pub struct Added<T: Component>(std::marker::PhantomData<T>);
 
-impl<T: 'static> QueryFilter for Added<T> {
+impl<T: Component> QueryFilter for Added<T> {
     fn matches(types: &crate::extensions::AccessHashSet<TypeId>) -> bool {
         types.contains(&TypeId::of::<AddedMarker<T>>())
     }
@@ -96,12 +99,12 @@ impl<T: 'static> QueryFilter for Added<T> {
 /// * **Frame 3:** The flag is automatically purged and resets to `false`, regardless of system execution.
 ///
 /// [`.is_added()`]: AddedTracker::is_added
-pub struct AddedTracker<T> {
+pub struct AddedTracker<T: Component> {
     added: bool,
     _phantom: PhantomData<T>,
 }
 
-impl<T: 'static> AddedTracker<T> {
+impl<T: Component> AddedTracker<T> {
     /// Returns whether the target component was newly added to the entity during the previous frame.
     #[inline(always)]
     pub fn is_added(&self) -> bool {
@@ -109,7 +112,7 @@ impl<T: 'static> AddedTracker<T> {
     }
 }
 
-impl<T: 'static> QueryData for AddedTracker<T> {
+impl<T: Component> QueryData for AddedTracker<T> {
     type Item<'w> = AddedTracker<T>;
     type ReadOnlyItem<'w> = AddedTracker<T>;
     type Fetch = (u8, *const AddedMarker<T>);

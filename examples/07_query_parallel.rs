@@ -2,13 +2,16 @@ use avenix::prelude::*;
 use rayon::iter::ParallelIterator;
 
 #[allow(dead_code)]
+#[derive(Component)]
 struct WorkerId(u32);
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct Position {
     x: f32,
     y: f32,
 }
+#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,

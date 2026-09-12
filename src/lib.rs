@@ -6,43 +6,38 @@
 //!
 //! * **Entity Despawn Invariant:** All cloned handles referencing an entity must be completely dropped
 //!   before that entity's scheduled despawn command is executed. Violating this triggers an explicit runtime
-//!   panic displaying the archetype's components. See [`DefaultSchedulesPlugin`] for how the built-in
-//!   schedules are designed to help with this, and read [`Commands::despawn()`] for more information.
+//!   panic displaying the archetype's components. See the [`CleanupHandles`] schedule to learn how its designed to
+//!   help you with this, and read [`Commands::despawn()`] for more information.
 //!
-//! [`DefaultSchedulesPlugin`]: crate::schedule::DefaultSchedulesPlugin
+//! [`CleanupHandles`]: crate::schedule::CleanupHandles
 //! [`Commands::despawn()`]: crate::commands::Commands::despawn
 
-pub mod app;
-pub mod commands;
-pub mod entity;
-pub mod events;
-pub mod query;
+#[path = "app/mod.rs"]
+mod app_impl;
+mod commands;
+mod component;
+mod entity;
+mod events;
+mod query;
 #[cfg(feature = "reactivity")]
-pub mod reactivity;
+mod reactivity;
 mod registry;
-pub mod resources;
-pub mod schedule;
-pub mod system;
+mod resources;
+mod schedule;
+mod system;
 mod world;
 
 pub use fxhash;
 pub use indexmap;
 pub use rayon;
-#[cfg(feature = "derive")]
-pub mod derive {
-    pub use avenix_macros::ComponentBundle;
-    pub use avenix_macros::QueryData;
-    pub use avenix_macros::QueryFilter;
-    pub use avenix_macros::SystemParam;
-}
+
 pub mod prelude {
-    pub use crate::app::{App, Plugin, PluginsBuildAll};
+    pub use crate::app_impl::{App, Plugin, PluginsBuildAll};
     pub use crate::commands::{Commands, ParallelCommands, bundle::ComponentBundle};
-    #[cfg(feature = "derive")]
-    pub use crate::derive::*;
-    pub use crate::entity::Entity;
+    pub use crate::ecs::derive::*;
     #[cfg(feature = "events")]
-    pub use crate::events::*;
+    pub use crate::ecs::events::*;
+    pub use crate::entity::Entity;
     pub use crate::query::*;
     #[cfg(feature = "reactivity")]
     pub use crate::reactivity::*;
@@ -59,4 +54,71 @@ pub mod extensions {
     };
     pub use crate::world::archetypes::{Archetype, ComponentColumn};
     pub use crate::world::storage::World;
+}
+
+pub mod ecs {
+    pub use crate::component::Component;
+    pub mod derive {
+        pub use avenix_macros::{
+            Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
+        };
+    }
+    #[cfg(feature = "events")]
+    pub mod events {
+        pub use crate::events::{
+            Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter,
+        };
+    }
+    pub mod resources {
+        pub use crate::resources::{Res, ResMut, Resource};
+    }
+    pub mod query {
+        pub use crate::query::{Query, QueryArchetypeView, QueryData, QuerySubChunk};
+        pub mod filter {
+            pub use crate::query::filter::{
+                EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
+            };
+        }
+    }
+    #[cfg(feature = "reactivity")]
+    pub mod reactivity {
+        pub mod changed {
+            pub use crate::reactivity::{Changed, ChangedTracker};
+        }
+        pub mod added {
+            pub use crate::reactivity::{Added, AddedTracker};
+        }
+        pub mod removed {
+            pub use crate::reactivity::RemovedComponents;
+        }
+    }
+    pub mod commands {
+        pub use crate::commands::{Commands, DespawnCommand, ParallelCommands};
+        pub mod bundle {
+            pub use crate::commands::bundle::ComponentBundle;
+        }
+    }
+    pub mod world {
+        pub use crate::world::storage::World;
+    }
+}
+
+pub mod app {
+    pub use crate::app_impl::App;
+    pub mod system {
+        pub use crate::system::{
+            AccessHashSet, AccessVec, FunctionSystem, IntoSystem, IntoSystemConfigs, System,
+            SystemConfigs, SystemMeta, SystemParam,
+            system_storage::{FunctionData, SystemData, SystemExt},
+        };
+    }
+    pub mod schedule {
+        pub use crate::schedule::{
+            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
+            ScheduleLabel, Update,
+        };
+    }
+    pub mod plugin {
+        pub use crate::app_impl::{Plugin, PluginsBuildAll};
+    }
 }

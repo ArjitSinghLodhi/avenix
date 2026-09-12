@@ -1,19 +1,24 @@
 use avenix::prelude::*;
 use rusty_fork::rusty_fork_test;
 
+#[derive(Component)]
 struct Position {
     x: f32,
     y: f32,
 }
 
+#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,
 }
 
+#[derive(Component)]
 struct TagA;
+#[derive(Component)]
 struct TagB;
 
+#[derive(Resource)]
 struct ScoreTracker {
     points: i32,
 }

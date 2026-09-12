@@ -3,7 +3,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use crate::{
-    events::{EventBuffer, EventQueue, EventReader, EventWriter},
+    events::{Event, EventBuffer, EventQueue, EventReader, EventWriter},
     extensions::{SystemMeta, SystemParam, World},
 };
 
@@ -21,11 +21,11 @@ use crate::{
 ///
 /// [`.get_par_event_writer()`]: crate::app::App::get_par_event_writer
 #[derive(Clone)]
-pub struct ParallelEventWriter<T: 'static + Send + Sync> {
+pub struct ParallelEventWriter<T: Event> {
     pub(crate) write_buffer: Arc<RwLock<EventQueue<T>>>,
 }
 
-impl<T: 'static + Send + Sync> ParallelEventWriter<T> {
+impl<T: Event> ParallelEventWriter<T> {
     /// Creates a temporary [`EventWriter`] context bound to the current scope block.
     ///
     /// This allows external or parallel tasks to safely dispatch events using the engine's
@@ -41,7 +41,7 @@ impl<T: 'static + Send + Sync> ParallelEventWriter<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> SystemParam for ParallelEventWriter<T> {
+impl<T: Event> SystemParam for ParallelEventWriter<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
@@ -53,8 +53,8 @@ impl<T: 'static + Send + Sync> SystemParam for ParallelEventWriter<T> {
     }
 }
 
-unsafe impl<T: 'static + Send + Sync> Send for ParallelEventWriter<T> {}
-unsafe impl<T: 'static + Send + Sync> Sync for ParallelEventWriter<T> {}
+unsafe impl<T: Event> Send for ParallelEventWriter<T> {}
+unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 
 /// A thread-safe, thread-clonable handle that acts as a detached remote reader for inspecting events.
 ///
@@ -73,11 +73,11 @@ unsafe impl<T: 'static + Send + Sync> Sync for ParallelEventWriter<T> {}
 ///
 /// [`.get_par_event_reader()`]: crate::app::App::get_par_event_reader
 #[derive(Clone)]
-pub struct ParallelEventReader<T: 'static + Send + Sync> {
+pub struct ParallelEventReader<T: Event> {
     pub(crate) read_buffer: Arc<RwLock<EventQueue<T>>>,
 }
 
-impl<T: 'static + Send + Sync> ParallelEventReader<T> {
+impl<T: Event> ParallelEventReader<T> {
     /// Creates a temporary [`EventReader`] wrapper context bound to the current scope block.
     ///
     /// This allows external or parallel tasks to safely iterate over events using the engine's
@@ -93,7 +93,7 @@ impl<T: 'static + Send + Sync> ParallelEventReader<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> SystemParam for ParallelEventReader<T> {
+impl<T: Event> SystemParam for ParallelEventReader<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
@@ -103,5 +103,5 @@ impl<T: 'static + Send + Sync> SystemParam for ParallelEventReader<T> {
     }
 }
 
-unsafe impl<T: 'static + Send + Sync> Send for ParallelEventReader<T> {}
-unsafe impl<T: 'static + Send + Sync> Sync for ParallelEventReader<T> {}
+unsafe impl<T: Event> Send for ParallelEventReader<T> {}
+unsafe impl<T: Event> Sync for ParallelEventReader<T> {}

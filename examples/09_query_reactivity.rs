@@ -1,16 +1,22 @@
 use avenix::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
+
+#[derive(Component)]
 struct Player;
 
+#[derive(Component)]
 struct Score(u32);
 
+#[derive(Component)]
 struct Buff {
     name: &'static str,
 }
 
+#[derive(Component)]
 struct StatusEffect;
 
+#[derive(Resource)]
 struct GameLoopCounter {
     frame: u32,
 }
@@ -34,7 +40,7 @@ fn simulate_gameplay_mutations(
         for view in score_query.iter() {
             for (entity, _) in view.iter() {
                 println!("✨ [Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
-                commands.add_components(entity.clone(), (Buff { name: "Haste" },));
+                commands.add_components(entity.clone(), Buff { name: "Haste" });
             }
         }
     }
@@ -50,7 +56,7 @@ fn simulate_gameplay_mutations(
                 println!(
                     "⚡ [Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'."
                 );
-                commands.insert_components(entity.clone(), (StatusEffect,));
+                commands.insert_components(entity.clone(), StatusEffect);
             }
         }
     }

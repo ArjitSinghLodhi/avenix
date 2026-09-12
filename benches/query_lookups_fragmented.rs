@@ -2,17 +2,24 @@ use avenix::prelude::*;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+#[derive(Component)]
 pub struct Foo(pub f32);
+#[derive(Component)]
 pub struct Velocity {
     pub x: f32,
     pub y: f32,
 }
+#[derive(Component)]
 pub struct Health {
     pub hp: i32,
 }
+#[derive(Component)]
 pub struct Renderable;
+#[derive(Component)]
 pub struct StaticBody;
+#[derive(Component)]
 pub struct BenchmarkTarget;
+#[derive(Resource)]
 pub struct BenchmarkTargets {
     pub entities: Vec<Entity>,
 }
@@ -56,7 +63,7 @@ fn setup_fragmented_world(mut commands: Commands) {
                 commands.spawn((Foo(0.0), Renderable));
             }
             _ => {
-                commands.spawn((Health { hp: 10 },));
+                commands.spawn(Health { hp: 10 });
             }
         }
     }

@@ -1,3 +1,4 @@
+use crate::ecs::Component;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
@@ -10,7 +11,7 @@ use indexmap::IndexSet;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-pub(crate) fn register_tracked_component<T: 'static>() {
+pub(crate) fn register_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.write();
     let component_id = TypeId::of::<T>();
 
@@ -42,10 +43,12 @@ pub(crate) fn register_tracked_component<T: 'static>() {
 }
 
 #[derive(Clone, Copy)]
-pub struct ChangedMarker<T> {
+pub struct ChangedMarker<T: Component> {
     pub(crate) markers: [bool; 2],
     phantom: PhantomData<T>,
 }
+
+impl<T: Component> Component for ChangedMarker<T> {}
 
 /// A query data wrapper that allows systems to inspect the change state of an individual component instance.
 ///
@@ -62,12 +65,12 @@ pub struct ChangedMarker<T> {
 /// * **Frame 3:** The flag is automatically purged and resets to `false`, regardless of system execution.
 ///
 /// [`.is_changed()`]: ChangedTracker::is_changed
-pub struct ChangedTracker<T> {
+pub struct ChangedTracker<T: Component> {
     changed: bool,
     _marker: PhantomData<T>,
 }
 
-impl<T> ChangedTracker<T> {
+impl<T: Component> ChangedTracker<T> {
     /// Returns whether the target component was mutably modified during the previous frame.
     #[inline(always)]
     pub fn is_changed(&self) -> bool {
@@ -75,7 +78,7 @@ impl<T> ChangedTracker<T> {
     }
 }
 
-impl<T: 'static> QueryData for ChangedTracker<T> {
+impl<T: Component> QueryData for ChangedTracker<T> {
     type Item<'w> = ChangedTracker<T>;
     type ReadOnlyItem<'w> = ChangedTracker<T>;
     type Fetch = (u8, *const ChangedMarker<T>);
@@ -130,9 +133,9 @@ impl<T: 'static> QueryData for ChangedTracker<T> {
 /// * **Frame 3 (Purge):** The change state is unconditionally cleared.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Changed<T>(std::marker::PhantomData<T>);
+pub struct Changed<T: Component>(std::marker::PhantomData<T>);
 
-impl<T: 'static> QueryFilter for Changed<T> {
+impl<T: Component> QueryFilter for Changed<T> {
     fn matches(types: &AccessHashSet<TypeId>) -> bool {
         types.contains(&TypeId::of::<ChangedMarker<T>>())
     }
@@ -150,7 +153,7 @@ impl<T: 'static> QueryFilter for Changed<T> {
     }
 }
 
-pub struct Mut<'w, T> {
+pub struct Mut<'w, T: Component> {
     pub(crate) value: *mut T,
     pub(crate) marker: *mut ChangedMarker<T>,
     pub(crate) current_write_idx: u8,
@@ -158,7 +161,7 @@ pub struct Mut<'w, T> {
     pub(crate) _marker: std::marker::PhantomData<&'w mut T>,
 }
 
-impl<'w, T> Mut<'w, T> {
+impl<'w, T: Component> Mut<'w, T> {
     #[inline(always)]
     pub fn into_raw_mut(self) -> &'w mut T {
         unsafe { &mut *self.value }
@@ -183,10 +186,10 @@ impl<'w, T> Mut<'w, T> {
     }
 }
 
-unsafe impl<'w, T> Send for Mut<'w, T> {}
-unsafe impl<'w, T> Sync for Mut<'w, T> {}
+unsafe impl<'w, T: Component + Send> Send for Mut<'w, T> {}
+unsafe impl<'w, T: Component + Sync> Sync for Mut<'w, T> {}
 
-impl<'w, T> std::ops::Deref for Mut<'w, T> {
+impl<'w, T: Component> std::ops::Deref for Mut<'w, T> {
     type Target = T;
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
@@ -194,7 +197,7 @@ impl<'w, T> std::ops::Deref for Mut<'w, T> {
     }
 }
 
-impl<'w, T> std::ops::DerefMut for Mut<'w, T> {
+impl<'w, T: Component> std::ops::DerefMut for Mut<'w, T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
@@ -206,13 +209,13 @@ impl<'w, T> std::ops::DerefMut for Mut<'w, T> {
     }
 }
 
-impl<'w, T: std::fmt::Debug> std::fmt::Debug for Mut<'w, T> {
+impl<'w, T: std::fmt::Debug + Component> std::fmt::Debug for Mut<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { std::fmt::Debug::fmt(&*self.value, f) }
     }
 }
 
-impl<'w, T: std::fmt::Display> std::fmt::Display for Mut<'w, T> {
+impl<'w, T: std::fmt::Display + Component> std::fmt::Display for Mut<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { std::fmt::Display::fmt(&*self.value, f) }
     }

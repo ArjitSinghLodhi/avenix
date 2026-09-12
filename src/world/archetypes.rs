@@ -7,7 +7,7 @@ use std::{
 use fxhash::{FxBuildHasher, FxHashMap};
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{commands::bundle::ComponentBundle, entity::Entity};
+use crate::{commands::bundle::ComponentBundle, ecs::Component, entity::Entity};
 
 #[cfg(feature = "reactivity")]
 use crate::reactivity::TRACKED_COMPONENTS;
@@ -19,7 +19,7 @@ pub(crate) trait AnyColumn: Any {
     fn clone_empty(&self) -> Box<dyn AnyColumn>;
 }
 
-impl<T: 'static> AnyColumn for Vec<T> {
+impl<T: Component> AnyColumn for Vec<T> {
     unsafe fn swap_remove_erased(&mut self, idx: usize) {
         self.swap_remove(idx);
     }

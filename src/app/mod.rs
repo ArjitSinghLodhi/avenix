@@ -9,13 +9,14 @@ use std::{
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::{
-    schedule::{IntoScheduleId, Schedule, ScheduleId, ScheduleLabel, Startup},
+    resources::Resource,
+    schedule::{CleanupHandles, IntoScheduleId, Schedule, ScheduleId, ScheduleLabel, Startup},
     system::{IntoSystemConfigs, System},
     world::storage::World,
 };
 
 #[cfg(feature = "events")]
-use crate::events::{EventBuffer, register_event};
+use crate::events::{Event, EventBuffer, register_event};
 #[cfg(feature = "events")]
 use std::any::type_name;
 
@@ -100,6 +101,7 @@ impl Default for App {
 pub struct App {
     pub(crate) world: World,
     startup_schedule: Schedule,
+    cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
     plugins: Vec<Box<dyn PluginsBuildAll>>,
     systems_blocks: Vec<SystemsBlock>,
@@ -127,6 +129,7 @@ impl App {
         Self {
             world: World::new(),
             startup_schedule: Schedule::new(Startup),
+            cleanup_schedule: Schedule::new(CleanupHandles),
             schedules: Vec::new(),
             plugins: Vec::new(),
             systems_blocks: Vec::new(),
@@ -141,6 +144,8 @@ impl App {
 
         if schedule.id() == Startup.id() {
             self.startup_schedule = Schedule::new(schedule);
+        } else if schedule.id() == CleanupHandles.id() {
+            panic!("CleanupHandles schedule cannnot be overwritten")
         } else {
             self.schedules.push(Schedule::new(schedule));
         }
@@ -188,7 +193,7 @@ impl App {
     }
 
     #[cfg(feature = "events")]
-    pub fn init_event<T: 'static + Send + Sync>(&mut self) -> &mut Self {
+    pub fn init_event<T: Event>(&mut self) -> &mut Self {
         self.configuration.not_ready();
         if self.world.has_resource::<EventBuffer<T>>() {
             panic!("Event: {} Already initialized", type_name::<T>())
@@ -228,6 +233,7 @@ impl App {
         for schedule in self.schedules.iter_mut() {
             schedule.run(&mut self.world);
         }
+        self.cleanup_schedule.run(&mut self.world);
         self.world_mut().end_of_frame_sync();
     }
 
@@ -244,12 +250,12 @@ impl App {
         self
     }
 
-    pub fn insert_resource<T: 'static>(&mut self, resource: T) -> &mut Self {
+    pub fn insert_resource<T: Resource>(&mut self, resource: T) -> &mut Self {
         self.world.insert_resource(resource);
         self
     }
 
-    pub fn remove_resource<T: 'static>(&mut self) -> &mut Self {
+    pub fn remove_resource<T: Resource>(&mut self) -> &mut Self {
         self.world.remove_resource::<T>();
         self
     }
@@ -307,6 +313,12 @@ impl App {
                 }
                 continue;
             }
+            if system_block.schedule_id == CleanupHandles.id() {
+                for system in system_block.systems {
+                    self.cleanup_schedule.add_system(system);
+                }
+                continue;
+            }
             let target_schedule = match self
                 .schedules
                 .iter_mut()
@@ -357,6 +369,9 @@ impl App {
                 panic!(
                     "❌ CONFIGURATION ERROR: Ordering constraint references the 'Startup' root! Startup is completely isolated from dynamic ordering rules."
                 );
+            }
+            if before_id == CleanupHandles.id() || after_id == CleanupHandles.id() {
+                panic!("CleanupHandles cannot be used for ordering schedules")
             }
             if !schedule_map.contains_key(&before_id) {
                 panic!(

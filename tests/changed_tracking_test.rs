@@ -2,16 +2,19 @@ use avenix::prelude::*;
 use rusty_fork::rusty_fork_test;
 
 #[allow(dead_code)]
+#[derive(Component)]
 struct Position {
     x: f32,
     y: f32,
 }
 #[allow(dead_code)]
+#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }

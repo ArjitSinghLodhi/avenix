@@ -15,6 +15,9 @@ use parking_lot::{RwLock, RwLockReadGuard};
 
 use crate::extensions::{SystemMeta, SystemParam, World};
 
+#[doc(hidden)]
+pub trait Event: Send + Sync + 'static {}
+
 pub(crate) struct TrackedEventsMeta {
     pub(crate) comp_id: TypeId,
     pub(crate) event_id: TypeId,
@@ -23,7 +26,7 @@ pub(crate) struct TrackedEventsMeta {
 
 pub(crate) static TRACKED_EVENTS: RwLock<Vec<TrackedEventsMeta>> = RwLock::new(Vec::new());
 
-pub(crate) fn register_event<T: 'static + Send + Sync>() {
+pub(crate) fn register_event<T: Event>() {
     let mut tracked = TRACKED_EVENTS.write();
     if tracked
         .iter()
@@ -47,16 +50,16 @@ pub(crate) fn register_event<T: 'static + Send + Sync>() {
     }
 }
 
-pub(crate) struct EventQueue<T: 'static + Send + Sync> {
+pub(crate) struct EventQueue<T: Event> {
     pub(crate) queue: ConcurrentBag<T>,
 }
 
-pub struct EventBuffer<T: 'static + Send + Sync> {
+pub struct EventBuffer<T: Event> {
     pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
     pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
 }
 
-impl<T: 'static + Send + Sync> EventBuffer<T> {
+impl<T: Event> EventBuffer<T> {
     pub(crate) fn new() -> Self {
         EventBuffer {
             read_queue: Arc::new(RwLock::new(EventQueue::new())),
@@ -65,7 +68,7 @@ impl<T: 'static + Send + Sync> EventBuffer<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> EventQueue<T> {
+impl<T: Event> EventQueue<T> {
     pub(crate) fn new() -> Self {
         Self {
             queue: ConcurrentBag::new(),
@@ -89,11 +92,11 @@ impl<T: 'static + Send + Sync> EventQueue<T> {
 ///
 /// [`.send`]: EventWriter::send
 /// [`.send_batch`]: EventWriter::send_batch
-pub struct EventWriter<'a, T: 'static + Send + Sync> {
+pub struct EventWriter<'a, T: Event> {
     pub(crate) write_buffer: RwLockReadGuard<'a, EventQueue<T>>,
 }
 
-impl<'a, T: 'static + Send + Sync> EventWriter<'a, T> {
+impl<'a, T: Event> EventWriter<'a, T> {
     /// Queues a single event to be dispatched.
     ///
     /// The event is stored in the write buffer and will become visible to readers in the next frame.
@@ -115,7 +118,7 @@ impl<'a, T: 'static + Send + Sync> EventWriter<'a, T> {
     }
 }
 
-impl<'a, T: 'static + Send + Sync> SystemParam for EventWriter<'a, T> {
+impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
@@ -147,11 +150,11 @@ impl<'a, T: 'static + Send + Sync> SystemParam for EventWriter<'a, T> {
 /// **must run every single frame** to avoid missing data.
 ///
 /// [`.iter()`]: EventReader::iter
-pub struct EventReader<'w, T: 'static + Send + Sync> {
+pub struct EventReader<'w, T: Event> {
     pub(crate) read_buffer: RwLockReadGuard<'w, EventQueue<T>>,
 }
 
-impl<'w, T: 'static + Send + Sync> EventReader<'w, T> {
+impl<'w, T: Event> EventReader<'w, T> {
     /// Returns an iterator over all events dispatched during the previous frame.
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -159,7 +162,7 @@ impl<'w, T: 'static + Send + Sync> EventReader<'w, T> {
     }
 }
 
-impl<'w, T: 'static + Send + Sync> SystemParam for EventReader<'w, T> {
+impl<'w, T: Event> SystemParam for EventReader<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {

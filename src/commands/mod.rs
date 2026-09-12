@@ -14,7 +14,7 @@ use parking_lot::{RawRwLock, RwLock, lock_api::RwLockReadGuard};
 use crate::{
     commands::{
         bundle::ComponentBundle,
-        command_queue::{CommandQueue, WorldCommand},
+        command_queue::CommandQueue,
         command_types::{
             AddComponentsCommand, BatchSpawnCommand, InsertComponentsCommand,
             RemoveComponentsCommand, SpawnCommand,
@@ -25,6 +25,10 @@ use crate::{
     system::SystemParam,
     world::storage::World,
 };
+
+pub(crate) trait WorldCommand: 'static + Send {
+    fn apply(self, world: &mut World);
+}
 
 pub(crate) struct CommandBuffer {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,

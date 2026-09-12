@@ -1,10 +1,8 @@
-use crate::app::{App, Plugin};
+use crate::app::{App, plugin::Plugin};
 
 mod schedules_list;
 
-pub use schedules_list::{
-    ApplyCommands, CleanupHandles, First, Last, PostUpdate, PreUpdate, Startup, Update,
-};
+pub use schedules_list::{CleanupHandles, First, Last, PostUpdate, PreUpdate, Startup, Update};
 
 use crate::extensions::{System, World};
 
@@ -13,24 +11,13 @@ use std::{
     fmt::Debug,
 };
 
-/// A plugin that registers the default execution schedules:
-/// `First`, `PreUpdate`, `Update`, `PostUpdate`, `CleanupHandles`, `ApplyCommands`, and `Last`.
+/// A plugin that registers the core execution schedules:
+/// `First`, `PreUpdate`, `Update`, `PostUpdate`, and `Last`.
 ///
-/// Among these, the `CleanupHandles` and `ApplyCommands` schedules serve special purposes:
+/// Note: The `CleanupHandles` phase is evaluated automatically by the engine
+/// immediately after these standard schedules finish executing.
 ///
-/// * **`CleanupHandles`**: Queue commands (such as spawning and adding components) are applied
-///   immediately before and after the systems registered in this schedule run. Despawn commands
-///   are **not** applied yet.
-/// * **`ApplyCommands`**: Systems in this schedule run, followed by the execution of
-///   queue commands, and finally, despawn commands are processed.
-///
-/// This sequence is a deliberate mechanism designed to facilitate the use of the
-/// [`Commands::despawn_iter()`] and [`Commands::will_despawn()`] functions. It ensures adherence
-/// to Avenix's strict rule: *All cloned handles referencing an entity must be dropped before
-/// the entity's despawn command is applied.*
-///
-/// [`Commands::despawn_iter()`]: crate::commands::Commands::despawn_iter
-/// [`Commands::will_despawn()`]: crate::commands::Commands::will_despawn
+/// Among these, the `CleanupHandles` schedule serves a special purpose, refer to its documentation for more info
 pub struct DefaultSchedulesPlugin;
 
 impl Plugin for DefaultSchedulesPlugin {
@@ -39,16 +26,12 @@ impl Plugin for DefaultSchedulesPlugin {
             .add_schedule(PreUpdate)
             .add_schedule(Update)
             .add_schedule(PostUpdate)
-            .add_schedule(CleanupHandles)
-            .add_schedule(ApplyCommands)
             .add_schedule(Last);
 
         app.configure_schedule_order(First, PreUpdate)
             .configure_schedule_order(PreUpdate, Update)
             .configure_schedule_order(Update, PostUpdate)
-            .configure_schedule_order(PostUpdate, CleanupHandles)
-            .configure_schedule_order(CleanupHandles, ApplyCommands)
-            .configure_schedule_order(ApplyCommands, Last);
+            .configure_schedule_order(PostUpdate, Last);
     }
 }
 

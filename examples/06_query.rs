@@ -1,13 +1,16 @@
 use avenix::prelude::*;
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct ThreadMarker(u32);
 
+#[derive(Component)]
 #[allow(dead_code)]
 struct Position {
     x: f32,
     y: f32,
 }
+#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,

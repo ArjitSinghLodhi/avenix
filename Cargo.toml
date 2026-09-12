@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["ecs", "archetype", "simulation", "parallel"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = {version = "0.1.1", optional = true }
+avenix_macros = "0.1.2"
 fxhash = "0.2.1"
 indexmap = "2.14.1"
 rayon = "1.12.0"
@@ -24,7 +24,6 @@ rusty-fork = "0.3.1"
 
 [features]
 default = []
-derive = ["dep:avenix_macros"]
 reactivity = []
 events = []
 
@@ -44,7 +43,6 @@ required-features = ["events"]
 [[test]]
 name = "derive_test"
 path = "tests/derive_tests.rs"
-required-features = ["derive"]
 
 [[test]]
 name = "change_track_test"
@@ -103,7 +101,6 @@ required-features = ["reactivity"]
 [[example]]
 name = "derive"
 path = "examples/10_derive.rs"
-required-features = ["derive"]
 
 [[example]]
 name = "hierarchy_cleanup"

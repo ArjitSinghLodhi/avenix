@@ -2,26 +2,30 @@ use avenix::prelude::*;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+#[derive(Component)]
 pub struct Transform {
     pub matrix: [f32; 16],
 }
+#[derive(Component)]
 pub struct Position {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
+#[derive(Component)]
 pub struct Rotation {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
+#[derive(Component)]
 pub struct Velocity {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct BenchState {
     pub initialized: bool,
 }

@@ -40,7 +40,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avenix"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "avenix_macros",
  "criterion",
@@ -55,9 +55,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c52b363926eb92a8761d1c2c7377972d2569b203d66ff05c1d480a8ac3e3ce"
+checksum = "622ee10d2d660d995129c2259e71fdb3f5fc202e23ceb71e7243a4dd03a67558"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -66,9 +66,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "2.13.1"
+version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "bumpalo"
@@ -442,9 +442,9 @@ dependencies = [
 
 [[package]]
 name = "orx-concurrent-iter"
-version = "4.3.0"
+version = "4.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16243445a173377b84a82f7edc2556f93f730f35a2f0ed5dfd959537b38b30a5"
+checksum = "e6773e4eb82b58f0841abd2bf95efcfc30eb4bad16fb1d7643d5d35be5445694"
 dependencies = [
  "orx-iterable",
  "orx-pseudo-default",
@@ -452,9 +452,9 @@ dependencies = [
 
 [[package]]
 name = "orx-fixed-vec"
-version = "4.0.0"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e762d40ef747b0d708432b53c601ef0f1adf5a13df988e9ab2b32db1afcc898"
+checksum = "813d9544b679f7b2e93a6b93ecd29f875cb002fe7eddecb6ea448bc7cd5d2be4"
 dependencies = [
  "orx-concurrent-iter",
  "orx-iterable",
@@ -485,12 +485,13 @@ dependencies = [
 
 [[package]]
 name = "orx-pinned-vec"
-version = "4.0.0"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58a569e70ec8007642e00d8e6218fd610fa6e03fb746716aeb974c91e6a5cfa1"
+checksum = "e6d845b867b357b6c669e873109fac8fcb224d0594a401e3005bbe854e87a8df"
 dependencies = [
  "orx-iterable",
  "orx-pseudo-default",
+ "orx-self-or",
 ]
 
 [[package]]
@@ -507,9 +508,9 @@ checksum = "67a8e35dfe18921e475b9861266fd58a5ecfd681161f242d24a9e2d1e07fbc28"
 
 [[package]]
 name = "orx-split-vec"
-version = "4.0.2"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a118601cbce5d03367ce80a74075f5cbae8f4503146f0080cf744f7dc44f8903"
+checksum = "cda858576a9870fdb1deff68ea66b8b4cf976919417c23672472e401a366ca5e"
 dependencies = [
  "orx-concurrent-iter",
  "orx-iterable",
@@ -775,9 +776,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "smallvec"
-version = "1.16.0"
+version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
+checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 
 [[package]]
 name = "syn"
@@ -952,18 +953,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.56"
+version = "0.8.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb"
+checksum = "d35102a9f36d089ccae9e4c6802bc118be4487b80aaffc0ab4e0cf5ce92d2873"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.56"
+version = "0.8.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1"
+checksum = "146c01f5ab44258da43cf276c74a2763db2ff3969c9c652c3f2de07041d0b2bc"
 dependencies = [
  "proc-macro2",
  "quote",

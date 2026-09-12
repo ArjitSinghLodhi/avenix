@@ -1,10 +1,13 @@
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use std::any::TypeId;
+use std::any::{TypeId, type_name};
 
-use crate::world::archetypes::{Archetype, ComponentColumn};
+use crate::{
+    ecs::Component,
+    world::archetypes::{Archetype, ComponentColumn},
+};
 
-pub trait ComponentBundle: 'static {
+pub trait ComponentBundle: Send + Sync + 'static {
     const TYPE_IDS: &[TypeId];
     fn get_type_ids() -> &'static [TypeId];
     fn push_to_archetype(self, archetype: &mut Archetype);
@@ -24,9 +27,47 @@ pub trait ComponentBundle: 'static {
     fn get_type_names() -> Self::NamesArray;
 }
 
+impl<T: Component> ComponentBundle for T {
+    const TYPE_IDS: &[TypeId] = &[TypeId::of::<T>()];
+    fn get_type_ids() -> &'static [TypeId] {
+        Self::TYPE_IDS
+    }
+    fn create_empty_columns(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
+        let id = TypeId::of::<T>();
+        columns.insert(
+            id,
+            ComponentColumn {
+                data: Box::new(Vec::<T>::new()),
+            },
+        );
+    }
+    fn push_to_archetype(self, archetype: &mut Archetype) {
+        unsafe {
+            let vec_ptr = archetype.fetch_column_raw::<T>();
+            (*vec_ptr).push(self);
+        }
+    }
+    unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
+        unsafe {
+            let vec_ptr = archetype.fetch_column_raw::<T>();
+            let vec_ref = &mut *vec_ptr;
+            if row_idx < vec_ref.len() {
+                std::ptr::drop_in_place(&mut vec_ref[row_idx]);
+                std::ptr::write(&mut vec_ref[row_idx], self);
+            } else {
+                vec_ref.push(self);
+            }
+        }
+    }
+    type NamesArray = [&'static str; 1];
+    fn get_type_names() -> Self::NamesArray {
+        [type_name::<T>()]
+    }
+}
+
 macro_rules! impl_component_tuple {
     ($($T:ident),*) => {
-        impl<$($T: 'static),*> ComponentBundle for ($($T,)*) {
+        impl<$($T: Component),*> ComponentBundle for ($($T,)*) {
 
             const TYPE_IDS: &[TypeId] = &[ $( TypeId::of::<$T>() ),* ];
 
@@ -79,7 +120,6 @@ macro_rules! impl_component_tuple {
     };
 }
 
-impl_component_tuple!(A);
 impl_component_tuple!(A, B);
 impl_component_tuple!(A, B, C);
 impl_component_tuple!(A, B, C, D);

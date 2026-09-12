@@ -1,9 +1,11 @@
 use avenix::prelude::*;
 
+#[derive(Event)]
 struct ThreatEvent {
     value: f32,
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }

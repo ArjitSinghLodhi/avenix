@@ -2,10 +2,12 @@ use avenix::prelude::*;
 use rusty_fork::rusty_fork_test;
 use std::thread;
 
+#[derive(Event)]
 struct ThreatEvent {
     value: f32,
 }
 
+#[derive(Resource)]
 struct FrameCounter {
     current_frame: u32,
 }

@@ -5,7 +5,7 @@ use std::{any::TypeId, sync::atomic::AtomicU32};
 #[cfg(feature = "reactivity")]
 use crate::reactivity::{REMOVAL_TRACKED_COMPS, TRACKED_COMPONENTS};
 use crate::{
-    commands::{bundle::ComponentBundle, command_queue::WorldCommand},
+    commands::{WorldCommand, bundle::ComponentBundle},
     entity::Entity,
     extensions::{Archetype, ComponentColumn, World},
     registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
@@ -16,7 +16,7 @@ pub(crate) struct SpawnCommand<T: ComponentBundle> {
     pub(crate) components: T,
 }
 
-impl<T: ComponentBundle + Send> WorldCommand for SpawnCommand<T> {
+impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
     fn apply(self, world: &mut World) {
         let arch_id = world.archetypes_manager.get_or_create_from_generic::<T>();
         let next_idx = match world.archetypes_manager.get(arch_id) {
@@ -43,7 +43,7 @@ pub(crate) struct BatchSpawnCommand<T: ComponentBundle> {
     pub(crate) components_iter: Box<dyn Iterator<Item = T> + Send + 'static>,
 }
 
-impl<T: ComponentBundle + Send> WorldCommand for BatchSpawnCommand<T> {
+impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
     fn apply(self, world: &mut World) {
         let world_ptr = world as *mut World;
         let arch_id = unsafe {
@@ -159,7 +159,7 @@ pub(crate) struct AddComponentsCommand<T: ComponentBundle> {
     pub(crate) components: T,
 }
 
-impl<T: ComponentBundle + Send> WorldCommand for AddComponentsCommand<T> {
+impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
     fn apply(self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index as usize;
         let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
@@ -211,7 +211,7 @@ pub struct InsertComponentsCommand<T: ComponentBundle> {
     pub components: T,
 }
 
-impl<T: ComponentBundle + Send> WorldCommand for InsertComponentsCommand<T> {
+impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
     fn apply(self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index as usize;
         let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
@@ -276,7 +276,7 @@ pub(crate) struct RemoveComponentsCommand<T: ComponentBundle> {
     pub(crate) _marker: std::marker::PhantomData<T>,
 }
 
-impl<T: ComponentBundle + Send> WorldCommand for RemoveComponentsCommand<T> {
+impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
     fn apply(self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index as usize;
         let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);

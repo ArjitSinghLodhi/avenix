@@ -1,42 +1,42 @@
 # Avenix ECS Engine
 
-A deterministic, high-concurrency Entity Component System (ECS) written in Rust, engineered for zero-overhead structural memory layouts, parallel workloads and complex coordination.
+A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring parallel workloads, and out-of-band coordination.
 
 ---
 
-## 🚀 Performance & Invariant Guarantees
+## Performance & Safety Guarantees
 
-* **🛡️ 100% Miri-Validated Sandbox**  
-  Built safely on raw pointer offsets and dense tabular memory operations, passing full Miri verification with zero undefined behavior.
-* **📦 Contiguous Archetype Grid**  
-  Entities with identical component layouts pack contiguously into unified columns, maximizing CPU L1/L2 cache locality and enabling pure sequential vector loops.
-* **⚡ Fork-Join Parallel Iterator**  
-  Integrates a high-performance Rayon worker pool to partition and stream archetype data chunks concurrently across available CPU cores.
-* **⏳ Command Synchronization**  
-  Structural modifications (spawning, insertions, deletions) buffer into a concurrent queue and flush at the end of every frame.
-* **🌐 De-coupled Thread Spawning**  
-  Supports extracting concurrent execution handlers (`app.world_mut().get_par_commands()`) completely outside system loops, allowing long-running background threads to safely queue entity spawns asynchronously.
-* **📡 Thread-Independent Event Broadcasting**  
-  Allows external background workers or network threads to pull standalone event handles (`app.world_mut().get_par_event_writer::<T>()`, `app.world_mut().get_par_event_reader::<T>()`) to broadcast global notifications out-of-band cleanly or read them with synchronization, see their documentation for more information.
+* **Miri-Validated Sandbox**  
+  Built on raw pointer offsets and contiguous columns. Fully passes Miri verification with zero undefined behavior.
+* **Contiguous Archetype Layout**  
+  Uses Archetype layout for storing entities and their data.
+* **Fork-Join Parallel Iteration**  
+  Uses a Rayon worker pool to partition and stream archetype data chunks concurrently across multiple CPU cores.
+* **Command Synchronization**  
+  Structural changes (spawning, inserting, deleting) are buffered into a thread-safe queue and flushed at the end of each schedule run.
+* **Thread-Independent Spawning**  
+  You can extract command handles (`app.world_mut().get_par_commands()`) outside the main system loops. This allows background threads to safely queue asynchronous entity spawns.
+* **Thread-Independent Event Broadcasting**  
+  Background workers or network threads can pull standalone event handles (`get_par_event_writer::<T>()` / `get_par_event_reader::<T>()`) to broadcast or read global notifications without locking up the main loop.
 
 ---
 
-## 🎨 Example code
+## Example Usage
 
 ```rust
 use avenix::prelude::*;
 
-struct FrameCounter {
-    current_frame: u32,
-}
-
 fn test_runner_once(app: &mut App) {
     app.build();
     app.run_startup();
-    
-    while app.get_resource::<FrameCounter>().current_frame != 10 {
+    while app.world().get_resource::<FrameCounter>().current_frame != 10 {
         app.update();
     }
+}
+
+#[derive(Resource)]
+struct FrameCounter {
+    current_frame: u32,
 }
 
 fn main() {
@@ -57,68 +57,62 @@ fn hello_world_system(mut frame: ResMut<FrameCounter>) {
 
 ---
 
-## ⚠️ Lifecycle Constraints
+## Lifecycle Constraints
 
-Avenix tracks runtime data modifications through an explicit double-buffered structural tracking network. 
+### The 1-Frame Visibility Rule
+Avenix tracks data modifications through a double-buffered structural tracking network. 
 
 > [!IMPORTANT]
-> **The 1-Frame Visibility Rule:** Any data adjustment or property update evaluated via the `Changed<T>` or `Added<T>` filters remains visible to matching queries for a window of **exactly 1 execution frame**.
+> Any data adjustment evaluated via the `Changed<T>` or `Added<T>` filters remains visible to matching queries for a window of **exactly 1 execution frame**.
 
 ```text
  [ Frame N ]         ➔            [ Frame N+1 ]            ➔      [ Frame N+2 ]
-Mutation Mutated                  Double Buffers Swapped          Modification Cleared
-Tracker Updates Token Hidden      Visible to Queries              Token Decays / Dropped
+Values Changed                    Double Buffers Swapped          Buffers Cleared
+Trackers Update Interally         Visible to Queries              Tokens Overwritten
 ```
 
-* **Frame N (Mutation Origin):** Values are changed. Internal trackers update and are hidden from active reads.
-* **Frame N+1 (Reactive Window):** Structural buffers swap. Filtered queries intercept, read, and evaluate changes.
-* **Frame N+2 (Buffer Decay):** Mutation tokens overwrite automatically. Visibility drops, and query matching states are back to normal.
+* **Frame N:** Values are changed. Internal trackers update but are hidden from active reads until the frame ends.
+* **Frame N+1:** Structural buffers swap. Filtered queries intercept and read the changes.
+* **Frame N+2:** Mutation tokens overwrite automatically. Visibility drops, and query states reset to normal.
 
-*Note: All reactive logic mapping tracking events via filters must dispatch within this strict 1-frame boundary. Custom runners or delaying system ticks past this lifecycle window results in immediate mutation visibility decay.*
-
----
+*Note: All reactive logic using filters must run within this 1-frame boundary. Delaying system ticks past this window causes immediate mutation visibility decay.*
 
 ### The Entity Despawn Invariant
-
-Avenix enforces a strict handles invariant to maintain memory safety and structural integrity across parallel schedules.
+Avenix enforces a strict handle count invariant to maintain memory safety across parallel schedules.
 
 > [!IMPORTANT]
-> **The Rule:** All cloned handles referencing an entity must be completely dropped before that entity's queued despawn command is applied.
+> All cloned handles referencing an entity must be completely dropped before that entity's queued despawn command is processed.
 
-* **Deferred Execution:** Calling `commands.despawn(entity)` does not kill the entity or panic right away; it merely registers a deferred command to be processed later.
-* **The Panic:** The engine panics during the command execution phase if any cloned handles for that target entity are still active when the queue flushes.
-* **The Diagnostic:** The panic text prints a clean `HashSet` containing the exact `std::any::type_name` of every component within that entity's archetype, making it easy to identify the problematic entity type.
-* **The Resolution:** For projects using the `DefaultSchedulesPlugin`, look into its documentation to understand how some schedules are deliberately structured to help you use `despawn_iter` and `will_despawn` to satisfy this requirement.
+* **Deferred Execution:** Calling `commands.despawn(entity)` buffers the operation to be processed later during the command flush phase.
+* **The Panic:** The engine will panic during command execution if any cloned handles for that target entity are still alive in memory.
+* **The Diagnostic:** The panic message prints a `HashSet` containing the exact `std::any::type_name` of every component within that entity's archetype to help track down where the handle leak occurred.
+* **The Resolution:** Review the `DefaultSchedulesPlugin` documentation to see how to use `despawn_iter` and `will_despawn` to clear handles before execution flushes.
 
 ---
 
-## 🛠️ Feature & Module Matrix
+## Feature & Module Matrix
 
-### Procedural Macro Derives (`feature = "derive"`)
-Unlock zero-overhead data abstractions. Code generation pipelines maintain user encapsulation rules, safely respecting struct/field privacy constraints (`pub`, `pub(crate)`):
-* `#[derive(ComponentBundle)]` – Collects individual types into uniform data groups.
-* `#[derive(QueryData)]` – Maps fields directly to underlying structural archetype columns.
-* `#[derive(QueryFilter)]` – Unifies condition filter into narrow single structs.
-* `#[derive(SystemParam)]` – Groups system parameters into unified struct.
+### Required Procedural Macro Derives
+Avenix requires explicit macro derives for core types to enforce static bounds checks and clean memory layouts. These respect standard visibility constraints (`pub`, `pub(crate)`):
+* `#[derive(Component)]` – Marks a type as an archetype component.
+* `#[derive(Resource)]` – Marks a type as a global unique resource.
+* `#[derive(Event)]` – Marks a type as an event broadcast message.
+* `#[derive(ComponentBundle)]` – Makes a bundle of components to make it type safe and easier to spawn entities.
+* `#[derive(QueryData)]` – Makes a struct that can be used as QueryData to make it easier to code.
+* `#[derive(QueryFilter)]` – Combines multiple conditional filters into a single struct.
+* `#[derive(SystemParam)]` – Groups complex system parameters into a unified layout.
 
-### Core Ecosystem Modules
-* `avenix::prelude` – Includes all normal everyday usage imports.
-* `avenix::extensions` – Includes lower level access to archetypes and data for anyone to build ontop of avenix.
+### Cargo Features
+Avenix keeps components, resources, and basic derives enabled by default. Scale performance by opting into optional compilation flags:
 
-### Cargo Compilation Flags
-
-Avenix by default does not turn on any features (`default = []`). Scale the engine's capabilities by opting into modular compilation blocks in your `Cargo.toml`:
-
-* `derive` – Activates code-generation syntax macros (`ComponentBundle`, `QueryData`, etc.).
-* `reactivity` – Activates double-buffered reactivity tracking (`Added`, `Changed`, `ChangedTracker`, `RemovedComponents`, etc.).
-* `events` – Activates high-concurrency event broadcasting pipelines (`EventWriter`, `EventReader`, `ParallelEventWriter`, etc.).
+* `reactivity` – Activates double-buffered change tracking (`Added`, `Changed`, `RemovedComponents`).
+* `events` – Activates the event broadcasting pipelines (`EventWriter`, `EventReader`, etc.).
 
 ### Component Reactivity Architecture
+When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
 
-When the `reactivity` feature flag is enabled, Avenix utilizes a demand-driven registration model to keep untracked overhead near-zero.
-
-* **Automatic Dependency Discovery:** Double-buffered internal tracking queues are not unconditionally allocated for every component type. They are registered and initialized automatically only if a registered system explicitly requests them (e.g., via `RemovedComponents<T>`).
-* **Stripped Runtime Pathways:** Component types that are never targeted by reactive query filters are completely omitted from tracking registries. Their execution paths skip frame-boundary memory queue swaps entirely, keeping untracked data paths unburdened by reactive structures.
+* **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`).
+* **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened.
 
 ---
 
@@ -163,7 +157,7 @@ The following data evaluates linear iteration and mutation speeds over 10,000 en
   * Total execution time: **9.64 µs**
 * **4-Archetype Split Memory Loop (`query_fragmented_iter`)**
   * Total execution time: **9.67 µs**
-* **Pure Mutable Write - Feature Off (`query_write_pure`)**
+* **Pure Mutable Write - Reactivity Off (`query_write_pure`)**
   * Total execution time: **9.50 µs**
 * **Reactive Feature On - Untracked Component (`query_write_reactive_untracked`)**
   * Total execution time: **11.36 µs**

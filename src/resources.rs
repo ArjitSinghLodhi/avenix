@@ -5,12 +5,15 @@ use std::{
     marker::PhantomData,
 };
 
-pub struct Res<'w, T: 'static> {
+#[doc(hidden)]
+pub trait Resource: Send + Sync + 'static {}
+
+pub struct Res<'w, T: Resource> {
     val_ptr: *const T,
-    _marker: PhantomData<(&'w (), T)>,
+    _marker: PhantomData<&'w T>,
 }
 
-impl<'w, T: 'static> Res<'w, T> {
+impl<'w, T: Resource> Res<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
         let res = world.get_resource::<T>();
         Self {
@@ -24,29 +27,29 @@ impl<'w, T: 'static> Res<'w, T> {
     }
 }
 
-impl<'w, T: 'static> std::ops::Deref for Res<'w, T> {
+impl<'w, T: Resource> std::ops::Deref for Res<'w, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.get()
     }
 }
 
-unsafe impl<'w, T: Send> Send for Res<'w, T> {}
-unsafe impl<'w, T: Sync> Sync for Res<'w, T> {}
+unsafe impl<'w, T: Send + Resource> Send for Res<'w, T> {}
+unsafe impl<'w, T: Sync + Resource> Sync for Res<'w, T> {}
 
-impl<'w, T: Debug> Debug for Res<'w, T> {
+impl<'w, T: Debug + Resource> Debug for Res<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { write!(f, "{:?}", (*self.val_ptr)) }
     }
 }
 
-impl<'w, T: Display> Display for Res<'w, T> {
+impl<'w, T: Display + Resource> Display for Res<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { write!(f, "{}", (*self.val_ptr)) }
     }
 }
 
-impl<'w, T: 'static> SystemParam for Res<'w, T> {
+impl<'w, T: Resource> SystemParam for Res<'w, T> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.resource_writes.contains(&res_id) {
@@ -63,12 +66,12 @@ impl<'w, T: 'static> SystemParam for Res<'w, T> {
     }
 }
 
-pub struct ResMut<'w, T: 'static> {
+pub struct ResMut<'w, T: Resource> {
     val_ptr: *mut T,
-    _marker: PhantomData<(&'w (), T)>,
+    _marker: PhantomData<&'w mut T>,
 }
 
-impl<'w, T: 'static> ResMut<'w, T> {
+impl<'w, T: Resource> ResMut<'w, T> {
     pub(crate) unsafe fn new(world: &mut World) -> Self {
         let res = world.get_resource_mut::<T>();
         Self {
@@ -82,35 +85,35 @@ impl<'w, T: 'static> ResMut<'w, T> {
     }
 }
 
-impl<'w, T: 'static> std::ops::Deref for ResMut<'w, T> {
+impl<'w, T: Resource> std::ops::Deref for ResMut<'w, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         unsafe { &*self.val_ptr }
     }
 }
 
-impl<'w, T: 'static> std::ops::DerefMut for ResMut<'w, T> {
+impl<'w, T: Resource> std::ops::DerefMut for ResMut<'w, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.get_mut()
     }
 }
 
-unsafe impl<'w, T: Send> Send for ResMut<'w, T> {}
-unsafe impl<'w, T: Sync> Sync for ResMut<'w, T> {}
+unsafe impl<'w, T: Send + Resource> Send for ResMut<'w, T> {}
+unsafe impl<'w, T: Sync + Resource> Sync for ResMut<'w, T> {}
 
-impl<'w, T: Debug> Debug for ResMut<'w, T> {
+impl<'w, T: Debug + Resource> Debug for ResMut<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { write!(f, "{:?}", (*self.val_ptr)) }
     }
 }
 
-impl<'w, T: Display> Display for ResMut<'w, T> {
+impl<'w, T: Display + Resource> Display for ResMut<'w, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         unsafe { write!(f, "{}", (*self.val_ptr)) }
     }
 }
 
-impl<'w, T: 'static> SystemParam for ResMut<'w, T> {
+impl<'w, T: Resource> SystemParam for ResMut<'w, T> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.resource_writes.contains(&res_id)
@@ -129,7 +132,7 @@ impl<'w, T: 'static> SystemParam for ResMut<'w, T> {
     }
 }
 
-impl<'w, T: 'static> SystemParam for Option<Res<'w, T>> {
+impl<'w, T: Resource> SystemParam for Option<Res<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.resource_writes.contains(&res_id) {
@@ -154,7 +157,7 @@ impl<'w, T: 'static> SystemParam for Option<Res<'w, T>> {
     }
 }
 
-impl<'w, T: 'static> SystemParam for Option<ResMut<'w, T>> {
+impl<'w, T: Resource> SystemParam for Option<ResMut<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.resource_writes.contains(&res_id)

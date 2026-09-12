@@ -1,21 +1,24 @@
 use avenix::prelude::*;
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 struct Position {
     x: f32,
     y: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 struct Velocity {
     x: f32,
     y: f32,
 }
 
+#[derive(Component)]
 struct Player;
 
+#[derive(Component)]
 struct Enemy;
 
+#[derive(Resource)]
 struct ScoreTracker {
     points: i32,
 }

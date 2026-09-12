@@ -1,10 +1,6 @@
-use crate::world::storage::World;
+use crate::{commands::WorldCommand, world::storage::World};
 use orx_concurrent_bag::ConcurrentBag;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
-
-pub(crate) trait WorldCommand: 'static + Send {
-    fn apply(self, world: &mut World);
-}
 
 struct CommandMeta {
     consume_and_advance: unsafe fn(
