@@ -102,11 +102,11 @@ unsafe impl<'a, Q: QueryData> Sync for ThreadSafeFetch<'a, Q> {}
 impl<'a, Q: QueryData> ThreadSafeFetch<'a, Q> {
     #[inline(always)]
     unsafe fn fetch_read_only<'w>(&self, index: usize) -> Q::ReadOnlyItem<'w> {
-        unsafe { Q::fetch_read_only(&self.0, index) }
+        unsafe { Q::fetch_read_only(self.0, index) }
     }
     #[inline(always)]
     unsafe fn fetch_mut<'w>(&self, index: usize) -> Q::Item<'w> {
-        unsafe { Q::fetch_mut(&self.0, index) }
+        unsafe { Q::fetch_mut(self.0, index) }
     }
 }
 
@@ -147,7 +147,7 @@ impl<'w, Q: QueryData, T> QueryArchetypeView<'w, Q, T> {
     ///   archetype's component data may exist simultaneously.
     #[inline(always)]
     pub unsafe fn get_fetch(&mut self) -> &Q::Fetch {
-        &self.fetch
+        self.fetch
     }
 
     /// # Safety
@@ -159,7 +159,7 @@ impl<'w, Q: QueryData, T> QueryArchetypeView<'w, Q, T> {
     pub unsafe fn fetch_mut<'a>(&'a self, index: usize) -> Q::Item<'a> {
         // Fix: Changed return lifetime from 'w to 'a to tie the returned component borrow
         // to the short-lived accessor scope, preventing dangerous concurrent mutable aliasing.
-        unsafe { Q::fetch_mut(&self.fetch, index) }
+        unsafe { Q::fetch_mut(self.fetch, index) }
     }
 
     /// # Safety
@@ -170,7 +170,7 @@ impl<'w, Q: QueryData, T> QueryArchetypeView<'w, Q, T> {
     #[inline(always)]
     pub unsafe fn fetch_read_only<'a>(&'a self, index: usize) -> Q::ReadOnlyItem<'a> {
         // Fix: Bound the read-only item to the short accessor lifetime 'a
-        unsafe { Q::fetch_read_only(&self.fetch, index) }
+        unsafe { Q::fetch_read_only(self.fetch, index) }
     }
 
     #[inline(always)]
@@ -183,7 +183,7 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
     pub fn iter<'b>(&'b self) -> impl Iterator<Item = Q::ReadOnlyItem<'b>> {
         self.indices
             .iter()
-            .map(move |idx| unsafe { Q::fetch_read_only(&self.fetch, *idx) })
+            .map(move |idx| unsafe { Q::fetch_read_only(self.fetch, *idx) })
     }
 
     pub fn par_iter<'b>(&'b self) -> impl IndexedParallelIterator<Item = Q::ReadOnlyItem<'b>>
@@ -215,7 +215,7 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
             .map(move |start_pos| {
                 let end_pos = std::cmp::min(start_pos + chunk_size, len);
                 QuerySubChunk {
-                    safe_fetch: safe_fetch,
+                    safe_fetch,
                     sub_indices: &indices_slice[start_pos..end_pos],
                     _marker: std::marker::PhantomData,
                 }
@@ -231,7 +231,7 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
             let arch_id = (*cell).archetype_id.id();
             if arch_id == self.archetype_id.id() {
                 let row_idx = (*cell).idx;
-                Some(Q::fetch_read_only(&self.fetch, row_idx as usize))
+                Some(Q::fetch_read_only(self.fetch, row_idx as usize))
             } else {
                 None
             }
@@ -247,7 +247,7 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
         unsafe {
             let cell = REGISTRY.get_ptr(entity.registry_index as usize);
             let row_idx = (*cell).idx;
-            Q::fetch_read_only(&self.fetch, row_idx as usize)
+            Q::fetch_read_only(self.fetch, row_idx as usize)
         }
     }
 }
@@ -256,7 +256,7 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
     pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = Q::Item<'b>> {
         self.indices
             .iter()
-            .map(move |idx| unsafe { Q::fetch_mut(&self.fetch, *idx) })
+            .map(move |idx| unsafe { Q::fetch_mut(self.fetch, *idx) })
     }
 
     pub fn par_iter_mut<'b>(&'b mut self) -> impl IndexedParallelIterator<Item = Q::Item<'b>>
@@ -288,7 +288,7 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
             .map(move |start_pos| {
                 let end_pos = std::cmp::min(start_pos + chunk_size, len);
                 QuerySubChunk {
-                    safe_fetch: safe_fetch,
+                    safe_fetch,
                     sub_indices: &indices_slice[start_pos..end_pos],
                     _marker: std::marker::PhantomData,
                 }
@@ -304,7 +304,7 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
             let arch_id = (*cell).archetype_id.id();
             if arch_id == self.archetype_id.id() {
                 let row_idx = (*cell).idx;
-                Some(Q::fetch_mut(&self.fetch, row_idx as usize))
+                Some(Q::fetch_mut(self.fetch, row_idx as usize))
             } else {
                 None
             }
@@ -320,7 +320,7 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
         unsafe {
             let cell = REGISTRY.get_ptr(entity.registry_index as usize);
             let row_idx = (*cell).idx;
-            Q::fetch_mut(&self.fetch, row_idx as usize)
+            Q::fetch_mut(self.fetch, row_idx as usize)
         }
     }
 }
@@ -390,7 +390,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
 
             if let Some(ThreadSafe { value:fetch_state}) = &self.cached_fetches[arch_id] {
                 unsafe {
-                    found_item = Some(Q::fetch_read_only(&fetch_state, entity_index));
+                    found_item = Some(Q::fetch_read_only(fetch_state, entity_index));
                 }
             }
         }
@@ -417,7 +417,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             && let Some(ThreadSafe{value: fetch_state}) = &self.cached_fetches[arch_id]
         {
             unsafe {
-                return Some(Q::fetch_mut(&fetch_state, entity_index));
+                return Some(Q::fetch_mut(fetch_state, entity_index));
             }
         }
 
@@ -447,7 +447,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let fetch = &fetch_opt.as_ref().unwrap().value;
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
-                    fetch: fetch,
+                    fetch,
                     total_entity_count: arch.entities.len(),
                     archetype_id: arch.id,
                     _marker: PhantomData,
@@ -468,7 +468,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let fetch = &fetch_opt.as_ref().unwrap().value;
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
-                    fetch: fetch,
+                    fetch,
                     total_entity_count: arch.entities.len(),
                     archetype_id: arch.id,
                     _marker: PhantomData,
