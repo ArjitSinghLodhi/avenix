@@ -212,6 +212,8 @@ impl_system_configs_tuple!(S1, S2, S3, S4, S5; M1, M2, M3, M4, M5);
 impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6; M1, M2, M3, M4, M5, M6);
 impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7; M1, M2, M3, M4, M5, M6, M7);
 impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8; M1, M2, M3, M4, M5, M6, M7, M8);
+impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9; M1, M2, M3, M4, M5, M6, M7, M8, M9);
+impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10; M1, M2, M3, M4, M5, M6, M7, M8, M9, M10);
 
 impl<S, Marker> IntoSystemConfigs<(Marker,)> for S
 where

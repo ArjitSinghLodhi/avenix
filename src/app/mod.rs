@@ -250,13 +250,23 @@ impl App {
         self
     }
 
-    pub fn insert_resource<T: Resource>(&mut self, resource: T) -> &mut Self {
+    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) -> &mut Self {
         self.world.insert_resource(resource);
         self
     }
 
-    pub fn remove_resource<T: Resource>(&mut self) -> &mut Self {
+    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> &mut Self {
         self.world.remove_resource::<T>();
+        self
+    }
+
+    pub fn insert_non_send_resource<T: Resource>(&mut self, resource: T) -> &mut Self {
+        self.world.insert_non_send_resource(resource);
+        self
+    }
+
+    pub fn remove_non_send_resource<T: Resource>(&mut self) -> &mut Self {
+        self.world.remove_non_send_resource::<T>();
         self
     }
 }

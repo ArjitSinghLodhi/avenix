@@ -1,13 +1,16 @@
 use std::{any::TypeId, marker::PhantomData, sync::Arc};
 
+use dashmap::DashSet;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
     app::App,
+    ecs::Component,
     entity::Entity,
     extensions::World,
+    resources::Resource,
     system::{SystemMeta, SystemParam},
 };
 
@@ -20,7 +23,7 @@ pub(crate) fn register_removal_tracking_buffers(app: &mut App) {
 pub(crate) struct RemovalTrackedMeta {
     pub(crate) register_buffer: fn(&mut World),
     pub(crate) swap_and_clear_buffer: fn(&mut World),
-    pub(crate) clear_dead_entities: fn(&mut World),
+    pub(crate) clear_dead_entities: fn(&mut World, &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>),
 
     pub(crate) push_to_write_queue: fn(&mut World, Entity),
 }
@@ -29,7 +32,7 @@ pub(crate) static REMOVAL_TRACKED_COMPS: RwLock<
     IndexMap<TypeId, RemovalTrackedMeta, FxBuildHasher>,
 > = RwLock::new(IndexMap::with_hasher(FxBuildHasher::new()));
 
-fn register_removal_tracking_comp<T: Send + 'static>() {
+fn register_removal_tracking_comp<T: Component>() {
     let mut tracked = REMOVAL_TRACKED_COMPS.write();
     tracked.insert(
         TypeId::of::<T>(),
@@ -49,14 +52,13 @@ fn register_removal_tracking_comp<T: Send + 'static>() {
                 read_queue_gaurd.clear();
                 std::mem::swap(read_queue_gaurd, write_queue_gaurd);
             },
-            clear_dead_entities: |world| {
-                let despawn_arc = world.commands.despawns.clone();
+            clear_dead_entities: |world, despawn_gaurd| {
                 let removed_tracking_buffer =
                     world.get_resource_mut::<RemovedComponentsBuffer<T>>();
                 let read_queue_gaurd = &mut *removed_tracking_buffer.read_queue.write();
                 let write_queue_gaurd = &mut *removed_tracking_buffer.write_queue.write();
-                read_queue_gaurd.retain(|entity| !despawn_arc.contains(entity));
-                write_queue_gaurd.retain(|entity| !despawn_arc.contains(entity));
+                read_queue_gaurd.retain(|entity| !despawn_gaurd.contains(entity));
+                write_queue_gaurd.retain(|entity| !despawn_gaurd.contains(entity));
             },
             push_to_write_queue: |world, entity| {
                 let buffer = world.get_resource_mut::<RemovedComponentsBuffer<T>>();
@@ -66,11 +68,13 @@ fn register_removal_tracking_comp<T: Send + 'static>() {
     );
 }
 
-pub(crate) struct RemovedComponentsBuffer<T: Send + 'static> {
+pub(crate) struct RemovedComponentsBuffer<T: Component> {
     read_queue: Arc<RwLock<Vec<Entity>>>,
     pub(crate) write_queue: Arc<RwLock<Vec<Entity>>>,
     _marker: PhantomData<T>,
 }
+
+impl<T: Component> Resource for RemovedComponentsBuffer<T> {}
 
 /// A system parameter that provides an iterator over entities that had a component of type `T`
 /// removed during the previous frame.
@@ -99,18 +103,18 @@ pub(crate) struct RemovedComponentsBuffer<T: Send + 'static> {
 /// To iterate over entities that are scheduled for despawning before they are actually despawned automatically,
 /// check if a specific target is doomed via [`crate::commands::Commands::will_despawn`] or list all pending deaths
 /// ahead of time using [`crate::commands::Commands::despawn_iter`].
-pub struct RemovedComponents<'w, T: Send + 'static> {
+pub struct RemovedComponents<'w, T: Component> {
     read_buffer: RwLockReadGuard<'w, Vec<Entity>>,
     _marker: PhantomData<(&'w (), T)>,
 }
 
-impl<'w, T: Send + 'static> RemovedComponents<'w, T> {
+impl<'w, T: Component> RemovedComponents<'w, T> {
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.read_buffer.iter()
     }
 }
 
-impl<'w, T: Send + 'static> SystemParam for RemovedComponents<'w, T> {
+impl<'w, T: Component> SystemParam for RemovedComponents<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {
         register_removal_tracking_comp::<T>();
     }

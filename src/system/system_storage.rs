@@ -7,8 +7,11 @@ use fxhash::FxHashMap;
 
 #[doc(hidden)]
 pub trait SystemData {
+    #[doc(hidden)]
     fn get_raw(&self, id: TypeId) -> Option<&Box<dyn Any>>;
+    #[doc(hidden)]
     fn get_raw_mut(&mut self, id: TypeId) -> Option<&mut Box<dyn Any>>;
+    #[doc(hidden)]
     fn insert_raw(&mut self, id: TypeId, value: Box<dyn Any>);
 }
 

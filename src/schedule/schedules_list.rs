@@ -2,11 +2,12 @@ use fxhash::FxHashSet;
 
 use crate::{
     entity::Entity,
-    schedule::{ScheduleLabel, SystemExecutor, SystemsSchedule},
-    world::storage::World,
+    extensions::SystemExt,
+    schedule::{RunConditionsList, ScheduleLabel, SystemExecutor, SystemsSchedule},
+    world::storage::{World, apply_despawns},
 };
 
-#[derive(Debug)]
+/// A schedule where queue commands are applied between each system that runs registered in this schedule.
 pub struct Startup;
 
 impl ScheduleLabel for Startup {
@@ -20,7 +21,12 @@ pub(crate) struct StartupExecutor;
 impl SystemExecutor for StartupExecutor {
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         for system in schedule.systems_mut() {
-            let should_run = system.run_conditions.iter().all(|cond| cond(world));
+            let should_run = system
+                .system
+                .get_or_init(RunConditionsList::default)
+                .run_conditions
+                .iter()
+                .all(|cond| cond(world));
             if should_run {
                 system.run(world);
             }
@@ -81,26 +87,37 @@ impl SystemExecutor for CleanupHandlesExecutor {
         self.historical_seen.clear();
         self.iteration_batch.clear();
         self.duplicate_batch.clear();
-
-        if !world.commands.despawns.is_empty() {
-            for shard in world.commands.despawns.shards() {
-                let mut lock = shard.write();
-                for (entity, _) in lock.drain() {
-                    let idx = entity.registry_idx();
-                    self.historical_seen.insert(idx);
-                    self.iteration_batch.push(entity);
+        let despawns_arc = world.commands.despawns.clone();
+        {
+            let despawn_gaurd = despawns_arc.write();
+            if !despawn_gaurd.is_empty() {
+                for shard in despawn_gaurd.shards() {
+                    let mut lock = shard.write();
+                    for (entity, _) in lock.drain() {
+                        let idx = entity.registry_idx();
+                        self.historical_seen.insert(idx);
+                        self.iteration_batch.push(entity);
+                    }
                 }
             }
         }
 
         loop {
-            for entity in self.iteration_batch.drain(..) {
-                self.despawn_buffer.insert(entity.clone());
-                world.commands.despawns.insert(entity);
+            {
+                let despawn_gaurd = despawns_arc.write();
+                for entity in self.iteration_batch.drain(..) {
+                    self.despawn_buffer.insert(entity.clone());
+                    despawn_gaurd.insert(entity);
+                }
             }
 
             for system in schedule.systems_mut() {
-                let should_run = system.run_conditions.iter().all(|cond| cond(world));
+                let should_run = system
+                    .system
+                    .get_or_init(RunConditionsList::default)
+                    .run_conditions
+                    .iter()
+                    .all(|cond| cond(world));
                 if should_run {
                     system.run(world);
                 }
@@ -108,10 +125,12 @@ impl SystemExecutor for CleanupHandlesExecutor {
 
             world.apply_queue_commands();
 
+            let mut despawns_gaurd = despawns_arc.write();
+
             let mut found_new_unique_despawn = false;
 
-            if !world.commands.despawns.is_empty() {
-                for shard in world.commands.despawns.shards() {
+            if !despawns_gaurd.is_empty() {
+                for shard in despawns_gaurd.shards() {
                     let mut lock = shard.write();
 
                     for (entity, _) in lock.drain() {
@@ -131,18 +150,17 @@ impl SystemExecutor for CleanupHandlesExecutor {
             }
 
             for entity in self.despawn_buffer.drain() {
-                world.commands.despawns.insert(entity);
+                despawns_gaurd.insert(entity);
             }
             for entity in self.duplicate_batch.drain(..) {
-                world.commands.despawns.insert(entity);
+                despawns_gaurd.insert(entity);
             }
+            self.historical_seen.clear();
+            self.iteration_batch.clear();
+            self.duplicate_batch.clear();
+            apply_despawns(world, &mut despawns_gaurd);
             break;
         }
-
-        self.historical_seen.clear();
-        self.iteration_batch.clear();
-        self.duplicate_batch.clear();
-        world.apply_despawns();
     }
 }
 

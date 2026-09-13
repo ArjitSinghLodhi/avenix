@@ -6,7 +6,7 @@ use indexmap::IndexSet;
 use crate::{
     ecs::Component,
     extensions::ComponentColumn,
-    query::{QueryData, QueryFilter},
+    query::{QueryData, QueryFilter, ThreadSafe},
     reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta},
     world::storage::CurrentBufferIdx,
 };
@@ -115,7 +115,7 @@ impl<T: Component> AddedTracker<T> {
 impl<T: Component> QueryData for AddedTracker<T> {
     type Item<'w> = AddedTracker<T>;
     type ReadOnlyItem<'w> = AddedTracker<T>;
-    type Fetch = (u8, *const AddedMarker<T>);
+    type Fetch = ThreadSafe<(u8, *const AddedMarker<T>)>;
     fn collect_access(
         reads: &mut crate::extensions::AccessVec<std::any::TypeId>,
         _writes: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -129,21 +129,21 @@ impl<T: Component> QueryData for AddedTracker<T> {
     unsafe fn init_fetch(archetype: &crate::extensions::Archetype) -> Self::Fetch {
         let marker_ptr = unsafe { (*archetype.fetch_column_raw::<AddedMarker<T>>()).as_ptr() };
         let current_read_idx = CurrentBufferIdx::current_read_idx();
-        (current_read_idx, marker_ptr)
+        ThreadSafe { value: (current_read_idx, marker_ptr) }
     }
 
-    unsafe fn fetch_mut<'w>(fetch: Self::Fetch, index: usize) -> Self::Item<'w> {
-        let marker_ref = unsafe { &*fetch.1.add(index) };
-        let added = marker_ref.added_marker[fetch.0 as usize];
+    unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
+        let marker_ref = unsafe { &*fetch.value.1.add(index) };
+        let added = marker_ref.added_marker[fetch.value.0 as usize];
         AddedTracker {
             added,
             _phantom: PhantomData,
         }
     }
 
-    unsafe fn fetch_read_only<'w>(fetch: Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
-        let marker_ref = unsafe { &(*fetch.1.add(index)) };
-        let added = marker_ref.added_marker[fetch.0 as usize];
+    unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
+        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
+        let added = marker_ref.added_marker[fetch.value.0 as usize];
         AddedTracker {
             added,
             _phantom: PhantomData,

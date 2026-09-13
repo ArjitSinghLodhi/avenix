@@ -1,6 +1,7 @@
 use crate::ecs::Component;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
+use crate::query::ThreadSafe;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
 use crate::system::AccessHashSet;
 use crate::system::AccessVec;
@@ -81,7 +82,7 @@ impl<T: Component> ChangedTracker<T> {
 impl<T: Component> QueryData for ChangedTracker<T> {
     type Item<'w> = ChangedTracker<T>;
     type ReadOnlyItem<'w> = ChangedTracker<T>;
-    type Fetch = (u8, *const ChangedMarker<T>);
+    type Fetch = ThreadSafe<(u8, *const ChangedMarker<T>)>;
 
     fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
         types.contains(&TypeId::of::<ChangedMarker<T>>())
@@ -99,21 +100,21 @@ impl<T: Component> QueryData for ChangedTracker<T> {
         let marker_ptr = unsafe { (*archetype.fetch_column_raw::<ChangedMarker<T>>()).as_ptr() };
         let current_read_idx = CurrentBufferIdx::current_read_idx();
 
-        (current_read_idx, marker_ptr)
+        ThreadSafe { value: (current_read_idx, marker_ptr) }
     }
 
-    unsafe fn fetch_read_only<'w>(fetch: Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
-        let marker_ref = unsafe { &(*fetch.1.add(index)) };
-        let changed = marker_ref.markers[fetch.0 as usize];
+    unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
+        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
+        let changed = marker_ref.markers[fetch.value.0 as usize];
         ChangedTracker {
             changed,
             _marker: PhantomData,
         }
     }
 
-    unsafe fn fetch_mut<'w>(fetch: Self::Fetch, index: usize) -> Self::Item<'w> {
-        let marker_ref = unsafe { &(*fetch.1.add(index)) };
-        let changed = marker_ref.markers[fetch.0 as usize];
+    unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
+        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
+        let changed = marker_ref.markers[fetch.value.0 as usize];
         ChangedTracker {
             changed,
             _marker: PhantomData,

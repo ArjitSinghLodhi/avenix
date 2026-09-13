@@ -13,7 +13,10 @@ use std::{
 use orx_concurrent_bag::ConcurrentBag;
 use parking_lot::{RwLock, RwLockReadGuard};
 
-use crate::extensions::{SystemMeta, SystemParam, World};
+use crate::{
+    extensions::{SystemMeta, SystemParam, World},
+    resources::Resource,
+};
 
 #[doc(hidden)]
 pub trait Event: Send + Sync + 'static {}
@@ -67,6 +70,8 @@ impl<T: Event> EventBuffer<T> {
         }
     }
 }
+
+impl<T: Event> Resource for EventBuffer<T> {}
 
 impl<T: Event> EventQueue<T> {
     pub(crate) fn new() -> Self {

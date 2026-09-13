@@ -27,23 +27,55 @@ mod schedule;
 mod system;
 mod world;
 
+pub mod derive {
+    pub use avenix_macros::{
+        Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
+    };
+}
+
 pub use fxhash;
 pub use indexmap;
 pub use rayon;
 
 pub mod prelude {
-    pub use crate::app_impl::{App, Plugin, PluginsBuildAll};
-    pub use crate::commands::{Commands, ParallelCommands, bundle::ComponentBundle};
-    pub use crate::ecs::derive::*;
+    pub use crate::app::{
+        App,
+        plugin::{Plugin, PluginsBuildAll},
+        schedule::{
+            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
+            ScheduleLabel, Startup, Update,
+        },
+        system::{
+            AccessHashSet, AccessVec, FunctionData, FunctionSystem, IntoSystem, IntoSystemConfigs,
+            System, SystemConfigs, SystemData, SystemExt, SystemMeta, SystemParam,
+        },
+    };
+    pub use crate::derive::{
+        Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
+    };
     #[cfg(feature = "events")]
-    pub use crate::ecs::events::*;
-    pub use crate::entity::Entity;
-    pub use crate::query::*;
+    pub use crate::ecs::events::{
+        Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter,
+    };
     #[cfg(feature = "reactivity")]
-    pub use crate::reactivity::*;
-    pub use crate::resources::*;
-    pub use crate::schedule::*;
-    pub use crate::system::System;
+    pub use crate::ecs::reactivity::{
+        added::{Added, AddedTracker},
+        changed::{Changed, ChangedTracker},
+        removed::RemovedComponents,
+    };
+    pub use crate::ecs::{
+        Component,
+        commands::{Commands, DespawnCommand, ParallelCommands, bundle::ComponentBundle},
+        entity::Entity,
+        query::{
+            Has, Query, QueryArchetypeView, QueryData, QuerySubChunk,
+            filter::{
+                EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
+            },
+        },
+        resources::{NonSend, NonSendMut, Res, ResMut, Resource},
+        world::World,
+    };
 }
 
 pub mod extensions {
@@ -58,11 +90,6 @@ pub mod extensions {
 
 pub mod ecs {
     pub use crate::component::Component;
-    pub mod derive {
-        pub use avenix_macros::{
-            Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
-        };
-    }
     #[cfg(feature = "events")]
     pub mod events {
         pub use crate::events::{
@@ -70,10 +97,10 @@ pub mod ecs {
         };
     }
     pub mod resources {
-        pub use crate::resources::{Res, ResMut, Resource};
+        pub use crate::resources::{NonSend, NonSendMut, Res, ResMut, Resource};
     }
     pub mod query {
-        pub use crate::query::{Query, QueryArchetypeView, QueryData, QuerySubChunk};
+        pub use crate::query::{Has, Query, QueryArchetypeView, QueryData, QuerySubChunk};
         pub mod filter {
             pub use crate::query::filter::{
                 EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
@@ -101,6 +128,9 @@ pub mod ecs {
     pub mod world {
         pub use crate::world::storage::World;
     }
+    pub mod entity {
+        pub use crate::entity::Entity;
+    }
 }
 
 pub mod app {
@@ -115,7 +145,7 @@ pub mod app {
     pub mod schedule {
         pub use crate::schedule::{
             CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
-            ScheduleLabel, Update,
+            ScheduleLabel, Startup, Update,
         };
     }
     pub mod plugin {

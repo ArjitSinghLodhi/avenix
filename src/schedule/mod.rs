@@ -1,4 +1,7 @@
-use crate::app::{App, plugin::Plugin};
+use crate::{
+    app::{App, plugin::Plugin},
+    extensions::SystemExt,
+};
 
 mod schedules_list;
 
@@ -63,20 +66,22 @@ pub trait ScheduleLabel: Any + Send + Sync {
         Box::new(SingleThreadedExecutor)
     }
 }
-type ConditionFn = Box<dyn Fn(&World) -> bool + Send + Sync>;
+
+pub(crate) type ConditionFn = Box<dyn Fn(&World) -> bool>;
+
+#[derive(Default)]
+pub(crate) struct RunConditionsList {
+    pub(crate) run_conditions: Vec<ConditionFn>,
+}
 
 #[doc(hidden)]
 pub struct SystemNode {
     system: Box<dyn System>,
-    pub(crate) run_conditions: Vec<ConditionFn>,
 }
 
 impl SystemNode {
     pub fn new(system: Box<dyn System>) -> Self {
-        Self {
-            system,
-            run_conditions: Vec::new(),
-        }
+        Self { system }
     }
 
     pub fn run(&mut self, world: &mut World) {
@@ -113,7 +118,12 @@ pub struct SingleThreadedExecutor;
 impl SystemExecutor for SingleThreadedExecutor {
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         for node in schedule.systems_mut() {
-            let should_run = node.run_conditions.iter().all(|cond| cond(world));
+            let should_run = node
+                .system
+                .get_or_init(RunConditionsList::default)
+                .run_conditions
+                .iter()
+                .all(|cond| cond(world));
 
             if should_run {
                 node.system.run(world);

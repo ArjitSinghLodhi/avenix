@@ -1,8 +1,11 @@
-use fxhash::FxHashMap;
+use dashmap::DashSet;
+use fxhash::{FxBuildHasher, FxHashMap};
+use parking_lot::RwLockWriteGuard;
 use std::{
     any::{Any, TypeId, type_name},
     cell::UnsafeCell,
     sync::atomic::{AtomicU8, Ordering},
+    thread::{self, ThreadId},
 };
 
 #[cfg(feature = "events")]
@@ -11,6 +14,7 @@ use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
     registry::REGISTRY_HANDLE_COUNT,
+    resources::Resource,
     world::archetypes::ArchetypeManager,
 };
 
@@ -44,6 +48,7 @@ pub struct World {
     pub(crate) resources: FxHashMap<TypeId, UnsafeCell<Box<dyn Any>>>,
     pub(crate) commands: CommandBuffer,
     pub(crate) free_indices_list: Vec<u32>,
+    pub(crate) main_thread_id: ThreadId,
 }
 
 impl World {
@@ -53,25 +58,50 @@ impl World {
             resources: FxHashMap::default(),
             commands: CommandBuffer::new(),
             free_indices_list: Vec::new(),
+            main_thread_id: thread::current().id(),
         }
     }
 
-    pub fn has_resource<T: 'static>(&self) -> bool {
+    fn validate_thread_safety<T: Resource>(&self) {
+        if thread::current().id() != self.main_thread_id {
+            panic!(
+                "Thread-safety violation! Cannot access Non-Send resource '{}' from background thread: {:?}. Must be accessed from Main Thread: {:?}",
+                type_name::<T>(),
+                thread::current().id(),
+                self.main_thread_id
+            );
+        }
+    }
+
+    pub fn has_resource<T: Resource>(&self) -> bool {
         self.resources.contains_key(&TypeId::of::<T>())
     }
 
-    pub fn insert_resource<T: 'static>(&mut self, resource: T) {
+    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) {
         let type_id = std::any::TypeId::of::<T>();
         let boxed_cell = std::cell::UnsafeCell::new(Box::new(resource) as Box<dyn std::any::Any>);
         self.resources.insert(type_id, boxed_cell);
     }
 
-    pub fn remove_resource<T: 'static>(&mut self) -> bool {
+    pub fn insert_non_send_resource<T: Resource>(&mut self, resource: T) {
+        self.validate_thread_safety::<T>();
+        let type_id = std::any::TypeId::of::<T>();
+        let boxed_cell = std::cell::UnsafeCell::new(Box::new(resource) as Box<dyn std::any::Any>);
+        self.resources.insert(type_id, boxed_cell);
+    }
+
+    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> bool {
         let type_id = TypeId::of::<T>();
         self.resources.remove(&type_id).is_some()
     }
 
-    pub fn get_resource<T: 'static>(&self) -> &T {
+    pub fn remove_non_send_resource<T: Resource>(&mut self) -> bool {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        self.resources.remove(&type_id).is_some()
+    }
+
+    pub fn get_resource<T: Resource + Send + Sync>(&self) -> &T {
         let type_id = TypeId::of::<T>();
         let cell = self.resources.get(&type_id).unwrap_or_else(|| {
             panic!(
@@ -88,7 +118,25 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut<T: 'static>(&mut self) -> &mut T {
+    pub fn get_non_send_resource<T: Resource>(&self) -> &T {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        let cell = self.resources.get(&type_id).unwrap_or_else(|| {
+            panic!(
+                "Requested non-send resource: '{}' was never registered!",
+                type_name::<T>()
+            );
+        });
+
+        unsafe {
+            let base_any = &*cell.get();
+            base_any
+                .downcast_ref::<T>()
+                .expect("Resource type mismatch!")
+        }
+    }
+
+    pub fn get_resource_mut<T: Resource + Send + Sync>(&mut self) -> &mut T {
         let type_id = TypeId::of::<T>();
         let cell = self.resources.get_mut(&type_id).unwrap_or_else(|| {
             panic!(
@@ -101,7 +149,23 @@ impl World {
             .downcast_mut::<T>()
             .expect("Resource type mismatch!")
     }
-    pub fn get_resource_opt<T: 'static>(&self) -> Option<&T> {
+
+    pub fn get_non_send_resource_mut<T: Resource>(&mut self) -> &mut T {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        let cell = self.resources.get_mut(&type_id).unwrap_or_else(|| {
+            panic!(
+                "Requested non-send resource: '{}' was never registered!",
+                type_name::<T>()
+            );
+        });
+        let base_any = cell.get_mut();
+        base_any
+            .downcast_mut::<T>()
+            .expect("Resource type mismatch!")
+    }
+
+    pub fn get_resource_opt<T: Resource + Send + Sync>(&self) -> Option<&T> {
         let type_id = TypeId::of::<T>();
         let cell = self.resources.get(&type_id)?;
 
@@ -112,7 +176,28 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut_opt<T: 'static>(&mut self) -> Option<&mut T> {
+    pub fn get_non_send_resource_opt<T: Resource>(&self) -> Option<&T> {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        let cell = self.resources.get(&type_id)?;
+
+        unsafe {
+            let base_any = &*cell.get();
+            let casted_ref = base_any.downcast_ref::<T>()?;
+            Some(casted_ref)
+        }
+    }
+
+    pub fn get_resource_mut_opt<T: Resource + Send + Sync>(&mut self) -> Option<&mut T> {
+        let type_id = TypeId::of::<T>();
+        let cell = self.resources.get_mut(&type_id)?;
+        let base_any = cell.get_mut();
+        let casted_mut = base_any.downcast_mut::<T>()?;
+        Some(casted_mut)
+    }
+
+    pub fn get_non_send_resource_mut_opt<T: Resource>(&mut self) -> Option<&mut T> {
+        self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.resources.get_mut(&type_id)?;
         let base_any = cell.get_mut();
@@ -132,23 +217,9 @@ impl World {
     }
 
     pub fn apply_despawns(&mut self) {
-        #[cfg(feature = "reactivity")]
-        if !self.commands.despawns.is_empty() {
-            for meta in REMOVAL_TRACKED_COMPS.read().values() {
-                (meta.clear_dead_entities)(self)
-            }
-        }
-        let despawns = self.commands.despawns.clone();
-        for shard in despawns.shards() {
-            let mut lock = shard.write();
-            for (entity_ref, _) in lock.drain() {
-                unsafe {
-                    REGISTRY_HANDLE_COUNT.decrement_handle(entity_ref.registry_index as usize);
-                }
-                let cmd_ref = unsafe { &*(&entity_ref as *const Entity as *const DespawnCommand) };
-                cmd_ref.apply(self);
-            }
-        }
+        let despawns_arc = self.commands.despawns.clone();
+        let mut despawns_gaurd = despawns_arc.write();
+        apply_despawns(self, &mut despawns_gaurd);
     }
 
     pub(crate) fn end_of_frame_sync(&mut self) {
@@ -233,6 +304,28 @@ impl World {
     pub fn get_par_event_reader<T: Event>(&mut self) -> ParallelEventReader<T> {
         ParallelEventReader {
             read_buffer: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
+        }
+    }
+}
+
+pub(crate) fn apply_despawns(
+    world: &mut World,
+    despawns_gaurd: &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>,
+) {
+    #[cfg(feature = "reactivity")]
+    if !despawns_gaurd.is_empty() {
+        for meta in REMOVAL_TRACKED_COMPS.read().values() {
+            (meta.clear_dead_entities)(world, despawns_gaurd)
+        }
+    }
+    for shard in despawns_gaurd.shards() {
+        let mut lock = shard.write();
+        for (entity_ref, _) in lock.drain() {
+            unsafe {
+                REGISTRY_HANDLE_COUNT.decrement_handle(entity_ref.registry_index as usize);
+            }
+            let cmd_ref = unsafe { &*(&entity_ref as *const Entity as *const DespawnCommand) };
+            cmd_ref.apply(world);
         }
     }
 }

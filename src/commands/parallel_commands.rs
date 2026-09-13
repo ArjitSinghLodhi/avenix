@@ -30,7 +30,7 @@ use crate::extensions::{SystemMeta, SystemParam, World};
 #[derive(Clone)]
 pub struct ParallelCommands {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
-    pub(crate) despawns: Arc<DashSet<Entity, FxBuildHasher>>,
+    pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,
 }
 
 impl ParallelCommands {
@@ -44,7 +44,7 @@ impl ParallelCommands {
     {
         let commands = Commands {
             queue: self.queue.read(),
-            despawns: self.despawns.clone(),
+            despawns: self.despawns.read(),
         };
         f(commands)
     }

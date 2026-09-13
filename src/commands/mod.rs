@@ -22,6 +22,7 @@ use crate::{
     },
     entity::Entity,
     extensions::SystemMeta,
+    resources::Resource,
     system::SystemParam,
     world::storage::World,
 };
@@ -32,21 +33,21 @@ pub(crate) trait WorldCommand: 'static + Send {
 
 pub(crate) struct CommandBuffer {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
-    pub(crate) despawns: Arc<DashSet<Entity, FxBuildHasher>>,
+    pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,
 }
 
 impl CommandBuffer {
     pub fn new() -> Self {
         Self {
             queue: Arc::new(RwLock::new(CommandQueue::new())),
-            despawns: Arc::new(DashSet::with_hasher(FxBuildHasher::new())),
+            despawns: Arc::new(RwLock::new(DashSet::with_hasher(FxBuildHasher::new()))),
         }
     }
 }
 
 pub struct Commands<'a> {
     pub(crate) queue: parking_lot::RwLockReadGuard<'a, CommandQueue>,
-    pub(crate) despawns: Arc<DashSet<Entity, FxBuildHasher>>,
+    pub(crate) despawns: RwLockReadGuard<'a, RawRwLock, DashSet<Entity, FxBuildHasher>>,
 }
 
 impl Commands<'_> {
@@ -179,7 +180,7 @@ impl Commands<'_> {
     ///
     /// This command transfers ownership of the resource to the world during the command execution
     /// phase. If a resource of type `T` already exists, it is unconditionally dropped and replaced.
-    pub fn insert_resource<T: 'static + Send>(&mut self, resource: T) {
+    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) {
         self.push_fn(|world| world.insert_resource(resource));
     }
 
@@ -187,7 +188,7 @@ impl Commands<'_> {
     ///
     /// The resource is dropped during the command execution phase. If the resource does not
     /// exist in the world, the engine handles it gracefully and silently does nothing.
-    pub fn remove_resource<T: 'static + Send>(&mut self) {
+    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) {
         self.push_fn(|world| {
             world.remove_resource::<T>();
         });
@@ -198,17 +199,17 @@ impl<'a> SystemParam for Commands<'a> {
     fn init_access(_system_meta: &mut SystemMeta) {}
     fn get_param(world: &mut World) -> Self {
         let queue_local = world.commands.queue.read();
-        let despawns_arc = world.commands.despawns.clone();
-
+        let despawns_local = world.commands.despawns.read();
         unsafe {
             let queue = std::mem::transmute::<
                 RwLockReadGuard<'_, RawRwLock, CommandQueue>,
                 RwLockReadGuard<'_, RawRwLock, CommandQueue>,
             >(queue_local);
-            Self {
-                queue,
-                despawns: despawns_arc,
-            }
+            let despawns = std::mem::transmute::<
+                RwLockReadGuard<'_, RawRwLock, DashSet<Entity, FxBuildHasher>>,
+                RwLockReadGuard<'_, RawRwLock, DashSet<Entity, FxBuildHasher>>,
+            >(despawns_local);
+            Self { queue, despawns }
         }
     }
 }
