@@ -117,7 +117,6 @@ fn run_bench_timeline(app: &mut App) {
 
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
-        .add_plugins(DefaultSchedulesPlugin)
         .add_systems(Update, dummy_system_to_force_tracking_allocation)
         .insert_resource(BenchState::default())
         .add_systems(Startup, setup_world)

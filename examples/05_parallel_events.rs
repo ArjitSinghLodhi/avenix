@@ -14,8 +14,7 @@ fn main() {
     println!("=== parallel event example ===\n");
 
     let mut app = App::new();
-    app.add_plugins(DefaultSchedulesPlugin)
-        .insert_resource(FrameCounter { current_frame: 0 })
+    app.insert_resource(FrameCounter { current_frame: 0 })
         .init_event::<ThreatEvent>()
         .add_systems(
             Update,

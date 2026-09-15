@@ -89,8 +89,7 @@ rusty_fork_test! {
     #[test]
     fn test_events_multi_frame_lifecycle() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter { current_frame: 0 })
+        app.insert_resource(FrameCounter { current_frame: 0 })
             .init_event::<ThreatEvent>()
             .add_systems(
                 Update,
@@ -237,8 +236,7 @@ rusty_fork_test! {
     #[test]
     fn test_events_parallel_lifecycle() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter { current_frame: 0 })
+        app.insert_resource(FrameCounter { current_frame: 0 })
             .init_event::<ThreatEvent>()
             .add_systems(
                 Update,

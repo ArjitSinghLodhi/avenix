@@ -283,8 +283,7 @@ rusty_fork_test! {
     fn test_multiple_changed_filters_lifecycle() {
         let mut app = App::new();
 
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter { current_frame: 0 })
+        app.insert_resource(FrameCounter { current_frame: 0 })
             .add_systems(Startup, setup_multi_frame_entities);
 
         app.add_systems(
@@ -349,8 +348,7 @@ rusty_fork_test! {
     #[test]
     fn test_changed_generational_tracking() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter {current_frame: 0})
+        app.insert_resource(FrameCounter {current_frame: 0})
             .add_systems(Startup, spawn_tracking_entity)
             .add_systems(
                 Update,

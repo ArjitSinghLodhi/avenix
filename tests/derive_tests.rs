@@ -92,8 +92,7 @@ rusty_fork_test! {
     #[test]
     fn test_macro_derives_lifecycle() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(ScoreTracker { points: 0 })
+        app.insert_resource(ScoreTracker { points: 0 })
             .add_systems(Startup, setup_macro_entities)
             .add_systems(Update, verify_and_mutate_macros);
 

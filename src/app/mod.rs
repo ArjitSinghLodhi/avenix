@@ -6,11 +6,11 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use fxhash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     resources::Resource,
-    schedule::{CleanupHandles, IntoScheduleId, Schedule, ScheduleId, ScheduleLabel, Startup},
+    schedule::{CleanupHandles, DefaultSchedulesPlugin, IntoScheduleId, Schedule, ScheduleId, ScheduleLabel, Startup},
     system::{IntoSystemConfigs, System},
     world::storage::World,
 };
@@ -126,7 +126,7 @@ impl App {
             }
         };
 
-        Self {
+        let mut app = Self {
             world: World::new(),
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
@@ -136,14 +136,16 @@ impl App {
             schedule_order_constraints: Vec::new(),
             runner_fn: function,
             configuration: ConfigurationContext::new(),
-        }
+        };
+        DefaultSchedulesPlugin::build(DefaultSchedulesPlugin, &mut app);
+        app
     }
 
     pub fn add_schedule<L: ScheduleLabel + 'static>(&mut self, schedule: L) -> &mut Self {
         self.configuration.not_ready();
 
         if schedule.id() == Startup.id() {
-            self.startup_schedule = Schedule::new(schedule);
+            panic!("Startup schedule cannot be overwritten")
         } else if schedule.id() == CleanupHandles.id() {
             panic!("CleanupHandles schedule cannnot be overwritten")
         } else {
@@ -292,20 +294,9 @@ impl App {
 
     fn configure_plugins(&mut self) {
         self.configuration.building_plugins = true;
-        let mut seen_plugins = FxHashSet::default();
-
+        
         while !self.plugins.is_empty() {
             let current_batch = std::mem::take(&mut self.plugins);
-            for plugin_group in current_batch.iter() {
-                for name in plugin_group.get_plugin_names() {
-                    if !seen_plugins.insert(name) {
-                        panic!(
-                            "Duplicate plugin detected! The plugin '{}' has already been registered.",
-                            name
-                        );
-                    }
-                }
-            }
             for plugins_build_all in current_batch {
                 plugins_build_all.build_all(self);
             }

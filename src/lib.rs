@@ -42,7 +42,7 @@ pub mod prelude {
         App,
         plugin::{Plugin, PluginsBuildAll},
         schedule::{
-            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
+            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule,
             ScheduleLabel, Startup, Update,
         },
         system::{
@@ -144,8 +144,8 @@ pub mod app {
     }
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
-            ScheduleLabel, Startup, Update,
+            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule,
+            ScheduleLabel, SystemExecutor, Startup, Update,
         };
     }
     pub mod plugin {

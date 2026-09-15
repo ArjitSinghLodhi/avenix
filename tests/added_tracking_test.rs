@@ -202,8 +202,7 @@ rusty_fork_test! {
     #[test]
     fn test_double_buffered_add_and_insert() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter { current_frame: 0 })
+        app.insert_resource(FrameCounter { current_frame: 0 })
             .add_systems(Startup, setup_double_buffer_entities)
             .add_systems(
                 Update,

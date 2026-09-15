@@ -136,8 +136,7 @@ fn test_runner_four_frames(app: &mut App) {
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(DefaultSchedulesPlugin)
-        .insert_resource(GameLoopCounter { frame: 0 })
+    app.insert_resource(GameLoopCounter { frame: 0 })
         .add_systems(Startup, setup_game);
 
     app.add_systems(

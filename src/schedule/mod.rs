@@ -14,14 +14,7 @@ use std::{
     fmt::Debug,
 };
 
-/// A plugin that registers the core execution schedules:
-/// `First`, `PreUpdate`, `Update`, `PostUpdate`, and `Last`.
-///
-/// Note: The `CleanupHandles` phase is evaluated automatically by the engine
-/// immediately after these standard schedules finish executing.
-///
-/// Among these, the `CleanupHandles` schedule serves a special purpose, refer to its documentation for more info
-pub struct DefaultSchedulesPlugin;
+pub(crate) struct DefaultSchedulesPlugin;
 
 impl Plugin for DefaultSchedulesPlugin {
     fn build(self, app: &mut App) {

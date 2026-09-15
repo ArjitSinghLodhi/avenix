@@ -100,7 +100,6 @@ fn run_bench_timeline(app: &mut App) {
 
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
-        .add_plugins(DefaultSchedulesPlugin)
         .insert_resource(BenchmarkTargets {
             entities: Vec::new(),
         })

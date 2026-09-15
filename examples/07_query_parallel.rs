@@ -21,8 +21,7 @@ fn main() {
     println!("=== Parallel query example ===\n");
 
     let mut app = App::new();
-    app.add_plugins(DefaultSchedulesPlugin)
-        .add_systems(Startup, spawn_parallel_batch_system)
+    app.add_systems(Startup, spawn_parallel_batch_system)
         .add_systems(
             Update,
             (

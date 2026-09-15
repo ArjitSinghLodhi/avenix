@@ -20,7 +20,6 @@ struct Speed(f32);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultSchedulesPlugin)
         .add_systems(Startup, queue_spawn_commands_system)
         .add_systems(Update, verify_spawned_entities_system)
         .set_runner(test_runner_once)

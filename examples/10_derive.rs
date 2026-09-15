@@ -95,8 +95,7 @@ fn verify_and_mutate_macros(mut tools: CompositeSystemParam) {
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins(DefaultSchedulesPlugin)
-        .insert_resource(ScoreTracker { points: 0 })
+    app.insert_resource(ScoreTracker { points: 0 })
         .add_systems(Startup, setup_macro_entities)
         .add_systems(Update, verify_and_mutate_macros);
 

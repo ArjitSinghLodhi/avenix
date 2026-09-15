@@ -90,7 +90,6 @@ fn run_bench_timeline(app: &mut App) {
 
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
-        .add_plugins(DefaultSchedulesPlugin)
         .insert_resource(BenchState::default())
         .add_systems(Startup, setup_world)
         .add_systems(Update, run_pure_write_bench)

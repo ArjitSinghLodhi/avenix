@@ -1,40 +1,37 @@
 use avenix::prelude::*;
 
 #[derive(Component)]
-struct Parent {
-    children: Vec<Entity>,
+pub struct Children {
+    pub children: Vec<Entity>,
 }
 
 #[derive(Component)]
-struct Child {
-    parent: Entity,
+pub struct ChildOf {
+    pub parent: Entity,
 }
 
 #[derive(Component)]
-struct LinkTo {
-    parent: Entity,
+pub struct LinkTo {
+    pub parent: Entity,
 }
 
 #[derive(Component)]
-struct AlphaCommander;
-#[derive(Component)]
-struct BetaCommander;
-#[derive(Component)]
-struct MinionSubUnit;
+pub struct UnlinkChild;
 
 pub struct HierarchyPlugin;
 
 impl Plugin for HierarchyPlugin {
     fn build(self, app: &mut App) {
-        app.add_systems(Update, automatic_hierarchy_linker_system)
+        app.add_systems(PostUpdate, automatic_hierarchy_linker_system)
             .add_systems(CleanupHandles, hirearchy_cleanup);
     }
 }
 
 fn automatic_hierarchy_linker_system(
     mut commands: Commands,
-    mut parent_query: Query<&mut Parent>,
+    mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
+    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
 ) {
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {
@@ -42,16 +39,36 @@ fn automatic_hierarchy_linker_system(
             #[allow(unused_mut)]
             if let Some(mut parent_comp) = parent_query.get_mut(&parent_target) {
                 parent_comp.children.push(child_entity.clone());
-
-                commands.insert_components(
-                    child_entity.clone(),
-                    Child {
-                        parent: parent_target,
+            } else {
+                commands.add_components(
+                    parent_target.clone(),
+                    Children {
+                        children: vec![child_entity.clone()],
                     },
                 );
             }
+            commands.insert_components(
+                child_entity.clone(),
+                ChildOf {
+                    parent: parent_target,
+                },
+            );
 
             commands.remove_components::<LinkTo>(child_entity.clone());
+        }
+    }
+    for view in unlink_query.iter() {
+        for (child_entity, child_of) in view.iter() {
+            #[allow(unused_mut)]
+            if let Some(mut parent_comp) = parent_query.get_mut(&child_of.parent) {
+                parent_comp.children.retain(|entity| entity != child_entity);
+                println!("Hierarchy Plugin: Unlinked child from parent");
+                if parent_comp.children.is_empty() {
+                    println!("Hierarchy Plugin: Removing Children components from parent because there are no children anymore");
+                    commands.remove_components::<Children>(child_of.parent.clone());
+                }
+            }
+            commands.remove_components::<(UnlinkChild, ChildOf)>(child_entity.clone());
         }
     }
 }
@@ -59,33 +76,32 @@ fn automatic_hierarchy_linker_system(
 fn hirearchy_cleanup(
     commands1: Commands,
     mut commands2: Commands,
-    mut parent_query: Query<(Entity, &mut Parent)>,
-    child_query: Query<(Entity, &Child)>,
+    mut parent_query: Query<(Entity, &mut Children)>,
     link_query: Query<(Entity, &LinkTo)>,
+    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
+    child_query: Query<(Entity, &ChildOf)>,
 ) {
     for despawn_cmd in commands1.despawn_iter() {
         let dead_entity = despawn_cmd.despawn_target();
         #[allow(unused_mut)]
-        if let Some((entity, mut parent_comp)) = parent_query.get_mut(dead_entity) {
-            println!("Hierarchy Plugin: Parent matched. Queueing recursive child deletion!");
+        if let Some((_, mut parent_comp)) = parent_query.get_mut(dead_entity) {
+            println!("Hierarchy Plugin: Parent is despawning. Queueing recursive child deletion!");
             while let Some(child_handle) = parent_comp.children.pop() {
                 commands2.despawn(child_handle.clone());
-                commands2.remove_components::<Child>(child_handle.clone());
+                commands2.remove_components::<ChildOf>(child_handle);
             }
-            commands2.remove_components::<Parent>(entity.clone());
+            commands2.remove_components::<Children>(dead_entity.clone());
+        }
+
+        if let Some((child_entity, childof)) = child_query.get(dead_entity) {
+            println!("Hierarchy Plugin: Child is dying, Unlinking it from parent");
+            #[allow(unused_mut)]
+            if let Some((_, mut parent_comp)) = parent_query.get_mut(&childof.parent) {
+                parent_comp.children.retain(|entity| entity != child_entity);
+            }
         }
     }
 
-    for view in child_query.iter() {
-        for (child_entity, child_comp) in view.iter() {
-            if commands1.will_despawn(&child_comp.parent) {
-                println!(
-                    "Hierarchy Plugin: Parent is dying. Stripping Child component from entity silently..."
-                );
-                commands2.remove_components::<Child>(child_entity.clone());
-            }
-        }
-    }
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {
             if commands1.will_despawn(&link_comp.parent) {
@@ -96,105 +112,203 @@ fn hirearchy_cleanup(
             }
         }
     }
+
+    for view in unlink_query.iter() {
+        for (child_entity, childof) in view.iter() {
+            if commands1.will_despawn(&childof.parent) {
+                println!(
+                    "Hierarchy plugin: Unlink target is dying, removing unlink comp from entity"
+                );
+                commands2.remove_components::<UnlinkChild>(child_entity.clone());
+            }
+        }
+    }
 }
+
+pub trait HierarchyCommandsExt {
+    fn set_parent(&mut self, child: Entity, new_parent: Entity);
+    fn unlink_child(&mut self, child: Entity);
+}
+
+impl<'a> HierarchyCommandsExt for Commands<'a> {
+    fn set_parent(&mut self, child: Entity, new_parent: Entity) {
+        self.add_components(child, LinkTo { parent: new_parent });
+    }
+    fn unlink_child(&mut self, child: Entity) {
+        self.add_components(child, UnlinkChild);
+    }
+}
+
+#[derive(Component)]
+struct AlphaCommander;
+#[derive(Component)]
+struct BetaCommander;
+#[derive(Component)]
+struct MinionSubUnit;
+
+#[derive(Component)]
+struct TestOrphanMarker;
+#[derive(Component)]
+struct AlphaTestParent;
+#[derive(Component)]
+struct BetaTestChild;
 
 #[derive(Resource)]
 pub struct FrameStepper {
     pub current_frame: u32,
 }
 
-fn main() {
-    println!("--- Starting Verified Hierarchy Shifting Test ---");
+fn setup_scene_graph(mut commands: Commands) {
+    println!("Setup System: Spawning core base entities...");
+    commands.spawn(AlphaCommander);
+    commands.spawn(BetaCommander);
+    commands.spawn(MinionSubUnit);
 
-    App::new()
-        .add_plugins(DefaultSchedulesPlugin)
-        .add_plugins(HierarchyPlugin)
-        .insert_resource(FrameStepper { current_frame: 0 })
-        .add_systems(Startup, setup_scene_graph)
-        .add_systems(Update, trigger_runtime_lifecycle_stages)
-        .set_runner(run_test_frames)
-        .run();
+    commands.spawn(AlphaTestParent);
+    commands.spawn(BetaTestChild);
+}
+
+fn build_generation_hierarchy(
+    mut commands: Commands,
+    alpha_query: Query<Entity, With<AlphaCommander>>,
+    beta_query: Query<Entity, With<BetaCommander>>,
+    minion_query: Query<Entity, With<MinionSubUnit>>,
+    test_parent_query: Query<Entity, With<AlphaTestParent>>,
+    test_child_query: Query<Entity, With<BetaTestChild>>,
+) {
+    let mut alpha_ent = None;
+    let mut beta_ent = None;
+    let mut minion_ent = None;
+    let mut test_parent_ent = None;
+    let mut test_child_ent = None;
+
+    for view in alpha_query.iter() { for e in view.iter() { alpha_ent = Some(e.clone()); } }
+    for view in beta_query.iter() { for e in view.iter() { beta_ent = Some(e.clone()); } }
+    for view in minion_query.iter() { for e in view.iter() { minion_ent = Some(e.clone()); } }
+    for view in test_parent_query.iter() { for e in view.iter() { test_parent_ent = Some(e.clone()); } }
+    for view in test_child_query.iter() { for e in view.iter() { test_child_ent = Some(e.clone()); } }
+
+    if let (Some(alpha), Some(beta), Some(minion)) = (alpha_ent, beta_ent, minion_ent) {
+        commands.set_parent(beta.clone(), alpha.clone());
+        commands.set_parent(minion.clone(), beta.clone());
+        commands.set_parent(alpha, minion.clone());
+        println!("Linked hierarchy");
+    }
+
+    if let (Some(parent), Some(child)) = (test_parent_ent, test_child_ent) {
+        commands.set_parent(child, parent);
+        println!("Linked clean test hierarchy for normal unlink validation");
+    }
+}
+
+fn trigger_runtime_lifecycle_stages(
+    mut commands: Commands,
+    stepper: Res<FrameStepper>,
+    alpha_query: Query<Entity, With<AlphaCommander>>,
+) {
+    let frame = stepper.current_frame;
+    if frame == 1 {
+        for view in alpha_query.iter() {
+            for entity in view.iter() {
+                println!("System (Update Frame {}): Despawning root AlphaCommander!", frame);
+                commands.despawn(entity.clone());
+            }
+        }
+    }
+}
+
+fn test_unlink_edge_cases_system(
+    mut commands: Commands,
+    stepper: Res<FrameStepper>,
+    beta_query: Query<Entity, With<BetaCommander>>,
+    minion_query: Query<Entity, With<MinionSubUnit>>,
+    orphan_query: Query<Entity, With<TestOrphanMarker>>,
+    test_child_query: Query<Entity, With<BetaTestChild>>,
+) {
+    let frame = stepper.current_frame;
+
+    if frame == 2 {
+        let mut test_child_ent = None;
+        for view in test_child_query.iter() { for e in view.iter() { test_child_ent = Some(e.clone()); } }
+        if let Some(child) = test_child_ent {
+            println!("Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.", frame);
+            commands.unlink_child(child);
+        }
+    }
+
+    if frame == 3 {
+        commands.spawn(TestOrphanMarker);
+        println!("Unlink System (Frame {}): Spawned a standalone orphan entity with tracking component.", frame);
+    }
+
+    if frame == 4 {
+        let mut orphan_ent = None;
+        for view in orphan_query.iter() { for e in view.iter() { orphan_ent = Some(e.clone()); } }
+        if let Some(orphan) = orphan_ent {
+            println!("Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).", frame);
+            commands.unlink_child(orphan);
+        }
+
+        let mut minion_ent = None;
+        let mut beta_ent = None;
+        for view in minion_query.iter() { for e in view.iter() { minion_ent = Some(e.clone()); } }
+        for view in beta_query.iter() { for e in view.iter() { beta_ent = Some(e.clone()); } }
+
+        if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
+            println!("Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.", frame);
+            commands.set_parent(minion.clone(), beta);
+            commands.unlink_child(minion);
+        }
+    }
 }
 
 fn run_test_frames(app: &mut App) {
     app.build();
+    println!("\nStartup: Spawning Entities and building hierarchy");
     app.run_startup();
 
-    println!("\n--- Frame 1: Dynamic Component Linkage ---");
+    println!("\n--- Frame 1: Trigger Root Despawn ---");
     app.update();
 
-    println!("\n--- Frame 2: Simultaneous LinkTo and Parent Despawn Pass ---");
+    println!("\n--- Frame 2: Run Nominal Unlink Commands ---");
     app.update();
 
-    println!("\n--- Frame 3: Verification Check Phase ---");
+    println!("\n--- Frame 3: Spawn Free Orphan Node ---");
+    app.update();
+
+    println!("\n--- Frame 4: Trigger Edge Case Unlinking & Race Conditions ---");
+    app.update();
+
+    println!("\n--- Frame 5: Post-Unlink Boundary Evaluation Phase ---");
     app.update();
 
     println!("\nSimulation processed entire lifecycle safely without a handle violation panic!");
 }
 
-fn setup_scene_graph(mut commands: Commands) {
-    println!("Setup System: Queueing structural entities into the database...");
-
-    commands.spawn((
-        AlphaCommander,
-        Parent {
-            children: Vec::new(),
-        },
-    ));
-    commands.spawn((
-        BetaCommander,
-        Parent {
-            children: Vec::new(),
-        },
-    ));
-    commands.spawn(MinionSubUnit);
+fn increment_frame(mut frame: ResMut<FrameStepper>) {
+    frame.current_frame += 1;
 }
 
-fn trigger_runtime_lifecycle_stages(
-    mut commands: Commands,
-    mut stepper: ResMut<FrameStepper>,
-    alpha_query: Query<Entity, With<AlphaCommander>>,
-    child_query: Query<Entity, (Without<Parent>, Without<Child>, Without<LinkTo>)>,
-) {
-    stepper.current_frame += 1;
-    let frame = stepper.current_frame;
+fn main() {
+    println!("--- Starting Real Verified Hierarchy Shifting Test ---");
 
-    if frame == 1 {
-        for view in alpha_query.iter() {
-            for parent_id in view.iter() {
-                for child_view in child_query.iter() {
-                    for child_entity in child_view.iter() {
-                        println!("System (Update): Binding LinkTo component onto child target...");
-                        commands.insert_components(
-                            child_entity.clone(),
-                            LinkTo {
-                                parent: parent_id.clone(),
-                            },
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    if frame == 2 {
-        for view in alpha_query.iter() {
-            for parent_id in view.iter() {
-                println!(
-                    "System (Update): Spawning a new child entity requesting LinkTo Alpha Commander..."
-                );
-                commands.spawn((
-                    MinionSubUnit,
-                    LinkTo {
-                        parent: parent_id.clone(),
-                    },
-                ));
-
-                println!(
-                    "System (Update): Simultaneously issuing deferred despawn for Alpha Commander!"
-                );
-                commands.despawn(parent_id.clone());
-            }
-        }
-    }
+    App::new()
+        .add_plugins(HierarchyPlugin)
+        .insert_resource(FrameStepper { current_frame: 0 })
+        .add_systems(Startup, 
+            (
+                setup_scene_graph,
+                build_generation_hierarchy,
+            )
+        )
+        .add_systems(
+            Update,
+            (
+                increment_frame,
+                trigger_runtime_lifecycle_stages,
+                test_unlink_edge_cases_system,
+            ),
+        )
+        .set_runner(run_test_frames)
+        .run();
 }

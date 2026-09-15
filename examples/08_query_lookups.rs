@@ -15,8 +15,7 @@ fn main() {
     println!("=== Random Query lookups example ===\n");
 
     let mut app = App::new();
-    app.add_plugins(DefaultSchedulesPlugin)
-        .add_systems(Startup, setup_simulation_entities_system)
+    app.add_systems(Startup, setup_simulation_entities_system)
         .add_systems(
             Update,
             (

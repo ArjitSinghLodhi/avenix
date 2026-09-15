@@ -119,8 +119,7 @@ rusty_fork_test! {
     #[test]
     fn test_commands_and_resources() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(ScoreTracker { points: 0 })
+        app.insert_resource(ScoreTracker { points: 0 })
             .add_systems(Startup, setup_initial_entities)
             .add_systems(Startup, test_par_commands)
             .add_systems(Update, verify_resource_and_commands);
@@ -161,8 +160,7 @@ rusty_fork_test! {
     #[test]
     fn test_query_filter_logic() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .add_systems(Startup, spawn_filter_targets)
+        app.add_systems(Startup, spawn_filter_targets)
             .add_systems(Update, verify_logical_queries);
 
         app.set_runner(test_runner_once);

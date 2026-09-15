@@ -144,8 +144,7 @@ rusty_fork_test! {
     #[test]
     fn test_double_buffered_removals() {
         let mut app = App::new();
-        app.add_plugins(DefaultSchedulesPlugin)
-            .insert_resource(FrameCounter { current_frame: 0 })
+        app.insert_resource(FrameCounter { current_frame: 0 })
             .add_systems(Startup, setup_removal_entities)
             .add_systems(
                 Update,

@@ -15,8 +15,7 @@ fn main() {
     println!("=== Simultaneous thread parallel commands and system injected ===\n");
 
     let mut app = App::new();
-    app.add_plugins(DefaultSchedulesPlugin)
-        .add_systems(Startup, system_parallel_spawn_system)
+    app.add_systems(Startup, system_parallel_spawn_system)
         .add_systems(Update, verify_parallel_spawns_system);
 
     app.set_runner(run_parallel_test_loop);
