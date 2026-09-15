@@ -57,9 +57,7 @@ impl ScheduleLabel for PostUpdate {}
 /// every cleanup system observes all pending despawns before they are final.
 /// And finally despawn commands are applied.
 ///
-/// See [`DefaultSchedulesPlugin`] for more information on the execution order.
-///
-/// [`DefaultSchedulesPlugin`]: crate::schedule::DefaultSchedulesPlugin
+/// see the hierarchy_cleanup example on how to effectively use it.
 pub struct CleanupHandles;
 
 impl ScheduleLabel for CleanupHandles {

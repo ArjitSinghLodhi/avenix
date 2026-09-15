@@ -90,11 +90,10 @@ impl Commands<'_> {
     /// of every component within the entity's archetype, allowing you to instantly
     /// identify which entity type caused the violation.
     ///
-    /// For projects using the [`DefaultSchedulesPlugin`], look into its documentation to understand
-    /// how some schedules are deliberately structured to help you use `despawn_iter` and
-    /// `will_despawn` to satisfy this requirement.
+    /// look into the documentation of [`CleanupHandles`] to understand how its structured
+    /// to help you on using `despawn_iter` and `will_despawn` to satisfy this requirement.
     ///
-    /// [`DefaultSchedulesPlugin`]: crate::schedule::DefaultSchedulesPlugin
+    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub fn despawn(&mut self, entity: Entity) {
         self.despawns.insert(entity);
     }
@@ -143,11 +142,10 @@ impl Commands<'_> {
     /// the entity retrieved from [`despawn_target()`] into your query lookup functions to safely
     /// access and drop any active cloned handles.
     ///
-    /// See [`DefaultSchedulesPlugin`] to understand how the engine's schedules are structured
-    /// to coordinate this iterator with handle cleanup requirements.
-    ///
+    /// See [`CleanupHandles`] to understand how its structured to help you use this.
     /// [`despawn_target()`]: crate::commands::command_types::DespawnCommand::despawn_target
-    /// [`DefaultSchedulesPlugin`]: crate::schedule::DefaultSchedulesPlugin
+    /// 
+    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub fn despawn_iter(&self) -> impl Iterator<Item = &DespawnCommand> {
         self.despawns.iter().map(|entity_ref| unsafe {
             &*(&(*entity_ref) as *const Entity as *const DespawnCommand)
@@ -156,15 +154,15 @@ impl Commands<'_> {
 
     /// Returns whether the specified entity is currently scheduled for removal.
     ///
-    /// This performs an `O(1)` lookup via an internal `HashSet::contains` check, making it
+    /// This performs an `O(1)` lookup via an internal check, making it
     /// highly efficient to call within heavy system loops. Use this check to conditionally
     /// bypass logic or drop active cloned handles via query lookup functions before the
     /// cleanup phase completes.
     ///
-    /// See [`DefaultSchedulesPlugin`] to understand how the engine's schedules are structured
-    /// to coordinate this check with handle cleanup requirements.
+    /// See [`CleanupHandles`] to see how its structured to help you use this for the
+    /// Entity Despawn Invariant rule.
     ///
-    /// [`DefaultSchedulesPlugin`]: crate::schedule::DefaultSchedulesPlugin
+    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub fn will_despawn(&self, entity: &Entity) -> bool {
         self.despawns.contains(entity)
     }

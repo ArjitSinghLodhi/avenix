@@ -114,7 +114,7 @@ impl DespawnCommand {
                     "\n\
                     Avenix Handle Violation: Cloned handles for an entity were not dropped before despawn execution!\n\
                     Entity Archetype Component Names: {:?}\n\
-                    Refer to the `DefaultSchedulesPlugin` and `Commands::despawn` documentation to understand how to coordinate handle cleanup.\n\
+                    Refer to the `CleanupHandles` and `Commands::despawn` documentation to understand how to coordinate handle cleanup.\n\
                     ",
                     types_names
                 );
