@@ -143,6 +143,7 @@ impl Commands<'_> {
     /// access and drop any active cloned handles.
     ///
     /// See [`CleanupHandles`] to understand how its structured to help you use this.
+    /// 
     /// [`despawn_target()`]: crate::commands::command_types::DespawnCommand::despawn_target
     /// 
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles

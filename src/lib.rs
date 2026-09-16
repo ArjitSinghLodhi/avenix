@@ -12,7 +12,7 @@
 //! [`CleanupHandles`]: crate::schedule::CleanupHandles
 //! [`Commands::despawn()`]: crate::commands::Commands::despawn
 
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[path = "app/mod.rs"]
 mod app_impl;
