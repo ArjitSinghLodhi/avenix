@@ -11,15 +11,17 @@ use crate::{
 ///
 /// `ParallelEventWriter` can be passed to external or background worker threads, allowing them to
 /// concurrently dispatch events outside the main execution path. It can be obtained directly from
-/// the application layer via [`.get_par_event_writer()`].
+/// the world layer via [`.get_par_event_writer()`].
 ///
 /// # Deferred Actions & Invariants
 ///
 /// Any events queued through this handle remain subject to the engine's strict double-buffered,
 /// frame-locked 3-frame lifecycle. Events pushed here are buffered in the current frame and
 /// become globally readable in the next frame.
+/// 
+/// Also usable as a system param.
 ///
-/// [`.get_par_event_writer()`]: crate::app::App::get_par_event_writer
+/// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer
 #[derive(Clone)]
 pub struct ParallelEventWriter<T: Event> {
     pub(crate) write_buffer: Arc<RwLock<EventQueue<T>>>,
@@ -45,8 +47,7 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
-        let buffer_ptr = world.get_resource::<EventBuffer<T>>() as *const EventBuffer<T>;
-        let queue = unsafe { (*buffer_ptr).write_queue.clone() };
+        let queue = world.get_resource::<EventBuffer<T>>().write_queue.clone();
         Self {
             write_buffer: queue,
         }
@@ -60,7 +61,7 @@ unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 ///
 /// `ParallelEventReader` can be passed to external or background worker threads, allowing them to
 /// concurrently inspect dispatched events outside the main execution path. It can be obtained directly
-/// from the application layer via [`.get_par_event_reader()`].
+/// from the world layer via [`.get_par_event_reader()`].
 ///
 /// # Critical Synchronization Warning
 ///
@@ -71,7 +72,9 @@ unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 /// loop. If the main application ticks too fast or advances frames before your parallel thread processes
 /// the current window, the engine will clear the underlying buffer, causing the handle to miss data entirely.
 ///
-/// [`.get_par_event_reader()`]: crate::app::App::get_par_event_reader
+/// Also usable as a system param.
+/// 
+/// [`.get_par_event_reader()`]: crate::world::storage::World::get_par_event_reader
 #[derive(Clone)]
 pub struct ParallelEventReader<T: Event> {
     pub(crate) read_buffer: Arc<RwLock<EventQueue<T>>>,
@@ -97,8 +100,7 @@ impl<T: Event> SystemParam for ParallelEventReader<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
-        let buffer_ptr = world.get_resource::<EventBuffer<T>>() as *const EventBuffer<T>;
-        let queue = unsafe { (*buffer_ptr).read_queue.clone() };
+        let queue = world.get_resource::<EventBuffer<T>>().read_queue.clone();
         Self { read_buffer: queue }
     }
 }

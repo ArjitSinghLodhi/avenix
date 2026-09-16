@@ -6,11 +6,11 @@ A deterministic, concurrent Entity Component System (ECS) written in Rust, featu
 
 ## Performance & Safety Guarantees
 
-* **Miri-Validated Sandbox**  
+* **Miri-Validated**  
   Built on raw pointer offsets and contiguous columns. Fully passes Miri verification with zero undefined behavior.
 * **Contiguous Archetype Layout**  
   Uses Archetype layout for storing entities and their data.
-* **Fork-Join Parallel Iteration**  
+* **Rayon Parallel Iteration**  
   Uses a Rayon worker pool to partition and stream archetype data chunks concurrently across multiple CPU cores.
 * **Command Synchronization**  
   Structural changes (spawning, inserting, deleting) are buffered into a thread-safe queue and flushed at the end of each schedule run.
@@ -67,7 +67,7 @@ Trackers Update Interally         Visible to Queries              Tokens Overwri
 *Note: All reactive logic using filters must run within this 1-frame boundary. Delaying system ticks past this window causes immediate mutation visibility decay.*
 
 ### The Entity Despawn Invariant
-Avenix enforces a strict handle count invariant to maintain memory safety across parallel schedules.
+Avenix enforces a strict handle count invariant to maintain safety with recycled entity handles.
 
 > [!IMPORTANT]
 > All cloned handles referencing an entity must be completely dropped before that entity's queued despawn command is processed.

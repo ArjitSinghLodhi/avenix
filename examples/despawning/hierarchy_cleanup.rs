@@ -22,7 +22,7 @@ pub struct HierarchyPlugin;
 
 impl Plugin for HierarchyPlugin {
     fn build(self, app: &mut App) {
-        app.add_systems(PostUpdate, automatic_hierarchy_linker_system)
+        app.add_systems(Update, automatic_hierarchy_linker_system)
             .add_systems(CleanupHandles, hirearchy_cleanup);
     }
 }
@@ -64,7 +64,7 @@ fn automatic_hierarchy_linker_system(
                 parent_comp.children.retain(|entity| entity != child_entity);
                 println!("Hierarchy Plugin: Unlinked child from parent");
                 if parent_comp.children.is_empty() {
-                    println!("Hierarchy Plugin: Removing Children components from parent because there are no children anymore");
+                    println!("Hierarchy Plugin: Removing Children component from parent because there are no children anymore");
                     commands.remove_components::<Children>(child_of.parent.clone());
                 }
             }
@@ -74,11 +74,12 @@ fn automatic_hierarchy_linker_system(
 }
 
 fn hirearchy_cleanup(
-    commands1: Commands,
+    mut commands1: Commands,
     mut commands2: Commands,
     mut parent_query: Query<(Entity, &mut Children)>,
     link_query: Query<(Entity, &LinkTo)>,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
+    unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
     child_query: Query<(Entity, &ChildOf)>,
 ) {
     for despawn_cmd in commands1.despawn_iter() {
@@ -123,6 +124,13 @@ fn hirearchy_cleanup(
             }
         }
     }
+
+    for view in unlink_orphan_query.iter() {
+        for entity in view.iter() {
+            println!("Entity was set for unlink without parent, removing UnlinkChild component");
+            commands1.remove_components::<UnlinkChild>(entity.clone());
+        }
+    }
 }
 
 pub trait HierarchyCommandsExt {
@@ -132,10 +140,10 @@ pub trait HierarchyCommandsExt {
 
 impl<'a> HierarchyCommandsExt for Commands<'a> {
     fn set_parent(&mut self, child: Entity, new_parent: Entity) {
-        self.add_components(child, LinkTo { parent: new_parent });
+        self.insert_components(child, LinkTo { parent: new_parent });
     }
     fn unlink_child(&mut self, child: Entity) {
-        self.add_components(child, UnlinkChild);
+        self.insert_components(child, UnlinkChild);
     }
 }
 
@@ -176,27 +184,21 @@ fn build_generation_hierarchy(
     test_parent_query: Query<Entity, With<AlphaTestParent>>,
     test_child_query: Query<Entity, With<BetaTestChild>>,
 ) {
-    let mut alpha_ent = None;
-    let mut beta_ent = None;
-    let mut minion_ent = None;
-    let mut test_parent_ent = None;
-    let mut test_child_ent = None;
-
-    for view in alpha_query.iter() { for e in view.iter() { alpha_ent = Some(e.clone()); } }
-    for view in beta_query.iter() { for e in view.iter() { beta_ent = Some(e.clone()); } }
-    for view in minion_query.iter() { for e in view.iter() { minion_ent = Some(e.clone()); } }
-    for view in test_parent_query.iter() { for e in view.iter() { test_parent_ent = Some(e.clone()); } }
-    for view in test_child_query.iter() { for e in view.iter() { test_child_ent = Some(e.clone()); } }
+    let alpha_ent = alpha_query.single();
+    let beta_ent = beta_query.single();
+    let minion_ent = minion_query.single();
+    let test_parent_ent = test_parent_query.single();
+    let test_child_ent = test_child_query.single();
 
     if let (Some(alpha), Some(beta), Some(minion)) = (alpha_ent, beta_ent, minion_ent) {
         commands.set_parent(beta.clone(), alpha.clone());
         commands.set_parent(minion.clone(), beta.clone());
-        commands.set_parent(alpha, minion.clone());
+        commands.set_parent(alpha.clone(), minion.clone());
         println!("Linked hierarchy");
     }
 
     if let (Some(parent), Some(child)) = (test_parent_ent, test_child_ent) {
-        commands.set_parent(child, parent);
+        commands.set_parent(child.clone(), parent.clone());
         println!("Linked clean test hierarchy for normal unlink validation");
     }
 }
@@ -208,11 +210,9 @@ fn trigger_runtime_lifecycle_stages(
 ) {
     let frame = stepper.current_frame;
     if frame == 1 {
-        for view in alpha_query.iter() {
-            for entity in view.iter() {
-                println!("System (Update Frame {}): Despawning root AlphaCommander!", frame);
-                commands.despawn(entity.clone());
-            }
+        if let Some(alpha_entity) = alpha_query.single() {
+            println!("System (Update Frame {}): Despawning root AlphaCommander!", frame);
+            commands.despawn(alpha_entity.clone());
         }
     }
 }
@@ -228,11 +228,10 @@ fn test_unlink_edge_cases_system(
     let frame = stepper.current_frame;
 
     if frame == 2 {
-        let mut test_child_ent = None;
-        for view in test_child_query.iter() { for e in view.iter() { test_child_ent = Some(e.clone()); } }
+        let test_child_ent = test_child_query.single();
         if let Some(child) = test_child_ent {
             println!("Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.", frame);
-            commands.unlink_child(child);
+            commands.unlink_child(child.clone());
         }
     }
 
@@ -242,22 +241,19 @@ fn test_unlink_edge_cases_system(
     }
 
     if frame == 4 {
-        let mut orphan_ent = None;
-        for view in orphan_query.iter() { for e in view.iter() { orphan_ent = Some(e.clone()); } }
+        let orphan_ent = orphan_query.single();
         if let Some(orphan) = orphan_ent {
             println!("Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).", frame);
-            commands.unlink_child(orphan);
+            commands.unlink_child(orphan.clone());
         }
 
-        let mut minion_ent = None;
-        let mut beta_ent = None;
-        for view in minion_query.iter() { for e in view.iter() { minion_ent = Some(e.clone()); } }
-        for view in beta_query.iter() { for e in view.iter() { beta_ent = Some(e.clone()); } }
+        let minion_ent = minion_query.single();
+        let beta_ent = beta_query.single();
 
         if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
             println!("Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.", frame);
-            commands.set_parent(minion.clone(), beta);
-            commands.unlink_child(minion);
+            commands.set_parent(minion.clone(), beta.clone());
+            commands.unlink_child(minion.clone());
         }
     }
 }

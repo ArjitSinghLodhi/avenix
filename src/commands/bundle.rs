@@ -120,6 +120,7 @@ macro_rules! impl_component_tuple {
     };
 }
 
+impl_component_tuple!(A);
 impl_component_tuple!(A, B);
 impl_component_tuple!(A, B, C);
 impl_component_tuple!(A, B, C, D);
