@@ -14,7 +14,6 @@ use crate::{
     world::storage::World,
 };
 
-#[doc(hidden)]
 pub struct AccessHashSet<T: Eq + Hash> {
     pub(crate) set: IndexSet<T, FxBuildHasher>,
 }
@@ -45,7 +44,6 @@ impl<T: Eq + Hash> Default for AccessHashSet<T> {
     }
 }
 
-#[doc(hidden)]
 pub struct AccessVec<T> {
     pub(crate) vec: Vec<T>,
 }
@@ -78,16 +76,15 @@ impl<T> AccessVec<T> {
     }
 }
 
-#[doc(hidden)]
 #[derive(Default)]
 pub struct SystemMeta {
-    pub(crate) name: String,
-    pub(crate) component_reads: AccessHashSet<TypeId>,
-    pub(crate) component_writes: AccessHashSet<TypeId>,
-    pub(crate) resource_reads: AccessHashSet<TypeId>,
-    pub(crate) resource_writes: AccessHashSet<TypeId>,
-    pub(crate) with_filters: AccessHashSet<TypeId>,
-    pub(crate) without_filters: AccessHashSet<TypeId>,
+    name: String,
+    component_reads: AccessHashSet<TypeId>,
+    component_writes: AccessHashSet<TypeId>,
+    resource_reads: AccessHashSet<TypeId>,
+    resource_writes: AccessHashSet<TypeId>,
+    with_filters: AccessHashSet<TypeId>,
+    without_filters: AccessHashSet<TypeId>,
 }
 
 impl SystemMeta {
@@ -101,6 +98,58 @@ impl SystemMeta {
             with_filters: AccessHashSet::new(),
             without_filters: AccessHashSet::new(),
         }
+    }
+
+    pub fn get_func_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn add_component_read(&mut self, type_id: TypeId) {
+        self.component_reads.insert(type_id);
+    }
+
+    pub fn add_component_write(&mut self, type_id: TypeId) {
+        self.component_writes.insert(type_id);
+    }
+
+    pub fn add_resource_read(&mut self, type_id: TypeId) {
+        self.resource_reads.insert(type_id);
+    }
+
+    pub fn add_resource_write(&mut self, type_id: TypeId) {
+        self.resource_writes.insert(type_id);
+    }
+
+    pub fn add_with_filter(&mut self, type_id: TypeId) {
+        self.with_filters.insert(type_id);
+    }
+
+    pub fn add_without_filter(&mut self, type_id: TypeId) {
+        self.without_filters.insert(type_id);
+    }
+
+    pub fn has_component_read(&self, type_id: &TypeId) -> bool {
+        self.component_reads.contains(type_id)
+    }
+
+    pub fn has_component_write(&self, type_id: &TypeId) -> bool {
+        self.component_writes.contains(type_id)
+    }
+
+    pub fn has_resource_read(&self, type_id: &TypeId) -> bool {
+        self.resource_reads.contains(type_id)
+    }
+
+    pub fn has_resource_write(&self, type_id: &TypeId) -> bool {
+        self.resource_writes.contains(type_id)
+    }
+    
+    pub fn has_with_filter(&self, type_id: &TypeId) -> bool {
+        self.with_filters.contains(type_id)
+    }
+    
+    pub fn has_without_filter(&self, type_id: &TypeId) -> bool {
+        self.without_filters.contains(type_id)
     }
 }
 
@@ -127,8 +176,7 @@ impl SystemMeta {
     }
 }
 
-#[doc(hidden)]
-pub trait SystemParam: Sized {
+pub trait SystemParam {
     fn init_access(system_meta: &mut SystemMeta);
     fn get_param(world: &mut World) -> Self;
 }
