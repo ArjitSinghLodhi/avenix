@@ -14,10 +14,33 @@ A deterministic, concurrent Entity Component System (ECS) written in Rust, featu
   Uses a Rayon worker pool to partition and stream archetype data chunks concurrently across multiple CPU cores.
 * **Command Synchronization**  
   Structural changes (spawning, inserting, deleting) are buffered into a thread-safe queue and flushed at the end of each schedule run.
-* **Thread-Independent Spawning**  
-  You can extract command handles (`app.world_mut().get_par_commands()`) outside the main system loops. This allows background threads to safely queue asynchronous entity spawns.
-* **Thread-Independent Event Broadcasting**  
-  Background workers or network threads can pull standalone event handles (`get_par_event_writer::<T>()` / `get_par_event_reader::<T>()`) to broadcast or read global notifications without locking up the main loop.
+
+---
+
+## Parallel Handles
+
+Avenix provides a suite of thread-safe, thread-clonable handles extracted directly from the `World` layer. When extracting these handles from the application layer, pass through using `app.world_mut()`. Once obtained, these handles act as detached remotes that can be sent into background worker threads or external tasks to safely perform operations outside the main system scheduling loop.
+
+### The Handles
+
+* **`ParallelCommands`**
+  * **How to get:** Call `world.get_par_commands()`.
+  * **Usage:** Invoking `.scope(|mut cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
+
+* **`ParallelEventWriter<T>`**
+  * **How to get:** Call `world.get_par_event_writer::<T>()`.
+  * **Usage:** Invoking `.scope(|mut writer| ...)` allows out-of-band threads or network workers to push events into the shared event pipelines.
+  * **Critical Constraints:** Subject to the engine's global 3-frame rule. Refer to their documentation for more information.
+
+* **`ParallelEventReader<T>`**
+  * **How to get:** Call `world.get_par_event_reader::<T>()`.
+  * **Usage:** Invoking `.scope(|reader| ...)` lets concurrent background workers read and iterate over live event buffers synchronously.
+  * **Critical Constraints:** Subject to the engine's global 3-frame rule. Refer to their documentation for more information.
+
+* **`ParallelResourceAccessor<T>`**
+  * **How to get:** Call `world.get_par_resource_accessor::<T>()`.
+  * **Usage:** Invoking `.scope()`, `.scope_mut()`, `.scope_opt()`, or `.scope_mut_opt()` opens targeted closure windows into the resource registry. Features `.is_present()` for boolean presence checks, and allows instant registry adjustments using `.insert_resource()` and `.remove_resource()`.
+  * **Critical Deadlock Warning:** Because this handle operates on fast, synchronous locks to maximize runtime throughput, nesting mutable closure blocks (`.scope_mut()`, `scope_mut_opt()`) on the exact same resource within the *same thread* will cause a deadlock. The framework bypasses runtime re-entrancy checks to preserve processing speed.
 
 ---
 

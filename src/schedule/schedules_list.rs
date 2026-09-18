@@ -1,4 +1,4 @@
-use fxhash::FxHashSet;
+use rustc_hash::FxHashSet;
 
 use crate::{
     entity::Entity,
@@ -146,13 +146,8 @@ impl SystemExecutor for CleanupHandlesExecutor {
             if found_new_unique_despawn {
                 continue;
             }
-
-            for entity in self.despawn_buffer.drain() {
-                despawns_gaurd.insert(entity);
-            }
-            for entity in self.duplicate_batch.drain(..) {
-                despawns_gaurd.insert(entity);
-            }
+            despawns_gaurd.extend(self.despawn_buffer.drain());
+            despawns_gaurd.extend(self.duplicate_batch.drain(..));
             self.historical_seen.clear();
             self.iteration_batch.clear();
             self.duplicate_batch.clear();

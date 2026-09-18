@@ -1,5 +1,5 @@
-use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
+use rustc_hash::FxBuildHasher;
 use std::any::{TypeId, type_name};
 
 use crate::{

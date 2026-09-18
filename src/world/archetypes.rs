@@ -4,8 +4,8 @@ use std::{
     hash::{BuildHasher, Hash},
 };
 
-use fxhash::{FxBuildHasher, FxHashMap};
 use indexmap::{IndexMap, IndexSet};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{commands::bundle::ComponentBundle, ecs::Component, entity::Entity};
 
@@ -215,7 +215,7 @@ impl ArchetypeManager {
         let new_id = ArchetypeId::new(self.next_id);
         self.next_id += 1;
 
-        let columns = IndexMap::with_hasher(FxBuildHasher::default());
+        let columns = IndexMap::with_hasher(FxBuildHasher);
         let new_arch = Archetype::new(new_id, types_set, columns, types_names_set);
 
         self.index.insert(order_independent_hash, new_id);
@@ -225,8 +225,7 @@ impl ArchetypeManager {
 
     pub(crate) fn get_or_create_from_generic<T: ComponentBundle>(&mut self) -> ArchetypeId {
         let incoming_ids = T::get_type_ids();
-        let mut types_set =
-            IndexSet::with_capacity_and_hasher(incoming_ids.len(), FxBuildHasher::default());
+        let mut types_set = IndexSet::with_capacity_and_hasher(incoming_ids.len(), FxBuildHasher);
         for &id in incoming_ids {
             types_set.insert(id);
         }
@@ -242,7 +241,7 @@ impl ArchetypeManager {
         let incoming_names = T::get_type_names();
         let names_ref = incoming_names.as_ref();
         let mut types_names_set =
-            IndexSet::with_capacity_and_hasher(names_ref.len(), FxBuildHasher::default());
+            IndexSet::with_capacity_and_hasher(names_ref.len(), FxBuildHasher);
         for &name in names_ref {
             types_names_set.insert(name);
         }
@@ -250,7 +249,7 @@ impl ArchetypeManager {
         let new_id = ArchetypeId(self.next_id);
         self.next_id += 1;
 
-        let mut columns = IndexMap::with_hasher(FxBuildHasher::default());
+        let mut columns = IndexMap::with_hasher(FxBuildHasher);
         T::create_empty_columns(&mut columns);
 
         #[cfg(feature = "reactivity")]

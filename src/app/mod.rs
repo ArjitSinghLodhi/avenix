@@ -6,11 +6,14 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use fxhash::{FxBuildHasher, FxHashMap};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     resources::Resource,
-    schedule::{CleanupHandles, DefaultSchedulesPlugin, IntoScheduleId, Schedule, ScheduleId, ScheduleLabel, Startup},
+    schedule::{
+        CleanupHandles, DefaultSchedulesPlugin, IntoScheduleId, Schedule, ScheduleId,
+        ScheduleLabel, Startup,
+    },
     system::{IntoSystemConfigs, System},
     world::storage::World,
 };
@@ -294,7 +297,7 @@ impl App {
 
     fn configure_plugins(&mut self) {
         self.configuration.building_plugins = true;
-        
+
         while !self.plugins.is_empty() {
             let current_batch = std::mem::take(&mut self.plugins);
             for plugins_build_all in current_batch {
@@ -345,7 +348,7 @@ impl App {
     fn configure_schedules(&mut self) {
         let unarranged = std::mem::take(&mut self.schedules);
         let mut schedule_map: FxHashMap<ScheduleId, Schedule> =
-            FxHashMap::with_capacity_and_hasher(unarranged.len(), FxBuildHasher::default());
+            FxHashMap::with_capacity_and_hasher(unarranged.len(), FxBuildHasher);
         for s in unarranged {
             let id = s.id();
             if schedule_map.contains_key(&id) {

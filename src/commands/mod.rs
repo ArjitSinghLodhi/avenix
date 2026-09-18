@@ -8,8 +8,8 @@ pub use parallel_commands::ParallelCommands;
 use std::{marker::PhantomData, sync::Arc};
 
 use dashmap::DashSet;
-use fxhash::FxBuildHasher;
 use parking_lot::{RawRwLock, RwLock, lock_api::RwLockReadGuard};
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     commands::{
@@ -40,7 +40,7 @@ impl CommandBuffer {
     pub fn new() -> Self {
         Self {
             queue: Arc::new(RwLock::new(CommandQueue::new())),
-            despawns: Arc::new(RwLock::new(DashSet::with_hasher(FxBuildHasher::new()))),
+            despawns: Arc::new(RwLock::new(DashSet::with_hasher(FxBuildHasher))),
         }
     }
 }
@@ -143,9 +143,9 @@ impl Commands<'_> {
     /// access and drop any active cloned handles.
     ///
     /// See [`CleanupHandles`] to understand how its structured to help you use this.
-    /// 
+    ///
     /// [`despawn_target()`]: crate::commands::command_types::DespawnCommand::despawn_target
-    /// 
+    ///
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub fn despawn_iter(&self) -> impl Iterator<Item = &DespawnCommand> {
         self.despawns.iter().map(|entity_ref| unsafe {
@@ -180,7 +180,9 @@ impl Commands<'_> {
     /// This command transfers ownership of the resource to the world during the command execution
     /// phase. If a resource of type `T` already exists, it is unconditionally dropped and replaced.
     pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) {
-        self.push_fn(|world| world.insert_resource(resource));
+        self.push_fn(|world| {
+            world.insert_resource(resource);
+        });
     }
 
     /// Schedules a command to remove a global resource of type `T` from the world.

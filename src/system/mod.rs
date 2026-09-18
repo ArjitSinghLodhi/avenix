@@ -6,8 +6,8 @@ use std::{
     hash::Hash,
 };
 
-use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     extensions::{FunctionData, SystemData},

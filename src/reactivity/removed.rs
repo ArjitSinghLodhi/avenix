@@ -1,9 +1,9 @@
 use std::{any::TypeId, marker::PhantomData, sync::Arc};
 
 use dashmap::DashSet;
-use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     app::App,
@@ -23,14 +23,15 @@ pub(crate) fn register_removal_tracking_buffers(app: &mut App) {
 pub(crate) struct RemovalTrackedMeta {
     pub(crate) register_buffer: fn(&mut World),
     pub(crate) swap_and_clear_buffer: fn(&mut World),
-    pub(crate) clear_dead_entities: fn(&mut World, &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>),
+    pub(crate) clear_dead_entities:
+        fn(&mut World, &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>),
 
     pub(crate) push_to_write_queue: fn(&mut World, Entity),
 }
 
 pub(crate) static REMOVAL_TRACKED_COMPS: RwLock<
     IndexMap<TypeId, RemovalTrackedMeta, FxBuildHasher>,
-> = RwLock::new(IndexMap::with_hasher(FxBuildHasher::new()));
+> = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
 
 fn register_removal_tracking_comp<T: Component>() {
     let mut tracked = REMOVAL_TRACKED_COMPS.write();

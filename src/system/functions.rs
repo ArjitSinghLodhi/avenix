@@ -53,9 +53,9 @@ impl_system_for_functions!(A, B, C, D, E, G, H, I, J, K);
 impl_system_for_functions!(A, B, C, D, E, G, H, I, J, K, L);
 impl_system_for_functions!(A, B, C, D, E, G, H, I, J, K, L, M);
 
-impl<F> System for FunctionSystem<(), F> 
-where 
-    F: Fn()
+impl<F> System for FunctionSystem<(), F>
+where
+    F: Fn(),
 {
     fn run(&mut self, _world: &mut World) {
         (self.func)();
@@ -63,8 +63,8 @@ where
 }
 
 impl<F> IntoSystem<()> for F
-where 
-    F: Fn() + 'static
+where
+    F: Fn() + 'static,
 {
     type SystemType = FunctionSystem<(), F>;
     fn into_system(self) -> Self::SystemType {

@@ -7,7 +7,7 @@ use crate::{
     extensions::{SystemMeta, SystemParam, World},
 };
 
-/// A thread-safe, thread-clonable handle that acts as a detached remote input for dispatching events.
+/// A thread-safe lock-free, thread-clonable handle that acts as a detached remote input for dispatching events.
 ///
 /// `ParallelEventWriter` can be passed to external or background worker threads, allowing them to
 /// concurrently dispatch events outside the main execution path. It can be obtained directly from
@@ -18,7 +18,7 @@ use crate::{
 /// Any events queued through this handle remain subject to the engine's strict double-buffered,
 /// frame-locked 3-frame lifecycle. Events pushed here are buffered in the current frame and
 /// become globally readable in the next frame.
-/// 
+///
 /// Also usable as a system param.
 ///
 /// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer
@@ -57,7 +57,7 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
 unsafe impl<T: Event> Send for ParallelEventWriter<T> {}
 unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 
-/// A thread-safe, thread-clonable handle that acts as a detached remote reader for inspecting events.
+/// A thread-safe lock-free, thread-clonable handle that acts as a detached remote reader for inspecting events.
 ///
 /// `ParallelEventReader` can be passed to external or background worker threads, allowing them to
 /// concurrently inspect dispatched events outside the main execution path. It can be obtained directly
@@ -73,7 +73,7 @@ unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 /// the current window, the engine will clear the underlying buffer, causing the handle to miss data entirely.
 ///
 /// Also usable as a system param.
-/// 
+///
 /// [`.get_par_event_reader()`]: crate::world::storage::World::get_par_event_reader
 #[derive(Clone)]
 pub struct ParallelEventReader<T: Event> {

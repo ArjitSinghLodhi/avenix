@@ -1,9 +1,9 @@
 #![cfg(feature = "reactivity")]
 
 use crate::extensions::ComponentColumn;
-use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
+use rustc_hash::FxBuildHasher;
 use std::any::{Any, TypeId};
 
 mod added;
@@ -20,7 +20,7 @@ pub(crate) struct TrackedComponentMeta {
 
 pub(crate) static TRACKED_COMPONENTS: RwLock<
     IndexMap<TypeId, TrackedComponentMeta, FxBuildHasher>,
-> = RwLock::new(IndexMap::with_hasher(FxBuildHasher::new()));
+> = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
 
 pub use changed::{Changed, ChangedTracker};
 

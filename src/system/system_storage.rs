@@ -1,9 +1,6 @@
-use std::{
-    any::{Any, TypeId},
-    hash::BuildHasherDefault,
-};
+use std::any::{Any, TypeId};
 
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 #[doc(hidden)]
 pub trait SystemData {
@@ -71,7 +68,7 @@ pub struct FunctionData {
 impl FunctionData {
     pub(crate) fn new() -> Self {
         Self {
-            data: FxHashMap::with_hasher(BuildHasherDefault::new()),
+            data: FxHashMap::default(),
         }
     }
     pub fn get_data<T: 'static>(&self) -> Option<&T> {

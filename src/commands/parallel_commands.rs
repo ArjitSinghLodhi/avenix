@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use dashmap::DashSet;
-use fxhash::FxBuildHasher;
 use parking_lot::RwLock;
+use rustc_hash::FxBuildHasher;
 
 use crate::commands::Commands;
 use crate::commands::command_queue::CommandQueue;

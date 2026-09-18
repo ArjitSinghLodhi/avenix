@@ -6,8 +6,8 @@ use crate::{
     reactivity::{ChangedMarker, Mut},
     world::storage::CurrentBufferIdx,
 };
-use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
+use rustc_hash::FxBuildHasher;
 use std::{any::TypeId, marker::PhantomData};
 
 impl<T: Component> QueryData for &T {
@@ -25,7 +25,11 @@ impl<T: Component> QueryData for &T {
         reads.push(TypeId::of::<T>());
     }
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        unsafe { ThreadSafe{ value: (*archetype.fetch_column_raw::<T>()).as_ptr()} }
+        unsafe {
+            ThreadSafe {
+                value: (*archetype.fetch_column_raw::<T>()).as_ptr(),
+            }
+        }
     }
     unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
         unsafe { &*fetch.value.add(index) }
@@ -46,7 +50,11 @@ impl<T: Component> QueryData for &mut T {
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        unsafe { ThreadSafe { value: (*archetype.fetch_column_raw::<T>()).as_mut_ptr() } }
+        unsafe {
+            ThreadSafe {
+                value: (*archetype.fetch_column_raw::<T>()).as_mut_ptr(),
+            }
+        }
     }
 
     #[inline(always)]
@@ -87,9 +95,13 @@ impl<T: Component> QueryData for &mut T {
                     .downcast_mut::<Vec<ChangedMarker<T>>>()
                     .unwrap();
 
-                ThreadSafe{ value: (data_ptr, vec_ptr.as_mut_ptr(), current_write_idx, true)}
+                ThreadSafe {
+                    value: (data_ptr, vec_ptr.as_mut_ptr(), current_write_idx, true),
+                }
             } else {
-                ThreadSafe{ value: (data_ptr, std::ptr::null_mut(), current_write_idx, false)}
+                ThreadSafe {
+                    value: (data_ptr, std::ptr::null_mut(), current_write_idx, false),
+                }
             }
         }
     }
@@ -128,7 +140,9 @@ impl QueryData for Entity {
     }
     fn collect_access(_reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {}
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        ThreadSafe{value: archetype.entities.as_ptr()}
+        ThreadSafe {
+            value: archetype.entities.as_ptr(),
+        }
     }
     unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
         unsafe { &*fetch.value.add(index) }
@@ -153,7 +167,11 @@ impl<T: Component> QueryData for Option<&T> {
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
         if archetype.types.contains(&TypeId::of::<T>()) {
-            unsafe { Some(ThreadSafe { value: (*archetype.fetch_column_raw::<T>()).as_mut_ptr() }) }
+            unsafe {
+                Some(ThreadSafe {
+                    value: (*archetype.fetch_column_raw::<T>()).as_mut_ptr(),
+                })
+            }
         } else {
             None
         }
@@ -257,9 +275,13 @@ impl<T: Component> QueryData for Option<&mut T> {
                         .downcast_mut::<Vec<ChangedMarker<T>>>()
                         .unwrap();
 
-                    Some(ThreadSafe { value: (data_ptr, vec_ptr.as_mut_ptr(), current_write_idx, true) })
+                    Some(ThreadSafe {
+                        value: (data_ptr, vec_ptr.as_mut_ptr(), current_write_idx, true),
+                    })
                 } else {
-                    Some(ThreadSafe { value: (data_ptr, std::ptr::null_mut(), current_write_idx, false) })
+                    Some(ThreadSafe {
+                        value: (data_ptr, std::ptr::null_mut(), current_write_idx, false),
+                    })
                 }
             } else {
                 None

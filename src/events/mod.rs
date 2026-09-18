@@ -6,7 +6,6 @@ pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
 
 use std::{
     any::{Any, TypeId},
-    cell::UnsafeCell,
     sync::Arc,
 };
 
@@ -24,7 +23,7 @@ pub trait Event: Send + Sync + 'static {}
 pub(crate) struct TrackedEventsMeta {
     pub(crate) comp_id: TypeId,
     pub(crate) event_id: TypeId,
-    pub(crate) clear_events: fn(&mut UnsafeCell<Box<dyn Any>>),
+    pub(crate) clear_events: fn(&mut Box<dyn Any>),
 }
 
 pub(crate) static TRACKED_EVENTS: RwLock<Vec<TrackedEventsMeta>> = RwLock::new(Vec::new());
@@ -39,9 +38,8 @@ pub(crate) fn register_event<T: Event>() {
         tracked.push(TrackedEventsMeta {
             comp_id: TypeId::of::<T>(),
             event_id: TypeId::of::<EventBuffer<T>>(),
-            clear_events: |raw_unsafecell| {
-                let cell = raw_unsafecell.get_mut();
-                let event_queue = cell
+            clear_events: |raw_any| {
+                let event_queue = raw_any
                     .downcast_mut::<EventBuffer<T>>()
                     .expect("Registered event queue was not found when clearing data");
                 let read_queue_gaurd = &mut *event_queue.read_queue.write();
@@ -128,10 +126,14 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 
     fn get_param(world: &mut World) -> Self {
         unsafe {
-            let buffer_ptr = world.get_resource_mut::<EventBuffer<T>>() as *mut EventBuffer<T>;
-            let buffer_ref: &'a EventBuffer<T> = &*buffer_ptr;
+            let buffer = world.get_resource::<EventBuffer<T>>();
 
-            let queue = buffer_ref.write_queue.read();
+            let queue = buffer.write_queue.read();
+
+            let queue = std::mem::transmute::<
+                RwLockReadGuard<'_, EventQueue<T>>,
+                RwLockReadGuard<'_, EventQueue<T>>,
+            >(queue);
 
             Self {
                 write_buffer: queue,
@@ -171,10 +173,17 @@ impl<'w, T: Event> SystemParam for EventReader<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &mut World) -> Self {
-        let event_buffer_ref = world.get_resource::<EventBuffer<T>>() as *const EventBuffer<T>;
-        let queue_ref = unsafe { &*event_buffer_ref };
-        let queue = queue_ref.read_queue.read();
+        unsafe {
+            let buffer = world.get_resource::<EventBuffer<T>>();
 
-        Self { read_buffer: queue }
+            let queue = buffer.read_queue.read();
+
+            let queue = std::mem::transmute::<
+                RwLockReadGuard<'_, EventQueue<T>>,
+                RwLockReadGuard<'_, EventQueue<T>>,
+            >(queue);
+
+            Self { read_buffer: queue }
+        }
     }
 }

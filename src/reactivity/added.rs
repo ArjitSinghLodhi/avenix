@@ -1,7 +1,7 @@
 use std::{any::TypeId, marker::PhantomData};
 
-use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     ecs::Component,
@@ -129,7 +129,9 @@ impl<T: Component> QueryData for AddedTracker<T> {
     unsafe fn init_fetch(archetype: &crate::extensions::Archetype) -> Self::Fetch {
         let marker_ptr = unsafe { (*archetype.fetch_column_raw::<AddedMarker<T>>()).as_ptr() };
         let current_read_idx = CurrentBufferIdx::current_read_idx();
-        ThreadSafe { value: (current_read_idx, marker_ptr) }
+        ThreadSafe {
+            value: (current_read_idx, marker_ptr),
+        }
     }
 
     unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {

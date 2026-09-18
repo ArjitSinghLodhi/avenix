@@ -1,10 +1,14 @@
 use dashmap::DashSet;
-use fxhash::{FxBuildHasher, FxHashMap};
 use parking_lot::RwLockWriteGuard;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{
     any::{Any, TypeId, type_name},
     cell::UnsafeCell,
-    sync::atomic::{AtomicU8, Ordering},
+    marker::PhantomData,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
     thread::{self, ThreadId},
 };
 
@@ -14,7 +18,7 @@ use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
     registry::REGISTRY_HANDLE_COUNT,
-    resources::Resource,
+    resources::{ConcurrentResourceRegistry, ParallelResourceAccessor, Res, ResMut, Resource},
     world::archetypes::ArchetypeManager,
 };
 
@@ -45,7 +49,8 @@ impl CurrentBufferIdx {
 
 pub struct World {
     pub(crate) archetypes_manager: ArchetypeManager,
-    pub(crate) resources: FxHashMap<TypeId, UnsafeCell<Box<dyn Any>>>,
+    pub(crate) resources: Arc<ConcurrentResourceRegistry>,
+    pub(crate) non_send_resources: FxHashMap<TypeId, UnsafeCell<Box<dyn Any>>>,
     pub(crate) commands: CommandBuffer,
     pub(crate) free_indices_list: Vec<u32>,
     pub(crate) main_thread_id: ThreadId,
@@ -55,7 +60,8 @@ impl World {
     pub(crate) fn new() -> Self {
         Self {
             archetypes_manager: ArchetypeManager::new(),
-            resources: FxHashMap::default(),
+            resources: Arc::new(ConcurrentResourceRegistry::new()),
+            non_send_resources: FxHashMap::default(),
             commands: CommandBuffer::new(),
             free_indices_list: Vec::new(),
             main_thread_id: thread::current().id(),
@@ -65,7 +71,7 @@ impl World {
     fn validate_thread_safety<T: Resource>(&self) {
         if thread::current().id() != self.main_thread_id {
             panic!(
-                "Thread-safety violation! Cannot access Non-Send resource '{}' from background thread: {:?}. Must be accessed from Main Thread: {:?}",
+                "Thread-safety violation! Cannot access Non-Send resource '{}' from background thread: {:?}. Must be accessed from Main Thread World originated in: {:?}",
                 type_name::<T>(),
                 thread::current().id(),
                 self.main_thread_id
@@ -74,54 +80,48 @@ impl World {
     }
 
     pub fn has_resource<T: Resource>(&self) -> bool {
-        self.resources.contains_key(&TypeId::of::<T>())
+        self.resources.has_resource::<T>()
     }
 
-    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) {
-        let type_id = std::any::TypeId::of::<T>();
-        let boxed_cell = std::cell::UnsafeCell::new(Box::new(resource) as Box<dyn std::any::Any>);
-        self.resources.insert(type_id, boxed_cell);
+    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) -> Option<T> {
+        self.resources.insert_resource(resource)
     }
 
-    pub fn insert_non_send_resource<T: Resource>(&mut self, resource: T) {
+    pub fn insert_non_send_resource<T: Resource>(&mut self, resource: T) -> Option<T> {
         self.validate_thread_safety::<T>();
         let type_id = std::any::TypeId::of::<T>();
         let boxed_cell = std::cell::UnsafeCell::new(Box::new(resource) as Box<dyn std::any::Any>);
-        self.resources.insert(type_id, boxed_cell);
-    }
-
-    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> bool {
-        let type_id = TypeId::of::<T>();
-        self.resources.remove(&type_id).is_some()
-    }
-
-    pub fn remove_non_send_resource<T: Resource>(&mut self) -> bool {
-        self.validate_thread_safety::<T>();
-        let type_id = TypeId::of::<T>();
-        self.resources.remove(&type_id).is_some()
-    }
-
-    pub fn get_resource<T: Resource + Send + Sync>(&self) -> &T {
-        let type_id = TypeId::of::<T>();
-        let cell = self.resources.get(&type_id).unwrap_or_else(|| {
-            panic!(
-                "Requested resource: '{}' was never registered!",
-                type_name::<T>()
-            );
-        });
-
-        unsafe {
-            let base_any = &*cell.get();
-            base_any
-                .downcast_ref::<T>()
-                .expect("Resource type mismatch!")
+        if let Some(res) = self.non_send_resources.insert(type_id, boxed_cell) {
+            let res = res.into_inner().downcast::<T>().unwrap();
+            Some(*res)
+        } else {
+            None
         }
+    }
+
+    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> Option<T> {
+        self.resources.remove_resource::<T>()
+    }
+
+    pub fn remove_non_send_resource<T: Resource>(&mut self) -> Option<T> {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        if let Some(res) = self.non_send_resources.remove(&type_id) {
+            let res = res.into_inner().downcast::<T>().unwrap();
+            Some(*res)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_resource<'w, T: Resource + Send + Sync>(&self) -> Res<'w, T> {
+        self.resources.get_resource::<T>()
     }
 
     pub fn get_non_send_resource<T: Resource>(&self) -> &T {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
-        let cell = self.resources.get(&type_id).unwrap_or_else(|| {
+        let cell = self.non_send_resources.get(&type_id).unwrap_or_else(|| {
             panic!(
                 "Requested non-send resource: '{}' was never registered!",
                 type_name::<T>()
@@ -136,50 +136,36 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut<T: Resource + Send + Sync>(&mut self) -> &mut T {
-        let type_id = TypeId::of::<T>();
-        let cell = self.resources.get_mut(&type_id).unwrap_or_else(|| {
-            panic!(
-                "Requested resource: '{}' was never registered!",
-                type_name::<T>()
-            );
-        });
-        let base_any = cell.get_mut();
-        base_any
-            .downcast_mut::<T>()
-            .expect("Resource type mismatch!")
+    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&mut self) -> ResMut<'w, T> {
+        self.resources.get_resource_mut::<T>()
     }
 
     pub fn get_non_send_resource_mut<T: Resource>(&mut self) -> &mut T {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
-        let cell = self.resources.get_mut(&type_id).unwrap_or_else(|| {
-            panic!(
-                "Requested non-send resource: '{}' was never registered!",
-                type_name::<T>()
-            );
-        });
+        let cell = self
+            .non_send_resources
+            .get_mut(&type_id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Requested non-send resource: '{}' was never registered!",
+                    type_name::<T>()
+                );
+            });
         let base_any = cell.get_mut();
         base_any
             .downcast_mut::<T>()
             .expect("Resource type mismatch!")
     }
 
-    pub fn get_resource_opt<T: Resource + Send + Sync>(&self) -> Option<&T> {
-        let type_id = TypeId::of::<T>();
-        let cell = self.resources.get(&type_id)?;
-
-        unsafe {
-            let base_any = &*cell.get();
-            let casted_ref = base_any.downcast_ref::<T>()?;
-            Some(casted_ref)
-        }
+    pub fn get_resource_opt<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
+        self.resources.get_resource_opt::<T>()
     }
 
     pub fn get_non_send_resource_opt<T: Resource>(&self) -> Option<&T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
-        let cell = self.resources.get(&type_id)?;
+        let cell = self.non_send_resources.get(&type_id)?;
 
         unsafe {
             let base_any = &*cell.get();
@@ -188,18 +174,14 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut_opt<T: Resource + Send + Sync>(&mut self) -> Option<&mut T> {
-        let type_id = TypeId::of::<T>();
-        let cell = self.resources.get_mut(&type_id)?;
-        let base_any = cell.get_mut();
-        let casted_mut = base_any.downcast_mut::<T>()?;
-        Some(casted_mut)
+    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(&mut self) -> Option<ResMut<'w, T>> {
+        self.resources.get_resource_mut_opt::<T>()
     }
 
     pub fn get_non_send_resource_mut_opt<T: Resource>(&mut self) -> Option<&mut T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
-        let cell = self.resources.get_mut(&type_id)?;
+        let cell = self.non_send_resources.get_mut(&type_id)?;
         let base_any = cell.get_mut();
         let casted_mut = base_any.downcast_mut::<T>()?;
         Some(casted_mut)
@@ -263,17 +245,18 @@ impl World {
             return;
         }
         for meta in tracked_events.iter() {
-            let unsafecell = self
+            let mut unsafecell = self
+                .resources
                 .resources
                 .get_mut(&meta.event_id)
                 .expect("Registered event Not initialized somehow? maybe removed");
-            (meta.clear_events)(unsafecell);
+            (meta.clear_events)(&mut *unsafecell);
         }
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelCommands`] handle.
     ///
-    /// This method can be called directly on the `App` or `World` to obtain a detached,
+    /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input into the engine's command pipeline, manageable by external or
     /// parallel background worker threads.
     pub fn get_par_commands(&mut self) -> ParallelCommands {
@@ -283,9 +266,26 @@ impl World {
         }
     }
 
+    /// Returns a thread-safe, thread-clonable [`ParallelResourceAccessor`] handle.
+    ///
+    /// This method can be called directly on the `World` to obtain a detached,
+    /// safe remote accessor into the engine's resource tables manageable by external or
+    /// parallel background threads.
+    ///
+    /// Note: This is not lock-free and can cause deadlocks if not used carefully,
+    /// refer to its documentation for more info.
+    pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
+        &mut self,
+    ) -> ParallelResourceAccessor<T> {
+        ParallelResourceAccessor {
+            resources: self.resources.clone(),
+            _marker: PhantomData,
+        }
+    }
+
     /// Returns a thread-safe, thread-clonable [`ParallelEventWriter`] handle.
     ///
-    /// This method can be called directly on the `App` or `World` to obtain a detached,
+    /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
     #[cfg(feature = "events")]
@@ -297,7 +297,7 @@ impl World {
 
     /// Returns a thread-safe, thread-clonable [`ParallelEventReader`] handle.
     ///
-    /// This method can be called directly on the `App` or `World` to obtain a detached,
+    /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
     #[cfg(feature = "events")]

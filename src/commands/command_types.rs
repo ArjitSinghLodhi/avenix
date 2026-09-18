@@ -1,5 +1,5 @@
-use fxhash::{FxBuildHasher, FxHashMap};
 use indexmap::{IndexMap, IndexSet};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{any::TypeId, sync::atomic::AtomicU32};
 
 #[cfg(feature = "reactivity")]

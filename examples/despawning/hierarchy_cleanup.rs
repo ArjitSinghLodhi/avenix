@@ -64,7 +64,9 @@ fn automatic_hierarchy_linker_system(
                 parent_comp.children.retain(|entity| entity != child_entity);
                 println!("Hierarchy Plugin: Unlinked child from parent");
                 if parent_comp.children.is_empty() {
-                    println!("Hierarchy Plugin: Removing Children component from parent because there are no children anymore");
+                    println!(
+                        "Hierarchy Plugin: Removing Children component from parent because there are no children anymore"
+                    );
                     commands.remove_components::<Children>(child_of.parent.clone());
                 }
             }
@@ -76,7 +78,7 @@ fn automatic_hierarchy_linker_system(
 fn hirearchy_cleanup(
     mut commands1: Commands,
     mut commands2: Commands,
-    mut parent_query: Query<(Entity, &mut Children)>,
+    mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
     unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
@@ -85,7 +87,7 @@ fn hirearchy_cleanup(
     for despawn_cmd in commands1.despawn_iter() {
         let dead_entity = despawn_cmd.despawn_target();
         #[allow(unused_mut)]
-        if let Some((_, mut parent_comp)) = parent_query.get_mut(dead_entity) {
+        if let Some(mut parent_comp) = parent_query.get_mut(dead_entity) {
             println!("Hierarchy Plugin: Parent is despawning. Queueing recursive child deletion!");
             while let Some(child_handle) = parent_comp.children.pop() {
                 commands2.despawn(child_handle.clone());
@@ -97,7 +99,7 @@ fn hirearchy_cleanup(
         if let Some((child_entity, childof)) = child_query.get(dead_entity) {
             println!("Hierarchy Plugin: Child is dying, Unlinking it from parent");
             #[allow(unused_mut)]
-            if let Some((_, mut parent_comp)) = parent_query.get_mut(&childof.parent) {
+            if let Some(mut parent_comp) = parent_query.get_mut(&childof.parent) {
                 parent_comp.children.retain(|entity| entity != child_entity);
             }
         }
@@ -211,7 +213,10 @@ fn trigger_runtime_lifecycle_stages(
     let frame = stepper.current_frame;
     if frame == 1 {
         if let Some(alpha_entity) = alpha_query.single() {
-            println!("System (Update Frame {}): Despawning root AlphaCommander!", frame);
+            println!(
+                "System (Update Frame {}): Despawning root AlphaCommander!",
+                frame
+            );
             commands.despawn(alpha_entity.clone());
         }
     }
@@ -230,20 +235,29 @@ fn test_unlink_edge_cases_system(
     if frame == 2 {
         let test_child_ent = test_child_query.single();
         if let Some(child) = test_child_ent {
-            println!("Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.", frame);
+            println!(
+                "Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.",
+                frame
+            );
             commands.unlink_child(child.clone());
         }
     }
 
     if frame == 3 {
         commands.spawn(TestOrphanMarker);
-        println!("Unlink System (Frame {}): Spawned a standalone orphan entity with tracking component.", frame);
+        println!(
+            "Unlink System (Frame {}): Spawned a standalone orphan entity with tracking component.",
+            frame
+        );
     }
 
     if frame == 4 {
         let orphan_ent = orphan_query.single();
         if let Some(orphan) = orphan_ent {
-            println!("Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).", frame);
+            println!(
+                "Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).",
+                frame
+            );
             commands.unlink_child(orphan.clone());
         }
 
@@ -251,7 +265,10 @@ fn test_unlink_edge_cases_system(
         let beta_ent = beta_query.single();
 
         if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
-            println!("Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.", frame);
+            println!(
+                "Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.",
+                frame
+            );
             commands.set_parent(minion.clone(), beta.clone());
             commands.unlink_child(minion.clone());
         }
@@ -286,17 +303,12 @@ fn increment_frame(mut frame: ResMut<FrameStepper>) {
 }
 
 fn main() {
-    println!("--- Starting Real Verified Hierarchy Shifting Test ---");
+    println!("--- Starting Hirarchy Example ---");
 
     App::new()
         .add_plugins(HierarchyPlugin)
         .insert_resource(FrameStepper { current_frame: 0 })
-        .add_systems(Startup, 
-            (
-                setup_scene_graph,
-                build_generation_hierarchy,
-            )
-        )
+        .add_systems(Startup, (setup_scene_graph, build_generation_hierarchy))
         .add_systems(
             Update,
             (

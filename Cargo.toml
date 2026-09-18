@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.4.3"
+version = "0.5.0"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -10,13 +10,13 @@ keywords = ["ecs", "archetype", "simulation", "parallel"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = "0.2.0"
-fxhash = "0.2.1"
+avenix_macros = "0.2.1"
 indexmap = "2.14.1"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"
 parking_lot = "0.12.5"
-dashmap = {version = "6.2.1", default-features = false, features = ["raw-api"]}
+dashmap = { version = "6.2.1", default-features = false, features = ["raw-api", "inline"]}
+rustc-hash = "2.1.3"
 
 [dev-dependencies]
 criterion = "0.8.2"
@@ -109,6 +109,10 @@ path = "examples/10_derive.rs"
 [[example]]
 name = "hierarchy_cleanup"
 path = "examples/despawning/hierarchy_cleanup.rs"
+
+[[example]]
+name = "parallel_resources"
+path = "examples/11_parallel_resources.rs"
 
 [[bench]]
 name = "query_lookups_fragmented"

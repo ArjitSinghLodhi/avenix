@@ -5,11 +5,11 @@ pub use params::Has;
 
 pub use filter::*;
 
-use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
@@ -72,7 +72,7 @@ impl<'w, Q: QueryData, T> QuerySubChunk<'w, Q, T> {
         let safe_fetch = self.safe_fetch;
         self.sub_indices
             .iter()
-            .map(move |&idx| unsafe { Q::fetch_read_only(safe_fetch, idx)})
+            .map(move |&idx| unsafe { Q::fetch_read_only(safe_fetch, idx) })
     }
 
     pub fn len(&self) -> usize {
@@ -329,15 +329,15 @@ unsafe impl<'a, Q: QueryData, T> Send for QueryArchetypeView<'a, Q, T> {}
 unsafe impl<'a, Q: QueryData, T> Sync for QueryArchetypeView<'a, Q, T> {}
 
 #[doc(hidden)]
-pub struct ThreadSafe<T>{
-    pub(crate) value: T
+pub struct ThreadSafe<T> {
+    pub(crate) value: T,
 }
 unsafe impl<T> Send for ThreadSafe<T> {}
 unsafe impl<T> Sync for ThreadSafe<T> {}
 
 pub struct Query<'q, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     matching_archetypes: Vec<Option<ThreadSafe<*const Archetype>>>,
-    cached_fetches: Vec<Option<ThreadSafe<Q::Fetch>>>,
+    cached_fetches: Vec<Option<Q::Fetch>>,
     cached_indices: Vec<Vec<usize>>,
     _marker: std::marker::PhantomData<(&'q (), F)>,
 }
@@ -346,8 +346,12 @@ unsafe impl<'q, Q: QueryData, F: QueryFilter> Sync for Query<'q, Q, F> {}
 
 impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     pub(crate) fn new(world: &mut World) -> Self {
-        let mut matching_archetypes = (0..world.archetypes_manager.archetypes.len()).map(|_| None).collect::<Vec<Option<ThreadSafe<*const Archetype>>>>();
-        let mut cached_fetches = (0..world.archetypes_manager.archetypes.len()).map(|_| None).collect::<Vec<Option<ThreadSafe<Q::Fetch>>>>();
+        let mut matching_archetypes = (0..world.archetypes_manager.archetypes.len())
+            .map(|_| None)
+            .collect::<Vec<Option<ThreadSafe<*const Archetype>>>>();
+        let mut cached_fetches = (0..world.archetypes_manager.archetypes.len())
+            .map(|_| None)
+            .collect::<Vec<Option<Q::Fetch>>>();
         let mut cached_indices = vec![Vec::new(); world.archetypes_manager.archetypes.len()];
 
         for arch in world.archetypes_manager.archetypes.values() {
@@ -357,9 +361,11 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                     set: arch.types.clone(),
                 })
             {
-                matching_archetypes[arch_id as usize] = Some(ThreadSafe{ value: arch as *const Archetype});
+                matching_archetypes[arch_id as usize] = Some(ThreadSafe {
+                    value: arch as *const Archetype,
+                });
                 let fetch = unsafe { Q::init_fetch(arch) };
-                cached_fetches[arch_id as usize] = Some(ThreadSafe{value:fetch});
+                cached_fetches[arch_id as usize] = Some(fetch);
                 let mut indices = (0..arch.entities.len()).collect::<Vec<usize>>();
                 F::filter_indices(arch, &mut indices);
                 cached_indices[arch_id as usize] = indices;
@@ -388,7 +394,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
 
             let entity_index = indices[0];
 
-            if let Some(ThreadSafe { value:fetch_state}) = &self.cached_fetches[arch_id] {
+            if let Some(fetch_state) = &self.cached_fetches[arch_id] {
                 unsafe {
                     found_item = Some(Q::fetch_read_only(fetch_state, entity_index));
                 }
@@ -399,29 +405,27 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     }
 
     pub fn single_mut<'w>(&'w mut self) -> Option<Q::Item<'w>> {
-        let mut target_match = None;
+        let mut found_item = None;
 
         for (arch_id, indices) in self.cached_indices.iter().enumerate() {
             if indices.is_empty() {
                 continue;
             }
 
-            if target_match.is_some() || indices.len() > 1 {
+            if found_item.is_some() || indices.len() > 1 {
                 return None;
             }
 
-            target_match = Some((arch_id, indices[0]));
-        }
+            let entity_index = indices[0];
 
-        if let Some((arch_id, entity_index)) = target_match
-            && let Some(ThreadSafe{value: fetch_state}) = &self.cached_fetches[arch_id]
-        {
-            unsafe {
-                return Some(Q::fetch_mut(fetch_state, entity_index));
+            if let Some(fetch_state) = &self.cached_fetches[arch_id] {
+                unsafe {
+                    found_item = Some(Q::fetch_mut(fetch_state, entity_index));
+                }
             }
         }
 
-        None
+        found_item
     }
 
     pub fn matching_archetype_count(&self) -> usize {
@@ -444,7 +448,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let arch = &*arch_ptr.value;
                 let arch_idx = arch.id() as usize;
                 let fetch_opt = &self.cached_fetches[arch_idx];
-                let fetch = &fetch_opt.as_ref().unwrap().value;
+                let fetch = fetch_opt.as_ref().unwrap();
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
                     fetch,
@@ -465,7 +469,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let arch = unsafe { &*arch_ptr.value };
                 let arch_idx = arch.id() as usize;
                 let fetch_opt = &self.cached_fetches[arch_idx];
-                let fetch = &fetch_opt.as_ref().unwrap().value;
+                let fetch = fetch_opt.as_ref().unwrap();
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
                     fetch,
@@ -484,7 +488,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let arch = &*arch_ptr.value;
                 let arch_idx = arch.id() as usize;
                 let fetch_opt = &self.cached_fetches[arch_idx];
-                let fetch = &fetch_opt.as_ref().unwrap().value;
+                let fetch = fetch_opt.as_ref().unwrap();
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
                     fetch,
@@ -505,7 +509,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
                 let arch = unsafe { &*arch_ptr.value };
                 let arch_idx = arch.id() as usize;
                 let fetch_opt = &self.cached_fetches[arch_idx];
-                let fetch = &fetch_opt.as_ref().unwrap().value;
+                let fetch = fetch_opt.as_ref().unwrap();
                 QueryArchetypeView {
                     indices: &self.cached_indices[arch_idx],
                     fetch,
@@ -526,7 +530,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = &self.cached_fetches[arch_id.id() as usize].as_ref()?.value;
+            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
             Some(Q::fetch_read_only(fetch, row_idx as usize))
         }
     }
@@ -541,7 +545,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = &self.cached_fetches[arch_id.id() as usize].as_ref()?.value;
+            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
             Some(Q::fetch_mut(fetch, row_idx as usize))
         }
     }
@@ -558,9 +562,9 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = &self.cached_fetches[arch_id.id() as usize].as_ref()
-                .unwrap_unchecked()
-                .value;
+            let fetch = &self.cached_fetches[arch_id.id() as usize]
+                .as_ref()
+                .unwrap_unchecked();
             Q::fetch_read_only(fetch, row_idx as usize)
         }
     }
@@ -577,9 +581,9 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = &self.cached_fetches[arch_id.id() as usize].as_ref()
-                .unwrap_unchecked()
-                .value;
+            let fetch = self.cached_fetches[arch_id.id() as usize]
+                .as_ref()
+                .unwrap_unchecked();
             Q::fetch_mut(fetch, row_idx as usize)
         }
     }
@@ -595,7 +599,7 @@ impl<'q, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query
         Q::collect_access(&mut local_reads, &mut local_writes);
         F::collect_filter(&mut local_with, &mut local_without);
         let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
-        let mut unique_writes = std::collections::HashSet::new();
+        let mut unique_writes = FxHashSet::default();
         let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
 
         if has_intra_conflict || has_duplicate_writes {

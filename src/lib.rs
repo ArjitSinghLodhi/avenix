@@ -35,22 +35,19 @@ pub mod derive {
     };
 }
 
-pub use fxhash;
 pub use indexmap;
 pub use rayon;
+pub use rustc_hash;
 
 pub mod prelude {
     pub use crate::app::{
         App,
         plugin::{Plugin, PluginsBuildAll},
         schedule::{
-            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule,
-            ScheduleLabel, Startup, Update,
+            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
+            Update,
         },
-        system::{
-            AccessHashSet, AccessVec, FunctionData, FunctionSystem, IntoSystem, IntoSystemConfigs,
-            System, SystemConfigs, SystemData, SystemExt, SystemMeta, SystemParam,
-        },
+        system::{IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam},
     };
     pub use crate::derive::{
         Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
@@ -75,7 +72,7 @@ pub mod prelude {
                 EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
             },
         },
-        resources::{NonSend, NonSendMut, Res, ResMut, Resource},
+        resources::{NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut, Resource},
         world::World,
     };
 }
@@ -99,7 +96,9 @@ pub mod ecs {
         };
     }
     pub mod resources {
-        pub use crate::resources::{NonSend, NonSendMut, Res, ResMut, Resource};
+        pub use crate::resources::{
+            NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut, Resource,
+        };
     }
     pub mod query {
         pub use crate::query::{Has, Query, QueryArchetypeView, QueryData, QuerySubChunk};
@@ -139,15 +138,13 @@ pub mod app {
     pub use crate::app_impl::App;
     pub mod system {
         pub use crate::system::{
-            AccessHashSet, AccessVec, FunctionSystem, IntoSystem, IntoSystemConfigs, System,
-            SystemConfigs, SystemMeta, SystemParam,
-            system_storage::{FunctionData, SystemData, SystemExt},
+            IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
         };
     }
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule,
-            ScheduleLabel, SystemExecutor, Startup, Update,
+            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
+            SystemExecutor, Update,
         };
     }
     pub mod plugin {

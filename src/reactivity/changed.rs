@@ -7,8 +7,8 @@ use crate::system::AccessHashSet;
 use crate::system::AccessVec;
 use crate::world::archetypes::{Archetype, ComponentColumn};
 use crate::world::storage::CurrentBufferIdx;
-use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
+use rustc_hash::FxBuildHasher;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
@@ -100,7 +100,9 @@ impl<T: Component> QueryData for ChangedTracker<T> {
         let marker_ptr = unsafe { (*archetype.fetch_column_raw::<ChangedMarker<T>>()).as_ptr() };
         let current_read_idx = CurrentBufferIdx::current_read_idx();
 
-        ThreadSafe { value: (current_read_idx, marker_ptr) }
+        ThreadSafe {
+            value: (current_read_idx, marker_ptr),
+        }
     }
 
     unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
