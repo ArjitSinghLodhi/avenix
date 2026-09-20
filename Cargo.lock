@@ -40,13 +40,15 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avenix"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "avenix_macros",
  "criterion",
  "dashmap",
  "indexmap",
  "orx-concurrent-bag",
+ "orx-concurrent-iter 5.0.0",
+ "orx-parallel",
  "parking_lot",
  "rayon",
  "rustc-hash",
@@ -55,9 +57,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01abf5a26312739771450628e3e3eb2061dbfd731ed70368f8654e2b404f675f"
+checksum = "e156d5baabdd8fa3102f561d804dd6fa9a9200d883608cd51e7e553857706af4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -436,12 +438,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "orx-concurrent-iter"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a1a5cdc8aa326f7217ec3e9d99bf9d792dd0596135674d92008f7358729af1e"
+dependencies = [
+ "orx-iterable",
+ "orx-pseudo-default",
+]
+
+[[package]]
+name = "orx-concurrent-ordered-bag"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbe81d43c46cda828c785c7c7131d3755ad4a1083a212f2feb75ad4db01c787"
+dependencies = [
+ "orx-fixed-vec",
+ "orx-pinned-concurrent-col",
+ "orx-pinned-vec",
+ "orx-split-vec",
+]
+
+[[package]]
 name = "orx-fixed-vec"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "813d9544b679f7b2e93a6b93ecd29f875cb002fe7eddecb6ea448bc7cd5d2be4"
 dependencies = [
- "orx-concurrent-iter",
+ "orx-concurrent-iter 4.3.1",
  "orx-iterable",
  "orx-pinned-vec",
  "orx-pseudo-default",
@@ -454,6 +478,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa2cb3f82a187c68835faac9cf03faaee70b93f4da3b85515ac1b4c6f8a432d"
 dependencies = [
  "orx-self-or",
+]
+
+[[package]]
+name = "orx-meta"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63bd687e5b6f0dd9c0b6f07c82f149b172126635ad729010892f08936c92a578"
+dependencies = [
+ "orx-meta-macros",
+]
+
+[[package]]
+name = "orx-meta-macros"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6558f188f6c936216c1c947685bdc846904534c23bb1b9d5730ce4802c7d1ef3"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "orx-parallel"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39e3fca9f937a83fde8f1ad5a3758cf349c2374dc0f0e5f550cf8dc44a86d526"
+dependencies = [
+ "js-sys",
+ "orx-concurrent-bag",
+ "orx-concurrent-iter 5.0.0",
+ "orx-concurrent-ordered-bag",
+ "orx-fixed-vec",
+ "orx-iterable",
+ "orx-meta",
+ "orx-pinned-concurrent-col",
+ "orx-pinned-vec",
+ "orx-priority-queue",
+ "orx-pseudo-default",
+ "orx-split-vec",
+ "rayon-core",
 ]
 
 [[package]]
@@ -480,6 +546,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "orx-priority-queue"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41224e48f6cc24a1189c40180a358f8e3ca56ae108974ec43531f604921c44ec"
+
+[[package]]
 name = "orx-pseudo-default"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,7 +569,7 @@ version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda858576a9870fdb1deff68ea66b8b4cf976919417c23672472e401a366ca5e"
 dependencies = [
- "orx-concurrent-iter",
+ "orx-concurrent-iter 4.3.1",
  "orx-iterable",
  "orx-pinned-vec",
  "orx-pseudo-default",
@@ -568,6 +640,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
+]
+
+[[package]]
+name = "proc-macro-crate"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
+dependencies = [
+ "toml_edit",
 ]
 
 [[package]]
@@ -817,6 +898,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_datetime"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.15+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
+dependencies = [
+ "indexmap",
+ "toml_datetime",
+ "toml_parser",
+ "winnow",
+]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
+dependencies = [
+ "winnow",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -940,6 +1051,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
+]
+
+[[package]]
+name = "winnow"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

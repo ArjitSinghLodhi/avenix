@@ -143,11 +143,11 @@ impl SystemMeta {
     pub fn has_resource_write(&self, type_id: &TypeId) -> bool {
         self.resource_writes.contains(type_id)
     }
-    
+
     pub fn has_with_filter(&self, type_id: &TypeId) -> bool {
         self.with_filters.contains(type_id)
     }
-    
+
     pub fn has_without_filter(&self, type_id: &TypeId) -> bool {
         self.without_filters.contains(type_id)
     }

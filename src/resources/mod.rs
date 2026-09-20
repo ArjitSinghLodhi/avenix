@@ -202,9 +202,7 @@ unsafe impl<'w, T: Resource + Send + Sync> Sync for ResMut<'w, T> {}
 impl<'w, T: Resource + Send + Sync> SystemParam for ResMut<'w, T> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id)
-            || system_meta.has_resource_read(&res_id)
-        {
+        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
             panic!(
                 "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters (e.g. ResMut alongside Res, or duplicate ResMut) targeting the same global resource singleton!",
                 system_meta.get_func_name()
@@ -238,9 +236,7 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Option<Res<'w, T>> {
 impl<'w, T: Resource + Send + Sync> SystemParam for Option<ResMut<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id)
-            || system_meta.has_resource_read(&res_id)
-        {
+        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
             panic!(
                 "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters (e.g. ResMut alongside Res, or duplicate ResMut) targeting the same global resource singleton!",
                 system_meta.get_func_name()
@@ -332,9 +328,7 @@ impl<'w, T: Resource> std::ops::DerefMut for NonSendMut<'w, T> {
 impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id)
-            || system_meta.has_resource_read(&res_id)
-        {
+        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
             panic!(
                 "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters targeting the same global resource singleton!",
                 system_meta.get_func_name()
@@ -376,9 +370,7 @@ impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
 impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id)
-            || system_meta.has_resource_read(&res_id)
-        {
+        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
             panic!(
                 "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters targeting the same global resource singleton!",
                 system_meta.get_func_name()

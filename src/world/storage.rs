@@ -291,7 +291,7 @@ impl World {
     #[cfg(feature = "events")]
     pub fn get_par_event_writer<T: Event>(&mut self) -> ParallelEventWriter<T> {
         ParallelEventWriter {
-            write_buffer: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
+            write_queue: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
         }
     }
 
@@ -303,7 +303,7 @@ impl World {
     #[cfg(feature = "events")]
     pub fn get_par_event_reader<T: Event>(&mut self) -> ParallelEventReader<T> {
         ParallelEventReader {
-            read_buffer: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
+            read_queue: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
         }
     }
 }

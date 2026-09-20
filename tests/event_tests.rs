@@ -1,4 +1,5 @@
 use avenix::prelude::*;
+use orx_parallel::Par;
 use rusty_fork::rusty_fork_test;
 use std::thread;
 
@@ -150,7 +151,7 @@ fn parallel_execution_system(
             });
 
             s.spawn(|| {
-                read_a_count = reader_a.iter().count();
+                read_a_count = reader_a.par_iter().count();
                 read_b_count = reader_b.iter().count();
             });
 
@@ -159,7 +160,7 @@ fn parallel_execution_system(
                     nest_read_a_count = reader.iter().count();
 
                     par_reader_b.scope(|reader| {
-                        nest_read_b_count = reader.iter().count();
+                        nest_read_b_count = reader.par_iter().count();
                     });
                 });
             });
@@ -202,7 +203,7 @@ fn parallel_verification_system(
         thread::scope(|s| {
             s.spawn(|| {
                 par_reader_a.scope(|reader_a| {
-                    nest_read_a_count = reader_a.iter().count();
+                    nest_read_a_count = reader_a.par_iter().count();
 
                     par_reader_b.scope(|reader_b| {
                         nest_read_b_count = reader_b.iter().count();

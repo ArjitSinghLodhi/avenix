@@ -13,7 +13,7 @@ use std::{marker::PhantomData, sync::Arc};
 ///
 /// # Rules
 ///
-/// Because the underlying storage uses synchronous locks, invoking nested mutable closures
+/// Because the underlying storage uses synchronous locks, invoking another scope with a mutable scope open
 /// on the same resource within the *same thread* will trigger a deadlock.
 /// The engine does not protect against or check for this condition at runtime to maintain maximum throughput.
 ///

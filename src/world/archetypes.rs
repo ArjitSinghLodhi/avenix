@@ -62,6 +62,16 @@ pub struct ComponentColumn {
     pub(crate) data: Box<dyn AnyColumn>,
 }
 
+impl ComponentColumn {
+    #[doc(hidden)]
+    #[allow(private_bounds)]
+    pub fn new<T: AnyColumn>(column: T) -> Self {
+        Self {
+            data: Box::new(column),
+        }
+    }
+}
+
 pub struct Archetype {
     pub(crate) id: ArchetypeId,
     pub(crate) types: IndexSet<TypeId, FxBuildHasher>,

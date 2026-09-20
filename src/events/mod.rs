@@ -2,6 +2,11 @@
 
 mod parallel_events;
 
+use orx_concurrent_iter::implementations::ConIterOfIter;
+use orx_parallel::{
+    IterIntoParIter,
+    infallible::{ParIter, xap_variants::Id},
+};
 pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
 
 use std::{
@@ -96,7 +101,7 @@ impl<T: Event> EventQueue<T> {
 /// [`.send`]: EventWriter::send
 /// [`.send_batch`]: EventWriter::send_batch
 pub struct EventWriter<'a, T: Event> {
-    pub(crate) write_buffer: RwLockReadGuard<'a, EventQueue<T>>,
+    pub(crate) write_queue: RwLockReadGuard<'a, EventQueue<T>>,
 }
 
 impl<'a, T: Event> EventWriter<'a, T> {
@@ -105,7 +110,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
     /// The event is stored in the write buffer and will become visible to readers in the next frame.
     #[inline]
     pub fn send(&mut self, event: T) {
-        self.write_buffer.queue.push(event);
+        self.write_queue.queue.push(event);
     }
 
     /// Queues an iterator of multiple events to be dispatched efficiently in a single operation.
@@ -117,7 +122,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
         I: IntoIterator<Item = T>,
         I::IntoIter: Send + 'static + ExactSizeIterator,
     {
-        self.write_buffer.queue.extend(event_iter);
+        self.write_queue.queue.extend(event_iter);
     }
 }
 
@@ -135,9 +140,7 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
                 RwLockReadGuard<'_, EventQueue<T>>,
             >(queue);
 
-            Self {
-                write_buffer: queue,
-            }
+            Self { write_queue: queue }
         }
     }
 }
@@ -150,22 +153,29 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 /// on the exact same 3-frame lifecycle used by component tracking (`Added` and `Changed` flags):
 ///
 /// * **Frame 1 (Sending):** Events are written via an `EventWriter` but remain hidden in the active write buffer.
-/// * **Frame 2 (Reading Window):** The internal buffers swap globally, making these events visible to this reader via [`.iter()`].
+/// * **Frame 2 (Reading Window):** The internal buffers swap globally, making these events visible to this reader via [`.iter()`] or [`.par_iter()`].
 /// * **Frame 3 (Purge):** The buffer is cleared. Events are unconditionally dropped, regardless of whether any systems read them.
 ///
 /// Because event visibility lasts for exactly one frame window, any system designed to process these events
 /// **must run every single frame** to avoid missing data.
 ///
 /// [`.iter()`]: EventReader::iter
+/// [`.par_iter()`]: EventReader::par_iter
 pub struct EventReader<'w, T: Event> {
-    pub(crate) read_buffer: RwLockReadGuard<'w, EventQueue<T>>,
+    pub(crate) read_queue: RwLockReadGuard<'w, EventQueue<T>>,
 }
 
 impl<'w, T: Event> EventReader<'w, T> {
     /// Returns an iterator over all events dispatched during the previous frame.
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        unsafe { self.read_buffer.queue.iter() }
+        unsafe { self.read_queue.queue.iter() }
+    }
+    #[inline]
+    pub fn par_iter<'a>(
+        &'a self,
+    ) -> ParIter<ConIterOfIter<impl Iterator<Item = &'a T>>, Id<&'a T>> {
+        unsafe { self.read_queue.queue.iter().iter_into_par() }
     }
 }
 
@@ -183,7 +193,7 @@ impl<'w, T: Event> SystemParam for EventReader<'w, T> {
                 RwLockReadGuard<'_, EventQueue<T>>,
             >(queue);
 
-            Self { read_buffer: queue }
+            Self { read_queue: queue }
         }
     }
 }

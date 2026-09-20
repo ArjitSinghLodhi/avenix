@@ -40,7 +40,7 @@ Avenix provides a suite of thread-safe, thread-clonable handles extracted direct
 * **`ParallelResourceAccessor<T>`**
   * **How to get:** Call `world.get_par_resource_accessor::<T>()`.
   * **Usage:** Invoking `.scope()`, `.scope_mut()`, `.scope_opt()`, or `.scope_mut_opt()` opens targeted closure windows into the resource registry. Features `.is_present()` for boolean presence checks, and allows instant registry adjustments using `.insert_resource()` and `.remove_resource()`.
-  * **Critical Deadlock Warning:** Because this handle operates on fast, synchronous locks to maximize runtime throughput, nesting mutable closure blocks (`.scope_mut()`, `scope_mut_opt()`) on the exact same resource within the *same thread* will cause a deadlock. The framework bypasses runtime re-entrancy checks to preserve processing speed.
+  * **Critical Deadlock Warning:** Because this handle operates on fast, synchronous locks to maximize runtime throughput, invoking another scope with a mutable scope open on the exact same resource within the *same thread* will cause a deadlock. The framework bypasses runtime re-entrancy checks to preserve processing speed.
 
 ---
 

@@ -595,13 +595,13 @@ impl<'q, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query
         let mut local_writes = AccessVec::new();
         let mut local_with = AccessVec::new();
         let mut local_without = AccessVec::new();
-    
+
         Q::collect_access(&mut local_reads, &mut local_writes);
         F::collect_filter(&mut local_with, &mut local_without);
         let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
         let mut unique_writes = FxHashSet::default();
         let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
-    
+
         if has_intra_conflict || has_duplicate_writes {
             panic!(
                 "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in '{}': Query<{}, {}> contains internal overlaps!",
@@ -611,7 +611,7 @@ impl<'q, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query
             );
         }
         let mut has_inter_conflict = false;
-    
+
         for id in local_writes.iter() {
             if system_meta.has_component_write(id) || system_meta.has_component_read(id) {
                 has_inter_conflict = true;
@@ -626,15 +626,13 @@ impl<'q, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query
                 }
             }
         }
-    
+
         if has_inter_conflict {
             let is_disjoint = local_without
                 .iter()
                 .any(|wo| system_meta.has_with_filter(wo))
-                || local_with
-                    .iter()
-                    .any(|w| system_meta.has_without_filter(w));
-    
+                || local_with.iter().any(|w| system_meta.has_without_filter(w));
+
             if !is_disjoint {
                 panic!(
                     "❌ ECS SYSTEM ARGUMENT CONFLICT in '{}': Overlapping queries break aliasing rules without disjoint QueryFilters!\n\
@@ -645,7 +643,7 @@ impl<'q, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query
                 );
             }
         }
-    
+
         for id in local_reads.iter() {
             system_meta.add_component_read(*id);
         }

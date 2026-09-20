@@ -24,7 +24,7 @@ use crate::{
 /// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer
 #[derive(Clone)]
 pub struct ParallelEventWriter<T: Event> {
-    pub(crate) write_buffer: Arc<RwLock<EventQueue<T>>>,
+    pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
 }
 
 impl<T: Event> ParallelEventWriter<T> {
@@ -37,7 +37,7 @@ impl<T: Event> ParallelEventWriter<T> {
         F: for<'b> FnOnce(EventWriter<'b, T>) -> R,
     {
         let writer = EventWriter {
-            write_buffer: self.write_buffer.read(),
+            write_queue: self.write_queue.read(),
         };
         f(writer)
     }
@@ -48,9 +48,7 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
 
     fn get_param(world: &mut World) -> Self {
         let queue = world.get_resource::<EventBuffer<T>>().write_queue.clone();
-        Self {
-            write_buffer: queue,
-        }
+        Self { write_queue: queue }
     }
 }
 
@@ -77,7 +75,7 @@ unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 /// [`.get_par_event_reader()`]: crate::world::storage::World::get_par_event_reader
 #[derive(Clone)]
 pub struct ParallelEventReader<T: Event> {
-    pub(crate) read_buffer: Arc<RwLock<EventQueue<T>>>,
+    pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
 }
 
 impl<T: Event> ParallelEventReader<T> {
@@ -90,7 +88,7 @@ impl<T: Event> ParallelEventReader<T> {
         F: for<'b> FnOnce(EventReader<'b, T>) -> R,
     {
         let reader = EventReader {
-            read_buffer: self.read_buffer.read(),
+            read_queue: self.read_queue.read(),
         };
         f(reader)
     }
@@ -101,7 +99,7 @@ impl<T: Event> SystemParam for ParallelEventReader<T> {
 
     fn get_param(world: &mut World) -> Self {
         let queue = world.get_resource::<EventBuffer<T>>().read_queue.clone();
-        Self { read_buffer: queue }
+        Self { read_queue: queue }
     }
 }
 
