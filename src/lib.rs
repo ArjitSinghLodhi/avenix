@@ -38,6 +38,7 @@ pub mod derive {
 pub use indexmap;
 pub use rayon;
 pub use rustc_hash;
+pub use orx_parallel;
 
 pub mod prelude {
     pub use crate::app::{
