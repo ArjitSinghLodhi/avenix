@@ -88,7 +88,7 @@ Avenix enforces a strict handle count invariant to maintain safety with recycled
 > [!IMPORTANT]
 > All cloned handles referencing an entity must be completely dropped before that entity's queued despawn command is processed.
 
-* **Deferred Execution:** Calling `commands.despawn(entity)` buffers the operation to be processed later during the command flush phase.
+* **Deferred Execution:** Despawning an entity through commands buffers the operation to be processed later during the command flush phase.
 * **The Panic:** The engine will panic during command execution if any cloned handles for that target entity are still alive in memory.
 * **The Diagnostic:** The panic message prints a `HashSet` containing the exact `std::any::type_name` of every component within that entity's archetype to help track down where the handle leak occurred.
 * **The Resolution:** Review the `CleanupHandles` documentation to see how to use `despawn_iter` and `will_despawn` to clear handles before execution flushes.

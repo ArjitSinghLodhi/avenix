@@ -7,10 +7,10 @@
 //! * **Entity Despawn Invariant:** All cloned handles referencing an entity must be completely dropped
 //!   before that entity's scheduled despawn command is executed. Violating this triggers an explicit runtime
 //!   panic displaying the archetype's components. See the [`CleanupHandles`] schedule to learn how its designed to
-//!   help you with this, and read [`Commands::despawn()`] for more information.
+//!   help you with this, and read [`EntityCommands::despawn()`] for more information.
 //!
 //! [`CleanupHandles`]: crate::schedule::CleanupHandles
-//! [`Commands::despawn()`]: crate::commands::Commands::despawn
+//! [`EntityCommands::despawn()`]: crate::commands::EntityCommands::despawn
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
