@@ -82,7 +82,7 @@ fn bench_tracked_and_filtered(
     });
 }
 
-fn setup_world(mut commands: Commands, mut state: ResMut<BenchState>) {
+fn setup_world(commands: Commands, mut state: ResMut<BenchState>) {
     println!(
         "[Tracked Bench] Spawning 10,000 entities with explicit Component Tracking enabled..."
     );
@@ -109,12 +109,6 @@ fn setup_world(mut commands: Commands, mut state: ResMut<BenchState>) {
     state.initialized = true;
 }
 
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
         .add_systems(Update, dummy_system_to_force_tracking_allocation)
@@ -122,7 +116,6 @@ fn bench_entry_point(_c: &mut Criterion) {
         .add_systems(Startup, setup_world)
         .add_systems(Update, bench_tracked_but_unfiltered)
         .add_systems(Update, bench_tracked_and_filtered)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

@@ -32,10 +32,10 @@ fn main() {
 
     std::thread::scope(|s| {
         s.spawn(|| {
-            par_writer_a.scope(|mut writer| {
+            par_writer_a.scope(|writer| {
                 println!("[Thread 1] Sending parallel events...");
                 writer.send(ThreatEvent { value: 10.0 });
-                par_writer_b.scope(|mut writer| {
+                par_writer_b.scope(|writer| {
                     for _ in 0..4 {
                         writer.send(ThreatEvent { value: 10.0 });
                     }
@@ -44,10 +44,10 @@ fn main() {
         });
 
         s.spawn(|| {
-            par_writer_b.scope(|mut writer| {
+            par_writer_b.scope(|writer| {
                 println!("[Thread 2] Sending parallel events...");
                 writer.send(ThreatEvent { value: 10.0 });
-                par_writer_a.scope(|mut writer| {
+                par_writer_a.scope(|writer| {
                     for _ in 0..4 {
                         writer.send(ThreatEvent { value: 10.0 });
                     }
@@ -68,7 +68,8 @@ fn increment_frame_system(mut tracker: ResMut<FrameCounter>) {
 fn parallel_execution_system(
     counter: Res<FrameCounter>,
     reader: EventReader<ThreatEvent>,
-    mut writer: EventWriter<ThreatEvent>,
+    writer: EventWriter<ThreatEvent>,
+    writer_two: EventWriter<ThreatEvent>,
     par_writer_a: ParallelEventWriter<ThreatEvent>,
     par_writer_b: ParallelEventWriter<ThreatEvent>,
     par_reader_a: ParallelEventReader<ThreatEvent>,
@@ -84,9 +85,21 @@ fn parallel_execution_system(
 
         std::thread::scope(|s| {
             s.spawn(|| {
-                par_writer_a.scope(|mut writer| {
+                par_writer_a.scope(|writer| {
                     writer.send(ThreatEvent { value: 10.0 });
-                    par_writer_b.scope(|mut writer| {
+                    par_writer_b.scope(|writer| {
+                        for _ in 0..4 {
+                            writer.send(ThreatEvent { value: 10.0 });
+                        }
+                        writer_two.send(ThreatEvent { value: 100.0 });
+                    });
+                });
+            });
+
+            s.spawn(|| {
+                par_writer_b.scope(|writer| {
+                    writer.send(ThreatEvent { value: 10.0 });
+                    par_writer_a.scope(|writer| {
                         for _ in 0..4 {
                             writer.send(ThreatEvent { value: 10.0 });
                         }
@@ -95,25 +108,14 @@ fn parallel_execution_system(
             });
 
             s.spawn(|| {
-                par_writer_b.scope(|mut writer| {
-                    writer.send(ThreatEvent { value: 10.0 });
-                    par_writer_a.scope(|mut writer| {
-                        for _ in 0..4 {
-                            writer.send(ThreatEvent { value: 10.0 });
-                        }
-                    });
-                });
-            });
-
-            s.spawn(|| {
-                inline_read_count = reader.iter().count();
+                inline_read_count = reader.read().count();
             });
 
             s.spawn(|| {
                 par_reader_a.scope(|reader| {
-                    nest_read_a_count = reader.iter().count();
+                    nest_read_a_count = reader.read().count();
                     par_reader_b.scope(|reader| {
-                        nest_read_b_count = reader.iter().count();
+                        nest_read_b_count = reader.read().count();
                     });
                 });
             });
@@ -131,7 +133,7 @@ fn parallel_verification_system(
     par_reader_a: ParallelEventReader<ThreatEvent>,
     par_reader_b: ParallelEventReader<ThreatEvent>,
 ) {
-    let count = reader.iter().count();
+    let count = reader.read().count();
 
     if counter.current_frame == 2 {
         let mut base_count = 0;
@@ -139,7 +141,7 @@ fn parallel_verification_system(
         let mut nest_read_a_count = 0;
         let mut nest_read_b_count = 0;
 
-        for event in reader.iter() {
+        for event in reader.read() {
             if event.value == 100.0 {
                 base_count += 1;
             } else if event.value == 10.0 {
@@ -150,9 +152,9 @@ fn parallel_verification_system(
         std::thread::scope(|s| {
             s.spawn(|| {
                 par_reader_a.scope(|reader| {
-                    nest_read_a_count = reader.iter().count();
+                    nest_read_a_count = reader.read().count();
                     par_reader_b.scope(|reader| {
-                        nest_read_b_count = reader.iter().count();
+                        nest_read_b_count = reader.read().count();
                     });
                 });
             });
@@ -169,12 +171,12 @@ fn parallel_verification_system(
             nest_read_b_count
         );
 
-        assert_eq!(base_count, 1);
+        assert_eq!(base_count, 2);
         assert_eq!(parallel_count, 20);
-        assert_eq!(count, 21);
-        assert_eq!(nest_read_a_count, 21);
-        assert_eq!(nest_read_b_count, 21);
-        println!("   -> Success: All 21 concurrent events aggregated and synchronized perfectly!");
+        assert_eq!(count, 22);
+        assert_eq!(nest_read_a_count, 22);
+        assert_eq!(nest_read_b_count, 22);
+        println!("   -> Success: All 22 concurrent events aggregated and synchronized perfectly!");
     } else if counter.current_frame == 3 {
         println!("\n>> Avenix Parallel Event Analysis (Frame 3):");
         println!(

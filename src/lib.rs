@@ -19,11 +19,11 @@ mod app_impl;
 mod commands;
 mod component;
 mod entity;
+mod entity_registry;
 mod events;
 mod query;
 #[cfg(feature = "reactivity")]
 mod reactivity;
-mod registry;
 mod resources;
 mod schedule;
 mod system;
@@ -36,9 +36,9 @@ pub mod derive {
 }
 
 pub use indexmap;
+pub use orx_parallel;
 pub use rayon;
 pub use rustc_hash;
-pub use orx_parallel;
 
 pub mod prelude {
     pub use crate::app::{
@@ -65,7 +65,9 @@ pub mod prelude {
     };
     pub use crate::ecs::{
         Component,
-        commands::{Commands, DespawnCommand, ParallelCommands, bundle::ComponentBundle},
+        commands::{
+            Commands, DespawnCommand, EntityCommands, ParallelCommands, bundle::ComponentBundle,
+        },
         entity::Entity,
         query::{
             Has, Query, QueryArchetypeView, QueryData, QuerySubChunk,
@@ -122,7 +124,7 @@ pub mod ecs {
         }
     }
     pub mod commands {
-        pub use crate::commands::{Commands, DespawnCommand, ParallelCommands};
+        pub use crate::commands::{Commands, DespawnCommand, EntityCommands, ParallelCommands};
         pub mod bundle {
             pub use crate::commands::bundle::ComponentBundle;
         }

@@ -7,8 +7,8 @@ use crate::reactivity::{REMOVAL_TRACKED_COMPS, TRACKED_COMPONENTS};
 use crate::{
     commands::{WorldCommand, bundle::ComponentBundle},
     entity::Entity,
+    entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
     extensions::{Archetype, ComponentColumn, World},
-    registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
     world::archetypes::{AnyColumn, ArchetypeId},
 };
 
@@ -104,7 +104,7 @@ impl DespawnCommand {
             let arch_id = (*data_ptr).archetype_id;
             let handle_count = REGISTRY_HANDLE_COUNT.get_count(target_registry_idx);
             if handle_count > 0 {
-                let types_names = &&world
+                let types_names = &world
                     .archetypes_manager
                     .archetypes
                     .get(&arch_id)

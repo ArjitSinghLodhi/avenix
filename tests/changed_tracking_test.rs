@@ -23,7 +23,7 @@ fn increment_frame_system(mut counter: ResMut<FrameCounter>) {
     counter.current_frame += 1;
 }
 
-fn setup_multi_frame_entities(mut commands: Commands) {
+fn setup_multi_frame_entities(commands: Commands) {
     commands.spawn((Position { x: 10.0, y: 10.0 }, Velocity { x: 1.0, y: 1.0 }));
 }
 
@@ -301,7 +301,7 @@ rusty_fork_test! {
     }
 }
 
-fn spawn_tracking_entity(mut commands: Commands) {
+fn spawn_tracking_entity(commands: Commands) {
     commands.spawn((Position { x: 5.0, y: 5.0 }, Velocity { x: 1.0, y: 1.0 }));
 }
 

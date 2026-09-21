@@ -29,7 +29,7 @@ fn main() {
     println!("\n=== Example completed ===");
 }
 
-fn spawn_entities_system(mut commands: Commands) {
+fn spawn_entities_system(commands: Commands) {
     println!("Spawning entities via fast batch allocation at startup...");
     let batch = (0..1000).map(|i| {
         (

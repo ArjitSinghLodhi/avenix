@@ -1,5 +1,5 @@
 use avenix::prelude::*;
-fn test_runner_once(app: &mut App) {
+fn test_runner(app: &mut App) {
     app.build();
     app.run_startup();
 
@@ -22,11 +22,11 @@ fn main() {
     App::new()
         .add_systems(Startup, queue_spawn_commands_system)
         .add_systems(Update, verify_spawned_entities_system)
-        .set_runner(test_runner_once)
+        .set_runner(test_runner)
         .run();
 }
 
-fn queue_spawn_commands_system(mut commands: Commands) {
+fn queue_spawn_commands_system(commands: Commands) {
     println!("Queueing a single entity spawn via a component tuple...");
     commands.spawn((Position { x: 0.0, y: 0.0 }, Speed(5.0)));
 

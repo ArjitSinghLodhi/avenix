@@ -17,7 +17,7 @@ use crate::events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter
 use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
-    registry::REGISTRY_HANDLE_COUNT,
+    entity_registry::REGISTRY_HANDLE_COUNT,
     resources::{ConcurrentResourceRegistry, ParallelResourceAccessor, Res, ResMut, Resource},
     world::archetypes::ArchetypeManager,
 };
@@ -185,11 +185,6 @@ impl World {
         let base_any = cell.get_mut();
         let casted_mut = base_any.downcast_mut::<T>()?;
         Some(casted_mut)
-    }
-
-    pub fn apply_commands(&mut self) {
-        self.apply_queue_commands();
-        self.apply_despawns();
     }
 
     pub fn apply_queue_commands(&mut self) {

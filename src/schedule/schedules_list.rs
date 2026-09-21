@@ -30,7 +30,7 @@ impl SystemExecutor for StartupExecutor {
             if should_run {
                 system.run(world);
             }
-            world.apply_commands();
+            world.apply_queue_commands();
         }
     }
 }

@@ -66,7 +66,7 @@ pub struct Added<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Added<T> {
     fn matches(types: &crate::extensions::AccessHashSet<TypeId>) -> bool {
-        types.contains(&TypeId::of::<AddedMarker<T>>())
+        types.contains(&TypeId::of::<T>())
     }
     fn collect_filter(
         withs: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -124,7 +124,7 @@ impl<T: Component> QueryData for AddedTracker<T> {
         register_added_tracked_component::<T>();
     }
     fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<AddedMarker<T>>())
+        types.contains(&TypeId::of::<T>())
     }
     unsafe fn init_fetch(archetype: &crate::extensions::Archetype) -> Self::Fetch {
         let marker_ptr = unsafe { (*archetype.fetch_column_raw::<AddedMarker<T>>()).as_ptr() };

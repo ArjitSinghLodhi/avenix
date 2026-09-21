@@ -36,7 +36,7 @@ fn increment_frame_system(mut counter: ResMut<FrameCounter>) {
     counter.current_frame += 1;
 }
 
-fn setup_double_buffer_entities(mut commands: Commands) {
+fn setup_double_buffer_entities(commands: Commands) {
     commands.spawn((Position { x: 1.0, y: 1.0 }, EntityTag::AdderTarget));
     commands.spawn((Position { x: 2.0, y: 2.0 }, EntityTag::InserterTarget));
     commands.spawn((Position { x: 3.0, y: 3.0 }, EntityTag::DenseNeighbor));
@@ -45,7 +45,7 @@ fn setup_double_buffer_entities(mut commands: Commands) {
 fn apply_frame_1_mutations(
     counter: Res<FrameCounter>,
     query: Query<(Entity, &EntityTag)>,
-    mut commands: Commands,
+    commands: Commands,
 ) {
     if counter.current_frame != 1 {
         return;
@@ -53,12 +53,13 @@ fn apply_frame_1_mutations(
 
     for view in query.iter() {
         for (entity, tag) in view.iter() {
+            let mut entity_cmd = commands.entity(entity.clone());
             match tag {
                 EntityTag::AdderTarget => {
-                    commands.add_components(entity.clone(), Velocity { x: 10.0, y: 10.0 });
+                    entity_cmd.add(Velocity { x: 10.0, y: 10.0 });
                 }
                 EntityTag::InserterTarget => {
-                    commands.insert_components(entity.clone(), Acceleration { x: 5.0, y: 5.0 });
+                    entity_cmd.insert(Acceleration { x: 5.0, y: 5.0 });
                 }
                 EntityTag::DenseNeighbor => {}
             }
@@ -151,7 +152,7 @@ fn verify_frame_2_buffered_reads(
 fn apply_frame_2_redundant_insert(
     counter: Res<FrameCounter>,
     query: Query<(Entity, &EntityTag)>,
-    mut commands: Commands,
+    commands: Commands,
 ) {
     if counter.current_frame != 2 {
         return;
@@ -160,7 +161,9 @@ fn apply_frame_2_redundant_insert(
     for view in query.iter() {
         for (entity, tag) in view.iter() {
             if *tag == EntityTag::InserterTarget {
-                commands.insert_components(entity.clone(), Acceleration { x: 99.0, y: 99.0 });
+                commands
+                    .entity(entity.clone())
+                    .insert(Acceleration { x: 99.0, y: 99.0 });
             }
         }
     }

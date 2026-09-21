@@ -23,12 +23,6 @@ struct ScoreTracker {
     points: i32,
 }
 
-fn test_runner_once(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 #[derive(ComponentBundle)]
 struct PlayerComponentBundle {
     pos: Position,
@@ -58,7 +52,7 @@ struct CompositeSystemParam<'a> {
     counter: usize,
 }
 
-fn setup_macro_entities(mut commands: Commands) {
+fn setup_macro_entities(commands: Commands) {
     commands.spawn(PlayerComponentBundle {
         pos: Position { x: 50.0, y: 50.0 },
         vel: Velocity { x: 2.0, y: 2.0 },
@@ -98,8 +92,6 @@ fn main() {
     app.insert_resource(ScoreTracker { points: 0 })
         .add_systems(Startup, setup_macro_entities)
         .add_systems(Update, verify_and_mutate_macros);
-
-    app.set_runner(test_runner_once);
     app.run();
     let tracker = app.world().get_resource::<ScoreTracker>();
     assert_eq!(tracker.points, 500);

@@ -32,7 +32,7 @@ pub struct BenchState {
 
 criterion_main!(benches);
 
-fn setup_world(mut commands: Commands, mut state: ResMut<BenchState>) {
+fn setup_world(commands: Commands, mut state: ResMut<BenchState>) {
     println!("[Reactive Bench] Spawning 10,000 entities with Feature Flag Active...");
     for _ in 0..10_000 {
         commands.spawn((
@@ -81,18 +81,11 @@ fn run_reactive_write_bench(
     });
 }
 
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
         .insert_resource(BenchState::default())
         .add_systems(Startup, setup_world)
         .add_systems(Update, run_reactive_write_bench)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

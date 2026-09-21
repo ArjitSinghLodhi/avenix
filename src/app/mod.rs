@@ -101,6 +101,8 @@ impl Default for App {
     }
 }
 
+type RunnerFn = Box<dyn FnOnce(&mut App) + 'static>;
+
 pub struct App {
     pub(crate) world: World,
     startup_schedule: Schedule,
@@ -109,7 +111,7 @@ pub struct App {
     plugins: Vec<Box<dyn PluginsBuildAll>>,
     systems_blocks: Vec<SystemsBlock>,
     pub(crate) schedule_order_constraints: Vec<(ScheduleId, ScheduleId)>,
-    runner_fn: fn(&mut App),
+    runner_fn: RunnerFn,
     configuration: ConfigurationContext,
 }
 
@@ -121,14 +123,6 @@ impl App {
             );
         }
 
-        let function = |app: &mut App| {
-            app.build();
-            app.run_startup();
-            loop {
-                app.update();
-            }
-        };
-
         let mut app = Self {
             world: World::new(),
             startup_schedule: Schedule::new(Startup),
@@ -137,7 +131,7 @@ impl App {
             plugins: Vec::new(),
             systems_blocks: Vec::new(),
             schedule_order_constraints: Vec::new(),
-            runner_fn: function,
+            runner_fn: Box::new(runner_once),
             configuration: ConfigurationContext::new(),
         };
         DefaultSchedulesPlugin::build(DefaultSchedulesPlugin, &mut app);
@@ -246,12 +240,12 @@ impl App {
         if self.configuration.is_building_plugins() {
             panic!("App::run() was called while building plugins")
         }
-        let function = self.runner_fn;
+        let function = std::mem::replace(&mut self.runner_fn, Box::new(runner_once));
         function(self);
     }
 
-    pub fn set_runner(&mut self, function: fn(&mut App)) -> &mut Self {
-        self.runner_fn = function;
+    pub fn set_runner(&mut self, function: impl FnOnce(&mut App) + 'static) -> &mut Self {
+        self.runner_fn = Box::new(function);
         self
     }
 
@@ -434,4 +428,10 @@ impl App {
 
         self.configuration.schedules_added = true;
     }
+}
+
+fn runner_once(app: &mut App) {
+    app.build();
+    app.run_startup();
+    app.update();
 }

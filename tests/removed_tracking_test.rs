@@ -31,7 +31,7 @@ fn increment_frame_system(mut counter: ResMut<FrameCounter>) {
     counter.current_frame += 1;
 }
 
-fn setup_removal_entities(mut commands: Commands) {
+fn setup_removal_entities(commands: Commands) {
     commands.spawn((
         Position { x: 1.0, y: 1.0 },
         Velocity { x: 5.0, y: 5.0 },
@@ -48,7 +48,7 @@ fn setup_removal_entities(mut commands: Commands) {
 fn apply_frame_1_mutations(
     counter: Res<FrameCounter>,
     query: Query<(Entity, &EntityTag)>,
-    mut commands: Commands,
+    commands: Commands,
 ) {
     if counter.current_frame != 1 {
         return;
@@ -56,13 +56,14 @@ fn apply_frame_1_mutations(
 
     for view in query.iter() {
         for (entity, tag) in view.iter() {
+            let mut entity_cmd = commands.entity(entity.clone());
             match tag {
                 EntityTag::RemovalTarget => {
-                    commands.remove_components::<Velocity>(entity.clone());
+                    entity_cmd.remove::<Velocity>();
                 }
                 EntityTag::DespawnTarget => {
-                    commands.remove_components::<Velocity>(entity.clone());
-                    commands.despawn(entity.clone());
+                    entity_cmd.remove::<Velocity>();
+                    entity_cmd.despawn();
                 }
                 EntityTag::UntouchedNeighbor => {}
             }

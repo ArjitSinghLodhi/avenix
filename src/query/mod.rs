@@ -14,8 +14,8 @@ use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
     entity::Entity,
+    entity_registry::REGISTRY,
     extensions::{AccessVec, SystemMeta, SystemParam},
-    registry::REGISTRY,
     system::AccessHashSet,
     world::{
         archetypes::{Archetype, ArchetypeId},
@@ -432,6 +432,9 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
         self.matching_archetypes.iter().flatten().count()
     }
 
+    /// Returns the number of total entities in all matching archetypes combined.
+    ///
+    /// Note: it is not the number of entities in the query with dynamic filters accounted for.
     pub fn total_entities(&self) -> usize {
         self.matching_archetypes
             .iter()
@@ -530,7 +533,10 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
+            let fetch = self
+                .cached_fetches
+                .get_unchecked(arch_id.id() as usize)
+                .as_ref()?;
             Some(Q::fetch_read_only(fetch, row_idx as usize))
         }
     }
@@ -545,7 +551,10 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
+            let fetch = self
+                .cached_fetches
+                .get_unchecked(arch_id.id() as usize)
+                .as_ref()?;
             Some(Q::fetch_mut(fetch, row_idx as usize))
         }
     }
@@ -562,7 +571,9 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = &self.cached_fetches[arch_id.id() as usize]
+            let fetch = self
+                .cached_fetches
+                .get_unchecked(arch_id.id() as usize)
                 .as_ref()
                 .unwrap_unchecked();
             Q::fetch_read_only(fetch, row_idx as usize)
@@ -581,7 +592,9 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self.cached_fetches[arch_id.id() as usize]
+            let fetch = self
+                .cached_fetches
+                .get_unchecked(arch_id.id() as usize)
                 .as_ref()
                 .unwrap_unchecked();
             Q::fetch_mut(fetch, row_idx as usize)

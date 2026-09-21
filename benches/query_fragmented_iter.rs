@@ -39,7 +39,7 @@ pub struct BenchState {
 
 criterion_main!(benches);
 
-fn setup_fragmented_world(mut commands: Commands, mut state: ResMut<BenchState>) {
+fn setup_fragmented_world(commands: Commands, mut state: ResMut<BenchState>) {
     println!("[ECS Bench Setup] Spawning 10,000 highly fragmented entities...");
 
     for i in 0..10_000 {
@@ -102,18 +102,11 @@ fn run_fragmented_iter_bench(mut query: Query<(&mut Position, &Velocity)>, state
     });
 }
 
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
         .insert_resource(BenchState::default())
         .add_systems(Startup, setup_fragmented_world)
         .add_systems(Update, run_fragmented_iter_bench)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

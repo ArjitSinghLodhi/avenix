@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::registry::REGISTRY_HANDLE_COUNT;
+use crate::entity_registry::REGISTRY_HANDLE_COUNT;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Entity {

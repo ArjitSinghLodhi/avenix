@@ -32,7 +32,7 @@ pub struct BenchState {
 
 criterion_main!(benches);
 
-fn setup_simple_iter_world(mut commands: Commands, mut state: ResMut<BenchState>) {
+fn setup_simple_iter_world(commands: Commands, mut state: ResMut<BenchState>) {
     println!("[ECS Bench Setup] Spawning 10,000 dense entities...");
 
     for _ in 0..10_000 {
@@ -82,18 +82,11 @@ fn run_simple_iter_bench(mut query: Query<(&mut Position, &Velocity)>, state: Re
     });
 }
 
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
         .insert_resource(BenchState { initialized: false })
         .add_systems(Startup, setup_simple_iter_world)
         .add_systems(Update, run_simple_iter_bench)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

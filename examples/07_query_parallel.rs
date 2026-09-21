@@ -40,7 +40,7 @@ fn main() {
     println!("\n=== Parallel query example completed ===");
 }
 
-fn spawn_parallel_batch_system(mut commands: Commands) {
+fn spawn_parallel_batch_system(commands: Commands) {
     println!("Spawning dense data pools via fast batch allocation with predictable noise...");
 
     let batch = (0..20_000).map(|i| {

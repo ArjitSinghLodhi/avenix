@@ -31,7 +31,7 @@ fn main() {
     println!("\n=== Example completed ===");
 }
 
-fn setup_simulation_entities_system(mut commands: Commands) {
+fn setup_simulation_entities_system(commands: Commands) {
     println!("[Startup] Setting up simulation entities...");
     commands.spawn((Health(100), PlayerTag));
     commands.spawn((Health(500), EnemyTag));

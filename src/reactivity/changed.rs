@@ -85,7 +85,7 @@ impl<T: Component> QueryData for ChangedTracker<T> {
     type Fetch = ThreadSafe<(u8, *const ChangedMarker<T>)>;
 
     fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<ChangedMarker<T>>())
+        types.contains(&TypeId::of::<T>())
     }
 
     fn collect_access(
@@ -140,7 +140,7 @@ pub struct Changed<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Changed<T> {
     fn matches(types: &AccessHashSet<TypeId>) -> bool {
-        types.contains(&TypeId::of::<ChangedMarker<T>>())
+        types.contains(&TypeId::of::<T>())
     }
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {

@@ -26,21 +26,21 @@ fn game_loop_driver(mut counter: ResMut<GameLoopCounter>) {
     println!("\n--- ⏳ [FRAME {}] ---", counter.frame);
 }
 
-fn setup_game(mut commands: Commands) {
+fn setup_game(commands: Commands) {
     println!("🚀 [Setup/Frame 0] Spawning player entity with a baseline Score.");
     commands.spawn((Player, Score(0)));
 }
 
 fn simulate_gameplay_mutations(
     counter: Res<GameLoopCounter>,
-    mut commands: Commands,
+    commands: Commands,
     mut score_query: Query<(Entity, &mut Score)>,
 ) {
     if counter.frame == 1 {
         for view in score_query.iter() {
             for (entity, _) in view.iter() {
                 println!("✨ [Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
-                commands.add_components(entity.clone(), Buff { name: "Haste" });
+                commands.entity(entity.clone()).add(Buff { name: "Haste" });
             }
         }
     }
@@ -56,7 +56,7 @@ fn simulate_gameplay_mutations(
                 println!(
                     "⚡ [Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'."
                 );
-                commands.insert_components(entity.clone(), StatusEffect);
+                commands.entity(entity.clone()).insert(StatusEffect);
             }
         }
     }

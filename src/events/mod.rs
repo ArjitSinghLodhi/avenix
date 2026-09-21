@@ -2,11 +2,7 @@
 
 mod parallel_events;
 
-use orx_concurrent_iter::implementations::ConIterOfIter;
-use orx_parallel::{
-    IterIntoParIter,
-    infallible::{ParIter, xap_variants::Id},
-};
+use orx_parallel::{IterIntoParIter, Par};
 pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
 
 use std::{
@@ -109,7 +105,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
     ///
     /// The event is stored in the write buffer and will become visible to readers in the next frame.
     #[inline]
-    pub fn send(&mut self, event: T) {
+    pub fn send(&self, event: T) {
         self.write_queue.queue.push(event);
     }
 
@@ -117,10 +113,10 @@ impl<'a, T: Event> EventWriter<'a, T> {
     ///
     /// This is significantly more efficient than calling `.send()` multiple times in a loop.
     #[inline]
-    pub fn send_batch<I>(&mut self, event_iter: I)
+    pub fn send_batch<I>(&self, event_iter: I)
     where
         I: IntoIterator<Item = T>,
-        I::IntoIter: Send + 'static + ExactSizeIterator,
+        I::IntoIter: Send + ExactSizeIterator,
     {
         self.write_queue.queue.extend(event_iter);
     }
@@ -153,14 +149,14 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 /// on the exact same 3-frame lifecycle used by component tracking (`Added` and `Changed` flags):
 ///
 /// * **Frame 1 (Sending):** Events are written via an `EventWriter` but remain hidden in the active write buffer.
-/// * **Frame 2 (Reading Window):** The internal buffers swap globally, making these events visible to this reader via [`.iter()`] or [`.par_iter()`].
+/// * **Frame 2 (Reading Window):** The internal buffers swap globally, making these events visible to this reader via [`.read()`] or [`.par_read()`].
 /// * **Frame 3 (Purge):** The buffer is cleared. Events are unconditionally dropped, regardless of whether any systems read them.
 ///
 /// Because event visibility lasts for exactly one frame window, any system designed to process these events
 /// **must run every single frame** to avoid missing data.
 ///
-/// [`.iter()`]: EventReader::iter
-/// [`.par_iter()`]: EventReader::par_iter
+/// [`.read()`]: EventReader::read
+/// [`.par_read()`]: EventReader::par_read
 pub struct EventReader<'w, T: Event> {
     pub(crate) read_queue: RwLockReadGuard<'w, EventQueue<T>>,
 }
@@ -168,13 +164,11 @@ pub struct EventReader<'w, T: Event> {
 impl<'w, T: Event> EventReader<'w, T> {
     /// Returns an iterator over all events dispatched during the previous frame.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn read(&self) -> impl Iterator<Item = &T> {
         unsafe { self.read_queue.queue.iter() }
     }
     #[inline]
-    pub fn par_iter<'a>(
-        &'a self,
-    ) -> ParIter<ConIterOfIter<impl Iterator<Item = &'a T>>, Id<&'a T>> {
+    pub fn par_read(&self) -> impl Par<Item = &T> {
         unsafe { self.read_queue.queue.iter().iter_into_par() }
     }
 }

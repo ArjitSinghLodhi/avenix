@@ -50,8 +50,8 @@ pub struct Commands<'a> {
     pub(crate) despawns: RwLockReadGuard<'a, RawRwLock, DashSet<Entity, FxBuildHasher>>,
 }
 
-impl Commands<'_> {
-    fn push<C: WorldCommand + 'static>(&mut self, command: C) {
+impl<'a> Commands<'a> {
+    fn push<C: WorldCommand + 'static>(&self, command: C) {
         self.queue.push(command);
     }
 
@@ -59,14 +59,14 @@ impl Commands<'_> {
     ///
     /// Because this command is deferred, no `Entity` identifier is returned immediately. The
     /// entity is generated and populated during the command execution phase.
-    pub fn spawn<C: ComponentBundle + Send>(&mut self, components: C) {
+    pub fn spawn<C: ComponentBundle + Send>(&self, components: C) {
         self.push(SpawnCommand { components });
     }
 
     /// Schedules a command to batch-spawn multiple entities from an iterator of component bundles.
     ///
     /// This is significantly more efficient than calling `.spawn()` multiple times in a loop.
-    pub fn spawn_batch<C, I>(&mut self, components_iter: I)
+    pub fn spawn_batch<C, I>(&self, components_iter: I)
     where
         C: ComponentBundle + Send,
         I: IntoIterator<Item = C>,
@@ -77,63 +77,11 @@ impl Commands<'_> {
         });
     }
 
-    /// Schedules a command to despawn the target entity.
-    ///
-    /// This command is queued and processed later during the command execution phase.
-    ///
-    /// # Panics
-    ///
-    /// The engine panics during the despawn command execution phase if any cloned handles referencing this entity
-    /// are still active when the queued despawn command is applied.
-    ///
-    /// The panic message will display a `HashSet` containing the `std::any::type_name`
-    /// of every component within the entity's archetype, allowing you to instantly
-    /// identify which entity type caused the violation.
-    ///
-    /// look into the documentation of [`CleanupHandles`] to understand how its structured
-    /// to help you on using `despawn_iter` and `will_despawn` to satisfy this requirement.
-    ///
-    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    pub fn despawn(&mut self, entity: Entity) {
-        self.despawns.insert(entity);
-    }
-
-    /// Schedules a command to add a bundle of components to an entity without overwriting existing data.
-    ///
-    /// # Behavior
-    ///
-    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
-    ///   `true`, but the `Changed<T>` filter is **not** notified.
-    /// * **If the component already exists:** The command is ignored and the data is **not** overwritten.
-    ///   Neither the `Added<T>` nor `Changed<T>` filters are notified.
-    pub fn add_components<C: ComponentBundle + Send>(&mut self, entity: Entity, components: C) {
-        self.push(AddComponentsCommand { entity, components });
-    }
-
-    /// Schedules a command to insert a bundle of components onto an entity, overwriting any existing data.
-    ///
-    /// # Behavior
-    ///
-    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
-    ///   `true`, but the `Changed<T>` filter is **not** notified.
-    /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. Neither the
-    ///   `Added<T>` nor `Changed<T>` filters are notified.
-    pub fn insert_components<C: ComponentBundle + Send>(&mut self, entity: Entity, components: C) {
-        self.push(InsertComponentsCommand { entity, components });
-    }
-
-    /// Schedules a command to remove a bundle of components from an entity.
-    ///
-    /// # Behavior
-    ///
-    /// The specified component types are queued for removal and will be removed from the entity
-    /// during command execution. If a component type in the bundle is not present on
-    /// the entity, the engine handles it gracefully and silently does nothing.
-    pub fn remove_components<C: ComponentBundle + Send>(&mut self, entity: Entity) {
-        self.push(RemoveComponentsCommand::<C> {
-            entity,
-            _marker: PhantomData,
-        });
+    pub fn entity<'b>(&'b self, entity: Entity) -> EntityCommands<'a, 'b> {
+        EntityCommands {
+            entity_id: entity,
+            commands: self,
+        }
     }
 
     /// Returns an iterator over all currently queued despawn commands.
@@ -168,7 +116,7 @@ impl Commands<'_> {
         self.despawns.contains(entity)
     }
 
-    pub(crate) fn push_fn<F>(&mut self, f: F)
+    fn push_fn<F>(&self, f: F)
     where
         F: FnOnce(&mut World) + Send + 'static,
     {
@@ -179,7 +127,7 @@ impl Commands<'_> {
     ///
     /// This command transfers ownership of the resource to the world during the command execution
     /// phase. If a resource of type `T` already exists, it is unconditionally dropped and replaced.
-    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) {
+    pub fn insert_resource<T: Resource + Send + Sync>(&self, resource: T) {
         self.push_fn(|world| {
             world.insert_resource(resource);
         });
@@ -189,10 +137,92 @@ impl Commands<'_> {
     ///
     /// The resource is dropped during the command execution phase. If the resource does not
     /// exist in the world, the engine handles it gracefully and silently does nothing.
-    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) {
+    pub fn remove_resource<T: Resource + Send + Sync>(&self) {
         self.push_fn(|world| {
             world.remove_resource::<T>();
         });
+    }
+}
+
+pub struct EntityCommands<'a, 'b> {
+    entity_id: Entity,
+    commands: &'b Commands<'a>,
+}
+
+impl<'a, 'b> EntityCommands<'a, 'b> {
+    /// Schedules a command to add a bundle of components to an entity without overwriting existing data.
+    ///
+    /// # Behavior
+    ///
+    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
+    ///   `true`, but the `Changed<T>` filter is **not** notified.
+    /// * **If the component already exists:** The command is ignored and the data is **not** overwritten.
+    ///   Neither the `Added<T>` nor `Changed<T>` filters are notified.
+    pub fn add<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
+        self.commands.push(AddComponentsCommand {
+            entity: self.entity_id.clone(),
+            components,
+        });
+        self
+    }
+
+    /// Schedules a command to insert a bundle of components onto an entity, overwriting any existing data.
+    ///
+    /// # Behavior
+    ///
+    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
+    ///   `true`, but the `Changed<T>` filter is **not** notified.
+    /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. Neither the
+    ///   `Added<T>` nor `Changed<T>` filters are notified.
+    pub fn insert<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
+        self.commands.push(InsertComponentsCommand {
+            entity: self.entity_id.clone(),
+            components,
+        });
+        self
+    }
+
+    /// Schedules a command to remove a bundle of components from an entity.
+    ///
+    /// # Behavior
+    ///
+    /// The specified component types are queued for removal and will be removed from the entity
+    /// during command execution. If a component type in the bundle is not present on
+    /// the entity, the engine handles it gracefully and silently does nothing.
+    pub fn remove<C: ComponentBundle + Send>(&mut self) -> &mut Self {
+        self.commands.push(RemoveComponentsCommand::<C> {
+            entity: self.entity_id.clone(),
+            _marker: PhantomData,
+        });
+        self
+    }
+
+    /// Schedules a command to despawn the target entity.
+    ///
+    /// This command is queued and processed later during the command execution phase.
+    ///
+    /// # Rules
+    ///
+    /// The engine panics during the despawn command execution phase if any cloned handles referencing this entity
+    /// are still active when the queued despawn command is applied.
+    ///
+    /// The panic message will display a `HashSet` containing the `std::any::type_name`
+    /// of every component within the entity's archetype, allowing you to instantly
+    /// identify which entity type caused the violation.
+    ///
+    /// look into the documentation of [`CleanupHandles`] to understand how its structured
+    /// to help you on using [`despawn_iter`] and [`will_despawn`] to satisfy this requirement.
+    ///
+    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
+    /// [`despawn_iter`]: Commands::despawn_iter
+    /// [`will_despawn`]: Commands::will_despawn
+    pub fn despawn(&mut self) -> &mut Self {
+        self.commands.despawns.insert(self.entity_id.clone());
+        self
+    }
+
+    pub fn id(&self) -> &Entity {
+        &self.entity_id
     }
 }
 

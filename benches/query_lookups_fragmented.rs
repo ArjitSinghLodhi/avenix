@@ -26,7 +26,7 @@ pub struct BenchmarkTargets {
 
 criterion_main!(benches);
 
-fn setup_fragmented_world(mut commands: Commands) {
+fn setup_fragmented_world(commands: Commands) {
     let spawn_count = 2_000_000;
     println!(
         "Allocation Phase: Spawning {} highly fragmented entities...",
@@ -138,12 +138,6 @@ fn run_fragmented_criterion_bench(query: Query<&Foo>, targets: Res<BenchmarkTarg
     group.finish();
 }
 
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn bench_entry_point(_c: &mut Criterion) {
     App::new()
         .insert_resource(BenchmarkTargets {
@@ -152,7 +146,6 @@ fn bench_entry_point(_c: &mut Criterion) {
         .add_systems(Startup, setup_fragmented_world)
         .add_systems(Update, collect_and_scramble_targets)
         .add_systems(Update, run_fragmented_criterion_bench)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

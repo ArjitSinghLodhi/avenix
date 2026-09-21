@@ -28,7 +28,7 @@ impl Plugin for HierarchyPlugin {
 }
 
 fn automatic_hierarchy_linker_system(
-    mut commands: Commands,
+    commands: Commands,
     mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
@@ -40,21 +40,16 @@ fn automatic_hierarchy_linker_system(
             if let Some(mut parent_comp) = parent_query.get_mut(&parent_target) {
                 parent_comp.children.push(child_entity.clone());
             } else {
-                commands.add_components(
-                    parent_target.clone(),
-                    Children {
-                        children: vec![child_entity.clone()],
-                    },
-                );
+                commands.entity(parent_target.clone()).add(Children {
+                    children: vec![child_entity.clone()],
+                });
             }
-            commands.insert_components(
-                child_entity.clone(),
-                ChildOf {
+            commands
+                .entity(child_entity.clone())
+                .insert(ChildOf {
                     parent: parent_target,
-                },
-            );
-
-            commands.remove_components::<LinkTo>(child_entity.clone());
+                })
+                .remove::<LinkTo>();
         }
     }
     for view in unlink_query.iter() {
@@ -67,33 +62,38 @@ fn automatic_hierarchy_linker_system(
                     println!(
                         "Hierarchy Plugin: Removing Children component from parent because there are no children anymore"
                     );
-                    commands.remove_components::<Children>(child_of.parent.clone());
+                    commands
+                        .entity(child_of.parent.clone())
+                        .remove::<Children>();
                 }
             }
-            commands.remove_components::<(UnlinkChild, ChildOf)>(child_entity.clone());
+            commands
+                .entity(child_entity.clone())
+                .remove::<(UnlinkChild, ChildOf)>();
         }
     }
 }
 
 fn hirearchy_cleanup(
-    mut commands1: Commands,
-    mut commands2: Commands,
+    commands: Commands,
     mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
     unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
     child_query: Query<(Entity, &ChildOf)>,
 ) {
-    for despawn_cmd in commands1.despawn_iter() {
+    for despawn_cmd in commands.despawn_iter() {
         let dead_entity = despawn_cmd.despawn_target();
         #[allow(unused_mut)]
         if let Some(mut parent_comp) = parent_query.get_mut(dead_entity) {
             println!("Hierarchy Plugin: Parent is despawning. Queueing recursive child deletion!");
             while let Some(child_handle) = parent_comp.children.pop() {
-                commands2.despawn(child_handle.clone());
-                commands2.remove_components::<ChildOf>(child_handle);
+                commands
+                    .entity(child_handle.clone())
+                    .remove::<ChildOf>()
+                    .despawn();
             }
-            commands2.remove_components::<Children>(dead_entity.clone());
+            commands.entity(dead_entity.clone()).remove::<Children>();
         }
 
         if let Some((child_entity, childof)) = child_query.get(dead_entity) {
@@ -107,22 +107,24 @@ fn hirearchy_cleanup(
 
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {
-            if commands1.will_despawn(&link_comp.parent) {
+            if commands.will_despawn(&link_comp.parent) {
                 println!(
                     "Hierarchy Plugin: Target parent is dying before linkage completes. Stripping LinkTo component safely..."
                 );
-                commands2.remove_components::<LinkTo>(child_entity.clone());
+                commands.entity(child_entity.clone()).remove::<LinkTo>();
             }
         }
     }
 
     for view in unlink_query.iter() {
         for (child_entity, childof) in view.iter() {
-            if commands1.will_despawn(&childof.parent) {
+            if commands.will_despawn(&childof.parent) {
                 println!(
                     "Hierarchy plugin: Unlink target is dying, removing unlink comp from entity"
                 );
-                commands2.remove_components::<UnlinkChild>(child_entity.clone());
+                commands
+                    .entity(child_entity.clone())
+                    .remove::<UnlinkChild>();
             }
         }
     }
@@ -130,22 +132,22 @@ fn hirearchy_cleanup(
     for view in unlink_orphan_query.iter() {
         for entity in view.iter() {
             println!("Entity was set for unlink without parent, removing UnlinkChild component");
-            commands1.remove_components::<UnlinkChild>(entity.clone());
+            commands.entity(entity.clone()).remove::<UnlinkChild>();
         }
     }
 }
 
-pub trait HierarchyCommandsExt {
-    fn set_parent(&mut self, child: Entity, new_parent: Entity);
-    fn unlink_child(&mut self, child: Entity);
+pub trait HierarchyEntityCommandsExt {
+    fn set_parent(&mut self, new_parent: Entity);
+    fn unlink_parent(&mut self);
 }
 
-impl<'a> HierarchyCommandsExt for Commands<'a> {
-    fn set_parent(&mut self, child: Entity, new_parent: Entity) {
-        self.insert_components(child, LinkTo { parent: new_parent });
+impl<'a, 'b> HierarchyEntityCommandsExt for EntityCommands<'a, 'b> {
+    fn set_parent(&mut self, new_parent: Entity) {
+        self.insert(LinkTo { parent: new_parent });
     }
-    fn unlink_child(&mut self, child: Entity) {
-        self.insert_components(child, UnlinkChild);
+    fn unlink_parent(&mut self) {
+        self.insert(UnlinkChild);
     }
 }
 
@@ -168,7 +170,7 @@ pub struct FrameStepper {
     pub current_frame: u32,
 }
 
-fn setup_scene_graph(mut commands: Commands) {
+fn setup_scene_graph(commands: Commands) {
     println!("Setup System: Spawning core base entities...");
     commands.spawn(AlphaCommander);
     commands.spawn(BetaCommander);
@@ -179,7 +181,7 @@ fn setup_scene_graph(mut commands: Commands) {
 }
 
 fn build_generation_hierarchy(
-    mut commands: Commands,
+    commands: Commands,
     alpha_query: Query<Entity, With<AlphaCommander>>,
     beta_query: Query<Entity, With<BetaCommander>>,
     minion_query: Query<Entity, With<MinionSubUnit>>,
@@ -193,20 +195,20 @@ fn build_generation_hierarchy(
     let test_child_ent = test_child_query.single();
 
     if let (Some(alpha), Some(beta), Some(minion)) = (alpha_ent, beta_ent, minion_ent) {
-        commands.set_parent(beta.clone(), alpha.clone());
-        commands.set_parent(minion.clone(), beta.clone());
-        commands.set_parent(alpha.clone(), minion.clone());
+        commands.entity(beta.clone()).set_parent(alpha.clone());
+        commands.entity(minion.clone()).set_parent(beta.clone());
+        commands.entity(alpha.clone()).set_parent(minion.clone());
         println!("Linked hierarchy");
     }
 
     if let (Some(parent), Some(child)) = (test_parent_ent, test_child_ent) {
-        commands.set_parent(child.clone(), parent.clone());
+        commands.entity(child.clone()).set_parent(parent.clone());
         println!("Linked clean test hierarchy for normal unlink validation");
     }
 }
 
 fn trigger_runtime_lifecycle_stages(
-    mut commands: Commands,
+    commands: Commands,
     stepper: Res<FrameStepper>,
     alpha_query: Query<Entity, With<AlphaCommander>>,
 ) {
@@ -217,13 +219,13 @@ fn trigger_runtime_lifecycle_stages(
                 "System (Update Frame {}): Despawning root AlphaCommander!",
                 frame
             );
-            commands.despawn(alpha_entity.clone());
+            commands.entity(alpha_entity.clone()).despawn();
         }
     }
 }
 
 fn test_unlink_edge_cases_system(
-    mut commands: Commands,
+    commands: Commands,
     stepper: Res<FrameStepper>,
     beta_query: Query<Entity, With<BetaCommander>>,
     minion_query: Query<Entity, With<MinionSubUnit>>,
@@ -239,7 +241,7 @@ fn test_unlink_edge_cases_system(
                 "Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.",
                 frame
             );
-            commands.unlink_child(child.clone());
+            commands.entity(child.clone()).unlink_parent();
         }
     }
 
@@ -258,7 +260,7 @@ fn test_unlink_edge_cases_system(
                 "Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).",
                 frame
             );
-            commands.unlink_child(orphan.clone());
+            commands.entity(orphan.clone()).unlink_parent();
         }
 
         let minion_ent = minion_query.single();
@@ -269,8 +271,8 @@ fn test_unlink_edge_cases_system(
                 "Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.",
                 frame
             );
-            commands.set_parent(minion.clone(), beta.clone());
-            commands.unlink_child(minion.clone());
+            commands.entity(minion.clone()).set_parent(beta.clone());
+            commands.entity(minion.clone()).unlink_parent();
         }
     }
 }

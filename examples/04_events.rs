@@ -38,19 +38,19 @@ fn increment_frame_system(mut tracker: ResMut<FrameCounter>) {
 fn event_execution_system(
     counter: Res<FrameCounter>,
     reader: EventReader<ThreatEvent>,
-    mut writer: EventWriter<ThreatEvent>,
+    writer: EventWriter<ThreatEvent>,
 ) {
     if counter.current_frame == 1 {
         println!("[Frame 1] Sending events via EventWriter...");
         writer.send(ThreatEvent { value: 100.0 });
         writer.send(ThreatEvent { value: 50.0 });
-        let instant_read_count = reader.iter().count();
+        let instant_read_count = reader.read().count();
         assert_eq!(instant_read_count, 0);
     }
 }
 
 fn event_verification_system(counter: Res<FrameCounter>, reader: EventReader<ThreatEvent>) {
-    let count = reader.iter().count();
+    let count = reader.read().count();
 
     if counter.current_frame == 2 {
         println!("\n>> Avenix Event Analysis (Frame 2):");
@@ -58,7 +58,7 @@ fn event_verification_system(counter: Res<FrameCounter>, reader: EventReader<Thr
         assert_eq!(count, 2);
 
         let mut values = Vec::new();
-        for event in reader.iter() {
+        for event in reader.read() {
             values.push(event.value);
         }
         assert!(values.contains(&100.0));

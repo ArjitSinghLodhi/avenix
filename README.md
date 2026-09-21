@@ -49,16 +49,9 @@ Avenix provides a suite of thread-safe, thread-clonable handles extracted direct
 ```rust
 use avenix::prelude::*;
 
-fn test_runner_once(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
-}
-
 fn main() {
     App::new()
         .add_systems(Update, hello_world_system)
-        .set_runner(test_runner_once)
         .run();
 }
 
@@ -102,7 +95,7 @@ Avenix enforces a strict handle count invariant to maintain safety with recycled
 
 ---
 
-## Feature & Module Matrix
+## Feature & Module
 
 ### Required Procedural Macro Derives
 Avenix requires explicit macro derives for core types to enforce static bounds checks and clean memory layouts. These respect standard visibility constraints (`pub`, `pub(crate)`):

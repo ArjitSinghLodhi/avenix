@@ -18,7 +18,7 @@ pub struct BenchmarkTargets {
 
 criterion_main!(benches);
 
-fn setup_fragmented_world(mut commands: Commands) {
+fn setup_fragmented_world(commands: Commands) {
     let spawn_count = 100_000;
     println!(
         "Allocation Phase: Spawning {} benchmark entities...",
@@ -62,10 +62,10 @@ fn run_fragmented_criterion_bench(query: Query<&Foo>, targets: Res<BenchmarkTarg
     }
 
     let mut c = Criterion::default().configure_from_args();
-    let mut group = c.benchmark_group("ecs_massive_fragmentation");
+    let mut group = c.benchmark_group("ecs_scrambled_lookups");
     let target_count = targets.entities.len();
 
-    group.bench_with_input("avenix_safe_fragmented_lookup", &target_count, |b, _| {
+    group.bench_with_input("avenix_safe_lookup", &target_count, |b, _| {
         b.iter(|| {
             for entity in &targets.entities {
                 if let Some(foo) = query.get(entity) {
@@ -75,27 +75,17 @@ fn run_fragmented_criterion_bench(query: Query<&Foo>, targets: Res<BenchmarkTarg
         });
     });
 
-    group.bench_with_input(
-        "avenix_unchecked_fragmented_lookup",
-        &target_count,
-        |b, _| {
-            b.iter(|| {
-                for entity in &targets.entities {
-                    unsafe {
-                        black_box(query.get_unchecked(entity));
-                    }
+    group.bench_with_input("avenix_unchecked_lookup", &target_count, |b, _| {
+        b.iter(|| {
+            for entity in &targets.entities {
+                unsafe {
+                    black_box(query.get_unchecked(entity));
                 }
-            });
-        },
-    );
+            }
+        });
+    });
 
     group.finish();
-}
-
-fn run_bench_timeline(app: &mut App) {
-    app.build();
-    app.run_startup();
-    app.update();
 }
 
 fn bench_entry_point(_c: &mut Criterion) {
@@ -106,7 +96,6 @@ fn bench_entry_point(_c: &mut Criterion) {
         .add_systems(Startup, setup_fragmented_world)
         .add_systems(Update, collect_and_scramble_targets)
         .add_systems(Update, run_fragmented_criterion_bench)
-        .set_runner(run_bench_timeline)
         .run();
 }
 

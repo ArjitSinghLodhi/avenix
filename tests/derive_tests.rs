@@ -54,7 +54,7 @@ struct CompositeSystemParam<'a> {
     tracker: ResMut<'a, ScoreTracker>,
 }
 
-fn setup_macro_entities(mut commands: Commands) {
+fn setup_macro_entities(commands: Commands) {
     commands.spawn(PlayerComponentBundle {
         pos: Position { x: 50.0, y: 50.0 },
         vel: Velocity { x: 2.0, y: 2.0 },
