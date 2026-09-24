@@ -88,6 +88,7 @@ pub mod extensions {
         SystemMeta, SystemParam,
     };
     pub use crate::world::archetypes::{Archetype, ComponentColumn};
+    pub use crate::world::archetypes::{ComponentColumnRead, ComponentColumnWrite};
     pub use crate::world::storage::World;
 }
 

@@ -51,13 +51,19 @@ pub struct PostUpdate;
 
 impl ScheduleLabel for PostUpdate {}
 
-/// A special schedule where queue commands are applied immediately before
-/// and after the systems registered in this schedule run. Every system in this
-/// schedule is re-run if any system issues a new despawn command. This ensures
-/// every cleanup system observes all pending despawns before they are final.
-/// And finally despawn commands are applied.
+/// A special schedule where queued commands are applied immediately before
+/// and after its registered systems execute.
 ///
-/// see the hierarchy_cleanup example on how to effectively use it.
+/// If any system within this schedule issues a new despawn command, the entire schedule
+/// re-runs. To prevent redundant processing, the engine takes out all previously handled
+/// despawn commands so that only the newly issued despawns remain in the queue.
+///
+/// This deduplication ensures no wasted clock cycles re-processing the same entities, and
+/// eliminates double-frees if entities are tied to external resources that systems in this
+/// schedule manage. Ultimately, this guarantees that every cleanup system observes all pending
+/// despawns before they are finalized and applied.
+///
+/// See the `hierarchy_cleanup` example for guidance on how to effectively use it.
 pub struct CleanupHandles;
 
 impl ScheduleLabel for CleanupHandles {

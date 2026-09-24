@@ -3,18 +3,18 @@
 A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring parallel workloads, and out-of-band coordination.
 
 ---
+## Performance & Safety Architecture
 
-## Performance & Safety Guarantees
-
-* **Miri-Validated**  
-  Built on raw pointer offsets and contiguous columns. Fully passes Miri verification with zero undefined behavior.
-* **Contiguous Archetype Layout**  
-  Uses Archetype layout for storing entities and their data.
-* **Rayon Parallel Iteration**  
-  Uses a Rayon worker pool to partition and stream archetype data chunks concurrently across multiple CPU cores.
-* **Command Synchronization**  
-  Structural changes (spawning, inserting, deleting) are buffered into a thread-safe queue and flushed at the end of each schedule run.
-
+* **Zero-UB Columnar Memory**  
+  Engineered around low-level pointer layout optimization and contiguous memory lanes. Every core pathway fully passes strict Miri verification to guarantee complete runtime safety without sacrificing raw pointer performance.
+* **Cache-Aligned Data Density**  
+  Implements a strict Archetype structural layout. Components are packed into dense, flat tables to maximize CPU cache-line saturation and leverage hardware prefetching during heavy iteration loops.
+* **Lock-Free Pipeline Concurrency**  
+  Employs a native Rayon worker pool to automatically chunk, partition, and stream archetype tables across all available CPU cores, delivering seamless multi-threaded system execution.
+* **Race-Free Structural Isolation**  
+  Eliminates iterator invalidation and scheduling bottlenecks by deferring all entity mutations (spawning, component insertion, and despawning) into synchronized command buffers flushed strictly at frame boundaries.
+* **Decoupled Out-of-Band Remotes**  
+  Treats background tasks as first-class systems via thread-clonable parallel handles. External workers and network loops can safely manipulate resources and query entity matrix states asynchronously outside the main scheduling loop.
 ---
 
 ## Parallel Handles
@@ -30,12 +30,12 @@ Avenix provides a suite of thread-safe, thread-clonable handles extracted direct
 * **`ParallelEventWriter<T>`**
   * **How to get:** Call `world.get_par_event_writer::<T>()`.
   * **Usage:** Invoking `.scope(|mut writer| ...)` allows out-of-band threads or network workers to push events into the shared event pipelines.
-  * **Critical Constraints:** Subject to the engine's global 3-frame rule. Refer to their documentation for more information.
+  * **Critical Constraints:** Subject to the engine's internal 3-frame buffering rule. Refer to the event system API docs for more information.
 
 * **`ParallelEventReader<T>`**
   * **How to get:** Call `world.get_par_event_reader::<T>()`.
   * **Usage:** Invoking `.scope(|reader| ...)` lets concurrent background workers read and iterate over live event buffers synchronously.
-  * **Critical Constraints:** Subject to the engine's global 3-frame rule. Refer to their documentation for more information.
+  * **Critical Constraints:** Subject to the engine's internal 3-frame buffering rule. Refer to the event system API docs for more information.
 
 * **`ParallelResourceAccessor<T>`**
   * **How to get:** Call `world.get_par_resource_accessor::<T>()`.
@@ -95,7 +95,7 @@ Avenix enforces a strict handle count invariant to maintain safety with recycled
 * **Deferred Execution:** Despawning an entity through commands buffers the operation to be processed later during the command flush phase.
 * **The Panic:** The engine will panic during command execution if any cloned handles for that target entity are still alive in memory.
 * **The Diagnostic:** The panic message prints a `HashSet` containing the exact `std::any::type_name` of every component within that entity's archetype to help track down where the handle leak occurred.
-* **The Resolution:** Review the `CleanupHandles` documentation to see how to use `despawn_iter` and `will_despawn` to clear handles before execution flushes.
+* **The Resolution:** Review the `CleanupHandles` schedule documentation to see how to use `despawn_iter` and `will_despawn` to clear handles before execution flushes.
 
 ---
 
@@ -112,7 +112,7 @@ Avenix requires explicit macro derives for core types to enforce static bounds c
 * `#[derive(SystemParam)]` – Groups complex system parameters into a unified layout.
 
 ### Cargo Features
-Avenix keeps components, resources, and basic derives enabled by default. Scale performance by opting into optional compilation flags:
+Avenix keeps components, resources, and basic derives enabled by default. You could opt into optional compilation flags:
 
 * `reactivity` – Activates double-buffered change tracking (`Added`, `Changed`, `RemovedComponents`).
 * `events` – Activates the event broadcasting pipelines (`EventWriter`, `EventReader`, etc.).
@@ -122,58 +122,6 @@ When the `reactivity` feature is active, Avenix uses a demand-driven model to mi
 
 * **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`).
 * **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened.
-
----
-
-## Random Lookup Performance
-
-The following data details random access lookup metrics using Criterion benchmarks. Target handle vectors are scrambled prior to execution to invalidate the CPU hardware prefetcher and force cache-line evictions.
-
-### Test Hardware Profile
-* **System:** Lenovo LOQ 15IAX9
-* **Processor:** Intel Core i5 12th Gen
-* **Operating System:** Linux
-
-### Environment A: 100,000 Total Entities (Uniform Layout)
-Measures baseline index routing speed in a clean world containing 100,000 uniform components.
-
-* **4-Byte Component Payload (`query_lookups`)**
-  * `query.get(entity)`: **1.16 ns** per lookup (116.58 µs total execution time)
-  * `query.get_unchecked(entity)`: **0.75 ns** per lookup (75.91 µs total execution time)
-* **256-Byte Heavy Payload (`query_lookups_heavy`)**
-  * `query.get(entity)`: **1.17 ns** per lookup (117.49 µs total execution time)
-  * `query.get_unchecked(entity)`: **0.76 ns** per lookup (76.31 µs total execution time)
-
-### Environment B: 2,000,000 Total Entities (High Fragmentation)
-Evaluates 100,000 target lookups scattered across a pool of 2,000,000 total background entities, fragmented across 5 distinct archetype tables to induce maximum cache line saturation pressure.
-
-* **4-Byte Component Payload (`query_lookups_fragmented`)**
-  * `query.get(entity)`: **1.64 ns** per lookup (164.04 µs total execution time)
-  * `query.get_unchecked(entity)`: **1.15 ns** per lookup (115.51 µs total execution time)
-* **256-Byte Heavy Payload (`query_lookups_fragmented_heavy`)**
-  * `query.get(entity)`: **1.62 ns** per lookup (162.00 µs total execution time)
-  * `query.get_unchecked(entity)`: **1.15 ns** per lookup (115.26 µs total execution time)
-
----
-
-## Linear Iteration & Reactivity Performance
-
-The following data evaluates linear iteration and mutation speeds over 10,000 entities under varying compilation flags and component states.
-
-### Environment C: 10,000 Entities (Sequential Loop Pass)
-
-* **Contiguous Memory Loop (`query_simple_iter`)**
-  * Total execution time: **9.64 µs**
-* **4-Archetype Split Memory Loop (`query_fragmented_iter`)**
-  * Total execution time: **9.67 µs**
-* **Pure Mutable Write - Reactivity Off (`query_write_pure`)**
-  * Total execution time: **9.50 µs**
-* **Reactive Feature On - Untracked Component (`query_write_reactive_untracked`)**
-  * Total execution time: **11.36 µs**
-* **Reactive Feature On - Tracked Component, Unfiltered System (`query_write_reactive_tracked`)**
-  * `tracked_but_unfiltered_write`: **20.82 µs** total execution time
-* **Reactive Feature On - Tracked Component, Filtered System (`query_write_reactive_tracked`)**
-  * `tracked_and_filtered_write`: **1.03 ns** total execution time
 
 ---
 
