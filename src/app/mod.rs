@@ -277,8 +277,24 @@ impl App {
         &mut self,
     ) -> ParallelQueryAccessor<Q, F> {
         self.configuration.not_ready();
-        Q::collect_access(&mut AccessVec::new(), &mut AccessVec::new());
-        F::collect_filter(&mut AccessVec::new(), &mut AccessVec::new());
+        let mut local_reads = AccessVec::new();
+        let mut local_writes = AccessVec::new();
+        let mut local_with = AccessVec::new();
+        let mut local_without = AccessVec::new();
+
+        Q::collect_access(&mut local_reads, &mut local_writes);
+        F::collect_filter(&mut local_with, &mut local_without);
+        let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
+        let mut unique_writes = rustc_hash::FxHashSet::default();
+        let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
+
+        if has_intra_conflict || has_duplicate_writes {
+            panic!(
+                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in ParallelQueryAccessor: ParallelQueryAccessor<{}, {}> contains internal overlaps!",
+                std::any::type_name::<Q>(),
+                std::any::type_name::<F>()
+            );
+        }
         ParallelQueryAccessor {
             archetypes_map: self.world.archetypes_manager.archetypes.clone(),
             _marker: PhantomData,

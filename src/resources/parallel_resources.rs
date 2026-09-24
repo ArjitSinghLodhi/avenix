@@ -20,6 +20,7 @@ use std::{marker::PhantomData, sync::Arc};
 /// Also usable as a system param.
 ///
 /// [`.get_par_resource_accessor()`]: crate::world::storage::World::get_par_resource_accessor
+#[derive(Clone)]
 pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {
     pub(crate) resources: Arc<ConcurrentResourceRegistry>,
     pub(crate) _marker: PhantomData<T>,
@@ -27,15 +28,6 @@ pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {
 
 unsafe impl<T: Resource + Send + Sync> Send for ParallelResourceAccessor<T> {}
 unsafe impl<T: Resource + Send + Sync> Sync for ParallelResourceAccessor<T> {}
-
-impl<T: Resource + Send + Sync> Clone for ParallelResourceAccessor<T> {
-    fn clone(&self) -> Self {
-        Self {
-            resources: self.resources.clone(),
-            _marker: PhantomData,
-        }
-    }
-}
 
 impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     pub fn scope<F, R>(&self, f: F) -> R

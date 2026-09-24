@@ -26,6 +26,7 @@ use crate::{
 /// register demand-driven component tracking configurations behind the scenes.
 ///
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
+#[derive(Clone)]
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,
