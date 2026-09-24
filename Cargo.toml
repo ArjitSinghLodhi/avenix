@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -21,7 +21,7 @@ orx-parallel = { version = "4.0.0", features = ["rayon-core"] }
 
 [dev-dependencies]
 criterion = "0.8.2"
-rusty-fork = "0.3.1"
+test-fork = "0.1.5"
 
 [features]
 default = []

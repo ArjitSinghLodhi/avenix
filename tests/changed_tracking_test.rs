@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
 
 #[allow(dead_code)]
 #[derive(Component)]
@@ -278,27 +277,25 @@ fn test_runner_four_frames(app: &mut App) {
     app.update();
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_multiple_changed_filters_lifecycle() {
-        let mut app = App::new();
+#[test_fork::test]
+fn test_multiple_changed_filters_lifecycle() {
+    let mut app = App::new();
 
-        app.insert_resource(FrameCounter { current_frame: 0 })
-            .add_systems(Startup, setup_multi_frame_entities);
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, setup_multi_frame_entities);
 
-        app.add_systems(
-            Update,
-            (
-                increment_frame_system,
-                pre_mutation_verify_system,
-                midstream_mutator_system,
-                post_mutation_verify_system,
-            ),
-        );
+    app.add_systems(
+        Update,
+        (
+            increment_frame_system,
+            pre_mutation_verify_system,
+            midstream_mutator_system,
+            post_mutation_verify_system,
+        ),
+    );
 
-        app.set_runner(test_runner_four_frames);
-        app.run();
-    }
+    app.set_runner(test_runner_four_frames);
+    app.run();
 }
 
 fn spawn_tracking_entity(commands: Commands) {
@@ -344,20 +341,23 @@ fn verify_change_tracking_data(
     }
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_changed_generational_tracking() {
-        let mut app = App::new();
-        app.insert_resource(FrameCounter {current_frame: 0})
-            .add_systems(Startup, spawn_tracking_entity)
-            .add_systems(
-                Update,
-                (increment_frame_system, modify_component_system, verify_change_tracking, verify_change_tracking_data),
-            );
+#[test_fork::test]
+fn test_changed_generational_tracking() {
+    let mut app = App::new();
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, spawn_tracking_entity)
+        .add_systems(
+            Update,
+            (
+                increment_frame_system,
+                modify_component_system,
+                verify_change_tracking,
+                verify_change_tracking_data,
+            ),
+        );
 
-        app.set_runner(test_runner_once);
-        app.run();
-    }
+    app.set_runner(test_runner_once);
+    app.run();
 }
 
 fn test_runner_once(app: &mut App) {

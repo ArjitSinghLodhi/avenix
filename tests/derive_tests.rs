@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
 
 #[derive(Component)]
 struct Position {
@@ -88,15 +87,13 @@ fn verify_and_mutate_macros(mut tools: CompositeSystemParam) {
     assert_eq!(matched_entities, 1);
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_macro_derives_lifecycle() {
-        let mut app = App::new();
-        app.insert_resource(ScoreTracker { points: 0 })
-            .add_systems(Startup, setup_macro_entities)
-            .add_systems(Update, verify_and_mutate_macros);
+#[test_fork::test]
+fn test_macro_derives_lifecycle() {
+    let mut app = App::new();
+    app.insert_resource(ScoreTracker { points: 0 })
+        .add_systems(Startup, setup_macro_entities)
+        .add_systems(Update, verify_and_mutate_macros);
 
-        app.set_runner(test_runner_once);
-        app.run();
-    }
+    app.set_runner(test_runner_once);
+    app.run();
 }

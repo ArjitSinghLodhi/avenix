@@ -1,7 +1,5 @@
-use std::thread;
-
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
+use std::thread;
 
 #[derive(Component)]
 struct Position {
@@ -115,18 +113,16 @@ fn test_par_commands(commands: Commands, par_commands: ParallelCommands) {
     });
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_commands_and_resources() {
-        let mut app = App::new();
-        app.insert_resource(ScoreTracker { points: 0 })
-            .add_systems(Startup, setup_initial_entities)
-            .add_systems(Startup, test_par_commands)
-            .add_systems(Update, verify_resource_and_commands);
+#[test_fork::test]
+fn test_commands_and_resources() {
+    let mut app = App::new();
+    app.insert_resource(ScoreTracker { points: 0 })
+        .add_systems(Startup, setup_initial_entities)
+        .add_systems(Startup, test_par_commands)
+        .add_systems(Update, verify_resource_and_commands);
 
-        app.set_runner(test_runner_once);
-        app.run();
-    }
+    app.set_runner(test_runner_once);
+    app.run();
 }
 
 fn spawn_filter_targets(commands: Commands) {
@@ -156,14 +152,12 @@ fn verify_logical_queries(
     assert_eq!(not_count, 1);
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_query_filter_logic() {
-        let mut app = App::new();
-        app.add_systems(Startup, spawn_filter_targets)
-            .add_systems(Update, verify_logical_queries);
+#[test_fork::test]
+fn test_query_filter_logic() {
+    let mut app = App::new();
+    app.add_systems(Startup, spawn_filter_targets)
+        .add_systems(Update, verify_logical_queries);
 
-        app.set_runner(test_runner_once);
-        app.run();
-    }
+    app.set_runner(test_runner_once);
+    app.run();
 }

@@ -1,7 +1,8 @@
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
-use std::sync::{Arc, Barrier};
-use std::time::Duration;
+use std::{
+    sync::{Arc, Barrier},
+    time::Duration,
+};
 
 #[derive(Component)]
 struct Velocity {
@@ -23,69 +24,69 @@ struct TestSyncContext {
     barrier: Arc<Barrier>,
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_parallel_query_accessor_mixed_workload() {
-        let mut app = App::new();
+#[test_fork::test]
+fn test_parallel_query_accessor_mixed_workload() {
+    let mut app = App::new();
 
-        let par_reader = app.get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
-        let par_writer = app.get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
-        let par_reactive = app.get_par_query_accessor::<&Position, Changed<Position>>();
+    let par_reader = app.get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
+    let par_writer = app.get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+    let par_reactive = app.get_par_query_accessor::<&Position, Changed<Position>>();
 
-        app.add_systems(Startup, setup_simulation_entities)
-           .add_systems(Update, multi_query_in_band_system);
+    app.add_systems(Startup, setup_simulation_entities)
+        .add_systems(Update, multi_query_in_band_system);
 
-        let shared_barrier = Arc::new(Barrier::new(3));
-        app.insert_resource(TestSyncContext { barrier: shared_barrier.clone() });
+    let shared_barrier = Arc::new(Barrier::new(3));
+    app.insert_resource(TestSyncContext {
+        barrier: shared_barrier.clone(),
+    });
 
-        app.build();
-        app.run_startup();
+    app.build();
+    app.run_startup();
 
-        std::thread::scope(|s| {
-            let b1 = shared_barrier.clone();
-            let b2 = shared_barrier.clone();
+    std::thread::scope(|s| {
+        let b1 = shared_barrier.clone();
+        let b2 = shared_barrier.clone();
 
-            s.spawn(move || {
-                b1.wait();
+        s.spawn(move || {
+            b1.wait();
 
-                par_reader.scope(|query| {
-                    let mut read_count = 0;
-                    for view in query.iter() {
-                        for (pos, vel) in view.iter() {
-                            read_count += 1;
-                            assert_eq!(vel.x, 2.0);
-                            assert!(pos.x >= 0.0);
-                        }
+            par_reader.scope(|query| {
+                let mut read_count = 0;
+                for view in query.iter() {
+                    for (pos, vel) in view.iter() {
+                        read_count += 1;
+                        assert_eq!(vel.x, 2.0);
+                        assert!(pos.x >= 0.0);
                     }
-                    assert_eq!(read_count, 1000);
-                });
+                }
+                assert_eq!(read_count, 1000);
             });
-
-            s.spawn(move || {
-                b2.wait();
-                std::thread::sleep(Duration::from_millis(2));
-
-                par_writer.scope(|mut query| {
-                    for mut view in query.iter_mut() {
-                        for (mut pos, vel) in view.iter_mut() {
-                            pos.x += vel.x;
-                            pos.y += vel.y;
-                        }
-                    }
-                });
-            });
-
-            app.update();
         });
 
-        par_reactive.scope(|query| {
-            let mut total_reactive_catch = 0;
-            for view in query.iter() {
-                total_reactive_catch += view.len();
-            }
-            assert_eq!(total_reactive_catch, 500);
+        s.spawn(move || {
+            b2.wait();
+            std::thread::sleep(Duration::from_millis(2));
+
+            par_writer.scope(|mut query| {
+                for mut view in query.iter_mut() {
+                    for (mut pos, vel) in view.iter_mut() {
+                        pos.x += vel.x;
+                        pos.y += vel.y;
+                    }
+                }
+            });
         });
-    }
+
+        app.update();
+    });
+
+    par_reactive.scope(|query| {
+        let mut total_reactive_catch = 0;
+        for view in query.iter() {
+            total_reactive_catch += view.len();
+        }
+        assert_eq!(total_reactive_catch, 500);
+    });
 }
 
 fn setup_simulation_entities(commands: Commands) {
@@ -133,64 +134,64 @@ fn multi_query_in_band_system(
     }
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_parallel_query_accessor_heavy_mutation_chaos() {
-        let mut app = App::new();
+#[test_fork::test]
+fn test_parallel_query_accessor_heavy_mutation_chaos() {
+    let mut app = App::new();
 
-        let par_reader = app.get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
-        let par_writer = app.get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+    let par_reader = app.get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
+    let par_writer = app.get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
 
-        app.add_systems(Startup, setup_simulation_entities)
-           .add_systems(Update, dynamic_chaos_mutator_system);
+    app.add_systems(Startup, setup_simulation_entities)
+        .add_systems(Update, dynamic_chaos_mutator_system);
 
-        let shared_barrier = Arc::new(Barrier::new(3));
-        app.insert_resource(TestSyncContext { barrier: shared_barrier.clone() });
+    let shared_barrier = Arc::new(Barrier::new(3));
+    app.insert_resource(TestSyncContext {
+        barrier: shared_barrier.clone(),
+    });
 
-        app.build();
-        app.run_startup();
+    app.build();
+    app.run_startup();
 
-        std::thread::scope(|s| {
-            let b1 = shared_barrier.clone();
-            let b2 = shared_barrier.clone();
+    std::thread::scope(|s| {
+        let b1 = shared_barrier.clone();
+        let b2 = shared_barrier.clone();
 
-            s.spawn(move || {
-                b1.wait();
-                let start = std::time::Instant::now();
-                while start.elapsed() < Duration::from_millis(50) {
-                    par_reader.scope(|query| {
-                        let mut count = 0;
-                        for view in query.iter() {
-                            count += view.len();
-                            for (pos, vel) in view.iter() {
-                                assert!(pos.x >= 0.0 || pos.x < 0.0);
-                                assert_eq!(vel.x, 2.0);
-                            }
+        s.spawn(move || {
+            b1.wait();
+            let start = std::time::Instant::now();
+            while start.elapsed() < Duration::from_millis(50) {
+                par_reader.scope(|query| {
+                    let mut count = 0;
+                    for view in query.iter() {
+                        count += view.len();
+                        for (pos, vel) in view.iter() {
+                            assert!(pos.x >= 0.0 || pos.x < 0.0);
+                            assert_eq!(vel.x, 2.0);
                         }
-                        assert!(count <= 1000);
-                    });
-                    std::thread::yield_now();
-                }
-            });
-
-            s.spawn(move || {
-                b2.wait();
-                let start = std::time::Instant::now();
-                while start.elapsed() < Duration::from_millis(50) {
-                    par_writer.scope(|mut query| {
-                        for mut view in query.iter_mut() {
-                            for (mut pos, vel) in view.iter_mut() {
-                                pos.x += vel.x * 0.01;
-                            }
-                        }
-                    });
-                    std::thread::yield_now();
-                }
-            });
-
-            app.update();
+                    }
+                    assert!(count <= 1000);
+                });
+                std::thread::yield_now();
+            }
         });
-    }
+
+        s.spawn(move || {
+            b2.wait();
+            let start = std::time::Instant::now();
+            while start.elapsed() < Duration::from_millis(50) {
+                par_writer.scope(|mut query| {
+                    for mut view in query.iter_mut() {
+                        for (mut pos, vel) in view.iter_mut() {
+                            pos.x += vel.x * 0.01;
+                        }
+                    }
+                });
+                std::thread::yield_now();
+            }
+        });
+
+        app.update();
+    });
 }
 
 fn dynamic_chaos_mutator_system(

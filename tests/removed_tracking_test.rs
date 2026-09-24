@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
 
 #[derive(PartialEq, Component)]
 enum EntityTag {
@@ -141,26 +140,24 @@ fn verify_frame_3_removal_decay(
     );
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_double_buffered_removals() {
-        let mut app = App::new();
-        app.insert_resource(FrameCounter { current_frame: 0 })
-            .add_systems(Startup, setup_removal_entities)
-            .add_systems(
-                Update,
-                (
-                    increment_frame_system,
-                    apply_frame_1_mutations,
-                    verify_frame_1_removal_isolation,
-                    verify_frame_2_removal_reads,
-                    verify_frame_3_removal_decay,
-                ),
-            );
+#[test_fork::test]
+fn test_double_buffered_removals() {
+    let mut app = App::new();
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, setup_removal_entities)
+        .add_systems(
+            Update,
+            (
+                increment_frame_system,
+                apply_frame_1_mutations,
+                verify_frame_1_removal_isolation,
+                verify_frame_2_removal_reads,
+                verify_frame_3_removal_decay,
+            ),
+        );
 
-        app.set_runner(test_runner_removals);
-        app.run();
-    }
+    app.set_runner(test_runner_removals);
+    app.run();
 }
 
 fn test_runner_removals(app: &mut App) {

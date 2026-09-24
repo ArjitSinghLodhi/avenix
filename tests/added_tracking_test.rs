@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use rusty_fork::rusty_fork_test;
 
 #[derive(PartialEq, Component)]
 enum EntityTag {
@@ -201,27 +200,25 @@ fn verify_frame_3_decay_and_overwrites(
     );
 }
 
-rusty_fork_test! {
-    #[test]
-    fn test_double_buffered_add_and_insert() {
-        let mut app = App::new();
-        app.insert_resource(FrameCounter { current_frame: 0 })
-            .add_systems(Startup, setup_double_buffer_entities)
-            .add_systems(
-                Update,
-                (
-                    increment_frame_system,
-                    apply_frame_1_mutations,
-                    verify_frame_1_buffering_isolation,
-                    verify_frame_2_buffered_reads,
-                    apply_frame_2_redundant_insert,
-                    verify_frame_3_decay_and_overwrites,
-                ),
-            );
+#[test_fork::test]
+fn test_double_buffered_add_and_insert() {
+    let mut app = App::new();
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, setup_double_buffer_entities)
+        .add_systems(
+            Update,
+            (
+                increment_frame_system,
+                apply_frame_1_mutations,
+                verify_frame_1_buffering_isolation,
+                verify_frame_2_buffered_reads,
+                apply_frame_2_redundant_insert,
+                verify_frame_3_decay_and_overwrites,
+            ),
+        );
 
-        app.set_runner(test_runner_double_buffered);
-        app.run();
-    }
+    app.set_runner(test_runner_double_buffered);
+    app.run();
 }
 
 fn test_runner_double_buffered(app: &mut App) {
