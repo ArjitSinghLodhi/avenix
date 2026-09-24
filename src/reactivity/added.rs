@@ -1,6 +1,7 @@
 use std::{any::TypeId, marker::PhantomData};
 
 use indexmap::IndexSet;
+use parking_lot::RwLock;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -19,10 +20,11 @@ pub(crate) fn register_added_tracked_component<T: Component>() {
             component_id: TypeId::of::<T>(),
             marker_id: TypeId::of::<AddedMarker<T>>(),
             create_marker_column: || ComponentColumn {
-                data: Box::new(Vec::<AddedMarker<T>>::new()),
+                data: RwLock::new(Box::new(Vec::<AddedMarker<T>>::new())),
             },
             push_default_marker: |column| {
-                let raw_any = column.data.as_any_mut();
+                let mut gaurd = column.data.write();
+                let raw_any = gaurd.as_any_mut();
                 let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
                 let current_write_idx = CurrentBufferIdx::current_write_idx();
                 let mut added_marker = [false; 2];
@@ -76,7 +78,8 @@ impl<T: Component> QueryFilter for Added<T> {
         register_added_tracked_component::<T>();
     }
     fn filter_indices(archetype: &crate::extensions::Archetype, indices: &mut Vec<usize>) {
-        let marker_ptr = unsafe { (*archetype.fetch_column_raw::<AddedMarker<T>>()).as_ptr() };
+        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
+        let marker_ptr = vec_gaurd.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
         indices.retain(|idx| {
             unsafe { &*marker_ptr.add(*idx) }.added_marker[current_read_idx as usize]
@@ -127,7 +130,8 @@ impl<T: Component> QueryData for AddedTracker<T> {
         types.contains(&TypeId::of::<T>())
     }
     unsafe fn init_fetch(archetype: &crate::extensions::Archetype) -> Self::Fetch {
-        let marker_ptr = unsafe { (*archetype.fetch_column_raw::<AddedMarker<T>>()).as_ptr() };
+        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
+        let marker_ptr = vec_gaurd.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
         ThreadSafe {
             value: (current_read_idx, marker_ptr),

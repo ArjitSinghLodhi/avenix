@@ -12,7 +12,7 @@ impl Entity {
         Self { registry_index }
     }
     #[inline(always)]
-    pub fn registry_idx(&self) -> u32 {
+    pub fn registry_index(&self) -> u32 {
         self.registry_index
     }
 }
@@ -20,7 +20,7 @@ impl Entity {
 impl Clone for Entity {
     fn clone(&self) -> Self {
         unsafe {
-            let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_idx() as usize);
+            let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_index() as usize);
             (*atomic_ptr).fetch_add(1, Ordering::Relaxed);
         }
         Entity::new(self.registry_index)
@@ -30,7 +30,7 @@ impl Clone for Entity {
 impl Drop for Entity {
     fn drop(&mut self) {
         unsafe {
-            let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_idx() as usize);
+            let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_index() as usize);
             (*atomic_ptr).fetch_sub(1, Ordering::Relaxed);
         }
     }

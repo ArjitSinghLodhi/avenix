@@ -49,8 +49,8 @@ struct TagAFilter {
 }
 
 #[derive(SystemParam)]
-struct CompositeSystemParam<'a> {
-    query: Query<'a, PhysicsQuery, TagAFilter>,
+struct CompositeSystemParam<'q, 'a> {
+    query: Query<'q, 'a, PhysicsQuery, TagAFilter>,
     tracker: ResMut<'a, ScoreTracker>,
 }
 

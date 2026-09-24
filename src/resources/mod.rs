@@ -7,6 +7,7 @@ use rustc_hash::FxBuildHasher;
 use std::{
     any::{Any, TypeId, type_name},
     marker::PhantomData,
+    mem::transmute,
 };
 
 mod parallel_resources;
@@ -131,7 +132,6 @@ impl ConcurrentResourceRegistry {
     }
 }
 
-#[doc(hidden)]
 pub trait Resource: 'static {}
 
 pub struct Res<'w, T: Resource + Send + Sync> {
@@ -141,7 +141,7 @@ pub struct Res<'w, T: Resource + Send + Sync> {
 
 impl<'w, T: Resource + Send + Sync> Res<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
-        world.get_resource::<T>()
+        unsafe { transmute::<Res<'_, T>, Res<'_, T>>(world.get_resource::<T>()) }
     }
 }
 
@@ -179,7 +179,7 @@ pub struct ResMut<'w, T: Resource + Send + Sync> {
 
 impl<'w, T: Resource + Send + Sync> ResMut<'w, T> {
     pub(crate) unsafe fn new(world: &mut World) -> Self {
-        world.get_resource_mut::<T>()
+        unsafe { transmute::<ResMut<'_, T>, ResMut<'_, T>>(world.get_resource_mut::<T>()) }
     }
 }
 
@@ -229,7 +229,9 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Option<Res<'w, T>> {
     }
 
     fn get_param(world: &mut World) -> Self {
-        world.get_resource_opt::<T>()
+        unsafe {
+            transmute::<Option<Res<'_, T>>, Option<Res<'_, T>>>(world.get_resource_opt::<T>())
+        }
     }
 }
 
@@ -246,22 +248,22 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Option<ResMut<'w, T>> {
     }
 
     fn get_param(world: &mut World) -> Self {
-        world.get_resource_mut_opt::<T>()
+        unsafe {
+            transmute::<Option<ResMut<'_, T>>, Option<ResMut<'_, T>>>(
+                world.get_resource_mut_opt::<T>(),
+            )
+        }
     }
 }
 
 pub struct NonSend<'w, T: Resource> {
-    val_ptr: *const T,
-    _marker: PhantomData<&'w T>,
+    pub(crate) val_ptr: *const T,
+    pub(crate) _marker: PhantomData<&'w T>,
 }
 
 impl<'w, T: Resource> NonSend<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
-        let res = world.get_non_send_resource::<T>();
-        Self {
-            val_ptr: res as *const T,
-            _marker: PhantomData,
-        }
+        unsafe { transmute::<NonSend<'_, T>, NonSend<'_, T>>(world.get_non_send_resource::<T>()) }
     }
 
     pub fn get(&self) -> &T {
@@ -294,21 +296,17 @@ impl<'w, T: Resource> SystemParam for NonSend<'w, T> {
 }
 
 pub struct NonSendMut<'w, T: Resource> {
-    val_ptr: *mut T,
-    _marker: PhantomData<&'w mut T>,
+    pub(crate) val_ptr: *mut T,
+    pub(crate) _marker: PhantomData<&'w mut T>,
 }
 
 impl<'w, T: Resource> NonSendMut<'w, T> {
     pub(crate) unsafe fn new(world: &mut World) -> Self {
-        let res = world.get_non_send_resource_mut::<T>();
-        Self {
-            val_ptr: res as *mut T,
-            _marker: PhantomData,
+        unsafe {
+            transmute::<NonSendMut<'_, T>, NonSendMut<'_, T>>(
+                world.get_non_send_resource_mut::<T>(),
+            )
         }
-    }
-
-    pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.val_ptr }
     }
 }
 
@@ -321,7 +319,7 @@ impl<'w, T: Resource> std::ops::Deref for NonSendMut<'w, T> {
 
 impl<'w, T: Resource> std::ops::DerefMut for NonSendMut<'w, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.get_mut()
+        unsafe { &mut (*self.val_ptr) }
     }
 }
 
@@ -355,14 +353,10 @@ impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
     }
 
     fn get_param(world: &mut World) -> Self {
-        let res_opt = world.get_non_send_resource_opt::<T>();
-        if let Some(res) = res_opt {
-            Some(NonSend {
-                val_ptr: res as *const T,
-                _marker: PhantomData,
-            })
-        } else {
-            None
+        unsafe {
+            transmute::<Option<NonSend<'_, T>>, Option<NonSend<'_, T>>>(
+                world.get_non_send_resource_opt::<T>(),
+            )
         }
     }
 }
@@ -380,14 +374,10 @@ impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
     }
 
     fn get_param(world: &mut World) -> Self {
-        let res_opt = world.get_non_send_resource_mut_opt::<T>();
-        if let Some(res) = res_opt {
-            Some(NonSendMut {
-                val_ptr: res as *mut T,
-                _marker: PhantomData,
-            })
-        } else {
-            None
+        unsafe {
+            transmute::<Option<NonSendMut<'_, T>>, Option<NonSendMut<'_, T>>>(
+                world.get_non_send_resource_mut_opt::<T>(),
+            )
         }
     }
 }

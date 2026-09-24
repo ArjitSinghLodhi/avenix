@@ -92,7 +92,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
                 for shard in despawn_gaurd.shards() {
                     let mut lock = shard.write();
                     for (entity, _) in lock.drain() {
-                        let idx = entity.registry_idx();
+                        let idx = entity.registry_index();
                         self.historical_seen.insert(idx);
                         self.iteration_batch.push(entity);
                     }
@@ -132,7 +132,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
                     let mut lock = shard.write();
 
                     for (entity, _) in lock.drain() {
-                        let idx = entity.registry_idx();
+                        let idx = entity.registry_index();
                         if self.historical_seen.insert(idx) {
                             self.iteration_batch.push(entity);
                             found_new_unique_despawn = true;

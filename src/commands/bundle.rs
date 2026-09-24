@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use parking_lot::RwLock;
 use rustc_hash::FxBuildHasher;
 use std::any::{TypeId, type_name};
 
@@ -37,25 +38,22 @@ impl<T: Component> ComponentBundle for T {
         columns.insert(
             id,
             ComponentColumn {
-                data: Box::new(Vec::<T>::new()),
+                data: RwLock::new(Box::new(Vec::<T>::new())),
             },
         );
     }
     fn push_to_archetype(self, archetype: &mut Archetype) {
-        unsafe {
-            let vec_ptr = archetype.fetch_column_raw::<T>();
-            (*vec_ptr).push(self);
-        }
+        let mut vec_gaurd = archetype.get_column_mut::<T>();
+        vec_gaurd.push(self);
     }
     unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
         unsafe {
-            let vec_ptr = archetype.fetch_column_raw::<T>();
-            let vec_ref = &mut *vec_ptr;
-            if row_idx < vec_ref.len() {
-                std::ptr::drop_in_place(&mut vec_ref[row_idx]);
-                std::ptr::write(&mut vec_ref[row_idx], self);
+            let mut vec_gaurd = archetype.get_column_mut::<T>();
+            if row_idx < vec_gaurd.len() {
+                std::ptr::drop_in_place(&mut vec_gaurd[row_idx]);
+                std::ptr::write(&mut vec_gaurd[row_idx], self);
             } else {
-                vec_ref.push(self);
+                vec_gaurd.push(self);
             }
         }
     }
@@ -66,7 +64,7 @@ impl<T: Component> ComponentBundle for T {
 }
 
 macro_rules! impl_component_tuple {
-    ($($T:ident),*) => {
+    ($($val:ident : $T:ident),*) => {
         impl<$($T: Component),*> ComponentBundle for ($($T,)*) {
 
             const TYPE_IDS: &[TypeId] = &[ $( TypeId::of::<$T>() ),* ];
@@ -79,37 +77,46 @@ macro_rules! impl_component_tuple {
                 $(
                     let id = TypeId::of::<$T>();
                     columns.insert(id, ComponentColumn {
-                        data: Box::new(Vec::<$T>::new()),
+                        data: RwLock::new(Box::new(Vec::<$T>::new())),
                     });
                 )*
             }
 
             fn push_to_archetype(self, archetype: &mut Archetype) {
                 #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                unsafe {
-                    $(
-                        let vec_ptr = archetype.fetch_column_raw::<$T>();
-                        (*vec_ptr).push($T);
-                    )*
-                }
+                let ($($val,)*) = self;
+
+                $(
+                    #[allow(non_snake_case)]
+                    let mut $T = archetype.get_column_mut::<$T>();
+                )*
+
+                $(
+                    $T.push($val);
+                )*
             }
+
             unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
                 #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                unsafe {
-                    $(
-                        let vec_ptr = archetype.fetch_column_raw::<$T>();
-                        let vec_ref = &mut *vec_ptr;
-                        if row_idx < vec_ref.len() {
-                            std::ptr::drop_in_place(&mut vec_ref[row_idx]);
-                            std::ptr::write(&mut vec_ref[row_idx], $T);
-                        } else {
-                            vec_ref.push($T);
+                let ($($val,)*) = self;
+
+                $(
+                    #[allow(non_snake_case)]
+                    let mut $T = archetype.get_column_mut::<$T>();
+                )*
+
+                $(
+                    if row_idx < $T.len() {
+                        unsafe {
+                            std::ptr::drop_in_place(&mut $T[row_idx]);
+                            std::ptr::write(&mut $T[row_idx], $val);
                         }
-                    )*
-                }
+                    } else {
+                        $T.push($val);
+                    }
+                )*
             }
+
             type NamesArray = [&'static str; 0 $( + { let _ = stringify!($T); 1 } )*];
 
             #[inline(always)]
@@ -120,16 +127,16 @@ macro_rules! impl_component_tuple {
     };
 }
 
-impl_component_tuple!(A);
-impl_component_tuple!(A, B);
-impl_component_tuple!(A, B, C);
-impl_component_tuple!(A, B, C, D);
-impl_component_tuple!(A, B, C, D, E);
-impl_component_tuple!(A, B, C, D, E, F);
-impl_component_tuple!(A, B, C, D, E, F, G);
-impl_component_tuple!(A, B, C, D, E, F, G, H);
-impl_component_tuple!(A, B, C, D, E, F, G, H, I);
-impl_component_tuple!(A, B, C, D, E, F, G, H, I, J);
-impl_component_tuple!(A, B, C, D, E, F, G, H, I, J, K);
-impl_component_tuple!(A, B, C, D, E, F, G, H, I, J, K, L);
-impl_component_tuple!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+impl_component_tuple!(a: A);
+impl_component_tuple!(a: A, b: B);
+impl_component_tuple!(a: A, b: B, c: C);
+impl_component_tuple!(a: A, b: B, c: C, d: D);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L);
+impl_component_tuple!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M);

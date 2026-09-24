@@ -74,6 +74,7 @@ pub mod prelude {
             filter::{
                 EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
             },
+            parallel_query::ParallelQueryAccessor,
         },
         resources::{NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut, Resource},
         world::World,
@@ -109,6 +110,9 @@ pub mod ecs {
             pub use crate::query::filter::{
                 EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
             };
+        }
+        pub mod parallel_query {
+            pub use crate::query::parallel_query::ParallelQueryAccessor;
         }
     }
     #[cfg(feature = "reactivity")]
@@ -146,8 +150,9 @@ pub mod app {
     }
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
-            SystemExecutor, Update,
+            CleanupHandles, ConditionFn, First, IntoScheduleId, Last, PostUpdate, PreUpdate,
+            RunConditionsList, Schedule, ScheduleId, ScheduleLabel, SingleThreadedExecutor,
+            Startup, SystemExecutor, SystemNode, SystemsSchedule, Update,
         };
     }
     pub mod plugin {

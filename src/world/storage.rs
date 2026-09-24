@@ -18,7 +18,10 @@ use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
     entity_registry::REGISTRY_HANDLE_COUNT,
-    resources::{ConcurrentResourceRegistry, ParallelResourceAccessor, Res, ResMut, Resource},
+    resources::{
+        ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
+        Resource,
+    },
     world::archetypes::ArchetypeManager,
 };
 
@@ -114,11 +117,11 @@ impl World {
         }
     }
 
-    pub fn get_resource<'w, T: Resource + Send + Sync>(&self) -> Res<'w, T> {
+    pub fn get_resource<'w, T: Resource + Send + Sync>(&'w self) -> Res<'w, T> {
         self.resources.get_resource::<T>()
     }
 
-    pub fn get_non_send_resource<T: Resource>(&self) -> &T {
+    pub fn get_non_send_resource<'w, T: Resource>(&'w self) -> NonSend<'w, T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get(&type_id).unwrap_or_else(|| {
@@ -130,17 +133,21 @@ impl World {
 
         unsafe {
             let base_any = &*cell.get();
-            base_any
+            let res = base_any
                 .downcast_ref::<T>()
-                .expect("Resource type mismatch!")
+                .expect("Resource type mismatch!");
+            NonSend {
+                val_ptr: res as *const T,
+                _marker: PhantomData,
+            }
         }
     }
 
-    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&mut self) -> ResMut<'w, T> {
+    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&'w mut self) -> ResMut<'w, T> {
         self.resources.get_resource_mut::<T>()
     }
 
-    pub fn get_non_send_resource_mut<T: Resource>(&mut self) -> &mut T {
+    pub fn get_non_send_resource_mut<'w, T: Resource>(&'w mut self) -> NonSendMut<'w, T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self
@@ -153,16 +160,20 @@ impl World {
                 );
             });
         let base_any = cell.get_mut();
-        base_any
+        let res = base_any
             .downcast_mut::<T>()
-            .expect("Resource type mismatch!")
+            .expect("Resource type mismatch!");
+        NonSendMut {
+            val_ptr: res as *mut T,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn get_resource_opt<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
+    pub fn get_resource_opt<'w, T: Resource + Send + Sync>(&'w self) -> Option<Res<'w, T>> {
         self.resources.get_resource_opt::<T>()
     }
 
-    pub fn get_non_send_resource_opt<T: Resource>(&self) -> Option<&T> {
+    pub fn get_non_send_resource_opt<'w, T: Resource>(&'w self) -> Option<NonSend<'w, T>> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get(&type_id)?;
@@ -170,21 +181,31 @@ impl World {
         unsafe {
             let base_any = &*cell.get();
             let casted_ref = base_any.downcast_ref::<T>()?;
-            Some(casted_ref)
+            Some(NonSend {
+                val_ptr: casted_ref as *const T,
+                _marker: PhantomData,
+            })
         }
     }
 
-    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(&mut self) -> Option<ResMut<'w, T>> {
+    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(
+        &'w mut self,
+    ) -> Option<ResMut<'w, T>> {
         self.resources.get_resource_mut_opt::<T>()
     }
 
-    pub fn get_non_send_resource_mut_opt<T: Resource>(&mut self) -> Option<&mut T> {
+    pub fn get_non_send_resource_mut_opt<'w, T: Resource>(
+        &'w mut self,
+    ) -> Option<NonSendMut<'w, T>> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get_mut(&type_id)?;
         let base_any = cell.get_mut();
         let casted_mut = base_any.downcast_mut::<T>()?;
-        Some(casted_mut)
+        Some(NonSendMut {
+            val_ptr: casted_mut as *mut T,
+            _marker: PhantomData,
+        })
     }
 
     pub fn apply_queue_commands(&mut self) {
@@ -212,13 +233,12 @@ impl World {
         use crate::reactivity::REMOVAL_TRACKED_COMPS;
         let tracked_comps = TRACKED_COMPONENTS.read();
         if !tracked_comps.is_empty() {
-            for archetype in self.archetypes_manager.archetypes.values_mut() {
+            for mut archetype in self.archetypes_manager.archetypes.iter_mut() {
                 unsafe {
-                    let columns = &mut *archetype.columns.get();
-
                     for meta in tracked_comps.values() {
-                        if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
-                            let raw_any = marker_column.data.as_any_mut();
+                        if let Some(marker_column) = archetype.columns.get_mut(&meta.marker_id) {
+                            let mut gaurd = marker_column.data.write();
+                            let raw_any = gaurd.as_any_mut();
                             (meta.clear_column_markers)(raw_any);
                         }
                     }

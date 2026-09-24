@@ -3,18 +3,20 @@ pub use plugin::{Plugin, PluginsBuildAll};
 
 use std::{
     collections::VecDeque,
+    marker::PhantomData,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
+    query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
     resources::Resource,
     schedule::{
         CleanupHandles, DefaultSchedulesPlugin, IntoScheduleId, Schedule, ScheduleId,
         ScheduleLabel, Startup,
     },
-    system::{IntoSystemConfigs, System},
+    system::{AccessVec, IntoSystemConfigs, System},
     world::storage::World,
 };
 
@@ -30,7 +32,6 @@ static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 struct ConfigurationContext {
     building_plugins: bool,
-    plugins_processed: bool,
     schedules_added: bool,
     systems_added: bool,
     built: bool,
@@ -40,7 +41,6 @@ impl ConfigurationContext {
     fn new() -> Self {
         Self {
             building_plugins: false,
-            plugins_processed: false,
             schedules_added: false,
             systems_added: false,
             built: false,
@@ -49,11 +49,6 @@ impl ConfigurationContext {
     }
     fn is_building_plugins(&self) -> bool {
         self.building_plugins
-    }
-    fn plugins_processed(&self) {
-        if !self.plugins_processed {
-            panic!("plugins Not processed when expected");
-        }
     }
 
     fn schedules_added(&self) {
@@ -69,7 +64,6 @@ impl ConfigurationContext {
     }
 
     fn built(&self) {
-        self.plugins_processed();
         self.schedules_added();
         self.systems_added();
         if !self.built {
@@ -108,7 +102,6 @@ pub struct App {
     startup_schedule: Schedule,
     cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
-    plugins: Vec<Box<dyn PluginsBuildAll>>,
     systems_blocks: Vec<SystemsBlock>,
     pub(crate) schedule_order_constraints: Vec<(ScheduleId, ScheduleId)>,
     runner_fn: RunnerFn,
@@ -128,7 +121,6 @@ impl App {
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
             schedules: Vec::new(),
-            plugins: Vec::new(),
             systems_blocks: Vec::new(),
             schedule_order_constraints: Vec::new(),
             runner_fn: Box::new(runner_once),
@@ -187,7 +179,7 @@ impl App {
 
     pub fn add_plugins(&mut self, plugins: impl PluginsBuildAll + 'static) -> &mut Self {
         self.configuration.not_ready();
-        self.plugins.push(Box::new(plugins));
+        plugins.build_all(self);
         self
     }
 
@@ -202,16 +194,17 @@ impl App {
         self
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self) -> &mut Self {
         if self.configuration.is_building_plugins() {
             panic!("App::build() was called while building plugins")
         }
         self.configuration.not_ready();
         self.build_everything();
         self.configuration.built = true;
+        self
     }
 
-    pub fn run_startup(&mut self) {
+    pub fn run_startup(&mut self) -> &mut Self {
         if self.configuration.is_building_plugins() {
             panic!("App::run_startup() was called while building plugins")
         }
@@ -221,6 +214,7 @@ impl App {
         }
         self.startup_schedule.run(&mut self.world);
         self.configuration.ran_startup = true;
+        self
     }
 
     pub fn update(&mut self) {
@@ -278,29 +272,26 @@ impl App {
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
     }
+
+    pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
+        &mut self,
+    ) -> ParallelQueryAccessor<Q, F> {
+        self.configuration.not_ready();
+        Q::collect_access(&mut AccessVec::new(), &mut AccessVec::new());
+        F::collect_filter(&mut AccessVec::new(), &mut AccessVec::new());
+        ParallelQueryAccessor {
+            archetypes_map: self.world.archetypes_manager.archetypes.clone(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl App {
     fn build_everything(&mut self) {
-        self.configure_plugins();
         self.configure_schedules();
         self.configure_systems();
         #[cfg(feature = "reactivity")]
         register_removal_tracking_buffers(self);
-    }
-
-    fn configure_plugins(&mut self) {
-        self.configuration.building_plugins = true;
-
-        while !self.plugins.is_empty() {
-            let current_batch = std::mem::take(&mut self.plugins);
-            for plugins_build_all in current_batch {
-                plugins_build_all.build_all(self);
-            }
-        }
-
-        self.configuration.plugins_processed = true;
-        self.configuration.building_plugins = false;
     }
 
     fn configure_systems(&mut self) {

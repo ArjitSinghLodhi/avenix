@@ -1,5 +1,7 @@
+use dashmap::mapref::one::RefMut;
 use indexmap::{IndexMap, IndexSet};
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use parking_lot::RwLock;
+use rustc_hash::FxBuildHasher;
 use std::{any::TypeId, sync::atomic::AtomicU32};
 
 #[cfg(feature = "reactivity")]
@@ -19,21 +21,21 @@ pub(crate) struct SpawnCommand<T: ComponentBundle> {
 impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
     fn apply(self, world: &mut World) {
         let arch_id = world.archetypes_manager.get_or_create_from_generic::<T>();
-        let next_idx = match world.archetypes_manager.get(arch_id) {
+        let next_idx = match world.archetypes_manager.get_mut(arch_id) {
             Some(arch) => arch.entities.len() as u32,
             None => 0,
         };
         let assigned_registry_idx = alloc_registry_cell(arch_id, next_idx, world);
-        let arch = world
+        let mut arch = world
             .archetypes_manager
             .get_mut(arch_id)
             .expect("Archetype generation failed");
 
         arch.entities.push(Entity::new(assigned_registry_idx));
-        self.components.push_to_archetype(arch);
+        self.components.push_to_archetype(&mut arch);
         #[cfg(feature = "reactivity")]
-        unsafe {
-            let columns = &mut *arch.columns.get();
+        {
+            let columns = &mut arch.columns;
             initialize_spawn_markers(columns);
         }
     }
@@ -52,7 +54,7 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
                 .get_or_create_from_generic::<T>()
         };
 
-        let arch = unsafe {
+        let mut arch = unsafe {
             (*world_ptr)
                 .archetypes_manager
                 .get_mut(arch_id)
@@ -73,7 +75,7 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
                 unsafe { alloc_registry_cell(arch_id, next_idx, &mut *world_ptr) };
 
             arch.entities.push(Entity::new(assigned_registry_idx));
-            components.push_to_archetype(arch);
+            components.push_to_archetype(&mut arch);
 
             #[cfg(feature = "reactivity")]
             {
@@ -83,8 +85,8 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
 
         #[cfg(feature = "reactivity")]
         if batch_size > 0 {
-            unsafe {
-                let columns = &mut *arch.columns.get();
+            {
+                let columns = &mut arch.columns;
                 initialize_batch_spawn_markers(columns, batch_size);
             }
         }
@@ -123,7 +125,7 @@ impl DespawnCommand {
             (arch_id, (*data_ptr).idx)
         };
 
-        let arch = world
+        let mut arch = world
             .archetypes_manager
             .get_mut(arch_id)
             .expect("Target archetype missing");
@@ -139,9 +141,9 @@ impl DespawnCommand {
             }
         }
         unsafe {
-            let cols = arch.columns.get();
-            for col in (*cols).values_mut() {
-                col.data.swap_remove_erased(target_idx as usize);
+            let cols = &mut arch.columns;
+            for col in cols.values_mut() {
+                col.data.write().swap_remove_erased(target_idx as usize);
             }
         }
 
@@ -179,26 +181,29 @@ impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
         }
 
         unsafe {
-            let (old_arch, new_arch) = get_double_archetypes(world, old_arch_id, new_arch_id);
+            let (mut old_arch, mut new_arch) =
+                get_double_archetypes(world, old_arch_id, new_arch_id);
             {
-                let new_cols = &mut *new_arch.columns.get();
-                let old_cols = &mut *old_arch.columns.get();
+                #[cfg(feature = "reactivity")]
+                let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+                let new_cols = &mut new_arch.columns;
+                let old_cols = &mut old_arch.columns;
                 if new_cols.is_empty() {
                     T::create_empty_columns(new_cols);
                     clone_existing_columns(old_cols, new_cols);
                     #[cfg(feature = "reactivity")]
-                    initialize_missing_archetype_markers(&new_arch.types, new_cols);
+                    initialize_missing_archetype_markers(new_types, new_cols);
                 }
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
             }
             let new_dense_idx = new_arch.entities.len() as u32;
-            self.components.push_to_archetype(new_arch);
+            self.components.push_to_archetype(&mut new_arch);
             #[cfg(feature = "reactivity")]
             {
-                let fresh_new_cols = &mut *new_arch.columns.get();
+                let fresh_new_cols = &mut new_arch.columns;
                 migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
             }
-            swap_remove_entity_registry_update(old_arch, old_idx);
+            swap_remove_entity_registry_update(&mut old_arch, old_idx);
             let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
             new_arch.entities.push(entity_handle);
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
@@ -227,43 +232,47 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
         };
 
         if old_arch_id == new_arch_id {
-            let arch = world.archetypes_manager.get_mut(old_arch_id).expect(
+            let mut arch = world.archetypes_manager.get_mut(old_arch_id).expect(
                 "Avenix Engine Fatal: Entity registry pointed to an untracked Archetype ID",
             );
 
             unsafe {
-                self.components.insert_to_archetype(arch, old_idx as usize);
+                self.components
+                    .insert_to_archetype(&mut arch, old_idx as usize);
             }
             return;
         }
 
         unsafe {
-            let (old_arch, new_arch) = get_double_archetypes(world, old_arch_id, new_arch_id);
+            let (mut old_arch, mut new_arch) =
+                get_double_archetypes(world, old_arch_id, new_arch_id);
             let new_dense_idx = new_arch.entities.len() as u32;
 
             {
-                let new_cols = new_arch.columns.get_mut();
-                let old_cols = old_arch.columns.get_mut();
+                #[cfg(feature = "reactivity")]
+                let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+                let new_cols = &mut new_arch.columns;
+                let old_cols = &mut old_arch.columns;
 
                 if new_cols.is_empty() {
                     T::create_empty_columns(new_cols);
                     clone_existing_columns(old_cols, new_cols);
                     #[cfg(feature = "reactivity")]
-                    initialize_missing_archetype_markers(&new_arch.types, new_cols);
+                    initialize_missing_archetype_markers(new_types, new_cols);
                 }
 
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
             }
             self.components
-                .insert_to_archetype(new_arch, new_dense_idx as usize);
+                .insert_to_archetype(&mut new_arch, new_dense_idx as usize);
 
             #[cfg(feature = "reactivity")]
             {
-                let fresh_new_cols = new_arch.columns.get_mut();
+                let fresh_new_cols = &mut new_arch.columns;
                 migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
             }
 
-            swap_remove_entity_registry_update(old_arch, old_idx);
+            swap_remove_entity_registry_update(&mut old_arch, old_idx);
             let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
             new_arch.entities.push(entity_handle);
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
@@ -298,11 +307,16 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
         unsafe {
             #[cfg(feature = "reactivity")]
             let world_ptr = world as *mut World;
-            let (old_arch, new_arch) = get_double_archetypes(world, old_arch_id, new_arch_id);
-            let old_cols = &mut *old_arch.columns.get();
-            let new_cols = &mut *new_arch.columns.get();
+            let (mut old_arch, mut new_arch) =
+                get_double_archetypes(world, old_arch_id, new_arch_id);
+            let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+            #[cfg(feature = "reactivity")]
+            let old_types = &(*(&old_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+            let new_cols = &mut (*(&mut new_arch.columns
+                as *mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>));
+            let old_cols = &mut old_arch.columns;
             if new_cols.is_empty() {
-                populate_subtracted_columns(&new_arch.types, old_cols, new_cols);
+                populate_subtracted_columns(new_types, old_cols, new_cols);
             }
             let new_dense_idx = new_arch.entities.len() as u32;
             move_matching_columns(old_cols, new_cols, old_idx as usize);
@@ -310,17 +324,12 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
 
             #[cfg(feature = "reactivity")]
             {
-                erase_subtracted_markers(
-                    &old_arch.types,
-                    &new_arch.types,
-                    old_cols,
-                    old_idx as usize,
-                );
+                erase_subtracted_markers(old_types, new_types, old_cols, old_idx as usize);
                 let entity_handle = &old_arch.entities[old_idx as usize];
                 push_removed_components_reactivity(world_ptr, removed_ids, entity_handle);
             }
 
-            swap_remove_entity_registry_update(old_arch, old_idx);
+            swap_remove_entity_registry_update(&mut old_arch, old_idx);
 
             let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
             new_arch.entities.push(entity_handle);
@@ -377,11 +386,13 @@ unsafe fn get_double_archetypes(
     world: &mut World,
     old_id: ArchetypeId,
     new_id: ArchetypeId,
-) -> (&mut Archetype, &mut Archetype) {
-    let map_ptr =
-        &mut world.archetypes_manager.archetypes as *mut FxHashMap<ArchetypeId, Archetype>;
-    let old_arch = unsafe { (*map_ptr).get_mut(&old_id).expect("Old archetype missing") };
-    let new_arch = unsafe { (*map_ptr).get_mut(&new_id).expect("New archetype missing") };
+) -> (
+    RefMut<'_, ArchetypeId, Archetype>,
+    RefMut<'_, ArchetypeId, Archetype>,
+) {
+    let map = &mut world.archetypes_manager.archetypes;
+    let old_arch = map.get_mut(&old_id).expect("Old archetype missing");
+    let new_arch = map.get_mut(&new_id).expect("New archetype missing");
     (old_arch, new_arch)
 }
 
@@ -390,24 +401,28 @@ fn create_addition_archetype<T: ComponentBundle>(
     old_arch_id: ArchetypeId,
     incoming_ids: &[TypeId],
 ) -> ArchetypeId {
-    let old_arch = world
-        .archetypes_manager
-        .archetypes
-        .get(&old_arch_id)
-        .unwrap();
-    let mut new_types = old_arch.types.clone();
-    for id in incoming_ids {
-        new_types.insert(*id);
-    }
+    let mut new_types_names;
+    let mut new_types;
+    {
+        let old_arch = world
+            .archetypes_manager
+            .archetypes
+            .get_mut(&old_arch_id)
+            .unwrap();
+        new_types = old_arch.types.clone();
+        for id in incoming_ids {
+            new_types.insert(*id);
+        }
 
-    #[cfg(feature = "reactivity")]
-    world
-        .archetypes_manager
-        .sync_tracking_markers(&mut new_types);
+        #[cfg(feature = "reactivity")]
+        world
+            .archetypes_manager
+            .sync_tracking_markers(&mut new_types);
 
-    let mut new_types_names = old_arch.type_names.clone();
-    for id in T::get_type_names().as_ref() {
-        new_types_names.insert(id);
+        new_types_names = old_arch.type_names.clone();
+        for id in T::get_type_names().as_ref() {
+            new_types_names.insert(id);
+        }
     }
     world
         .archetypes_manager
@@ -419,24 +434,28 @@ fn create_subtraction_archetype<T: ComponentBundle>(
     old_arch_id: ArchetypeId,
     removed_ids: &[TypeId],
 ) -> ArchetypeId {
-    let old_arch = world
-        .archetypes_manager
-        .archetypes
-        .get(&old_arch_id)
-        .unwrap();
-    let mut new_types = old_arch.types.clone();
-    for id in removed_ids {
-        new_types.swap_remove(id);
-    }
+    let mut new_types;
+    let mut new_types_names;
+    {
+        let old_arch = world
+            .archetypes_manager
+            .archetypes
+            .get_mut(&old_arch_id)
+            .unwrap();
+        new_types = old_arch.types.clone();
+        for id in removed_ids {
+            new_types.swap_remove(id);
+        }
 
-    #[cfg(feature = "reactivity")]
-    world
-        .archetypes_manager
-        .sync_tracking_markers(&mut new_types);
+        #[cfg(feature = "reactivity")]
+        world
+            .archetypes_manager
+            .sync_tracking_markers(&mut new_types);
 
-    let mut new_types_names = old_arch.type_names.clone();
-    for id_name in T::get_type_names().as_ref() {
-        new_types_names.shift_remove(id_name);
+        new_types_names = old_arch.type_names.clone();
+        for id_name in T::get_type_names().as_ref() {
+            new_types_names.shift_remove(id_name);
+        }
     }
     world
         .archetypes_manager
@@ -453,7 +472,7 @@ fn clone_existing_columns(
             dst.insert(
                 *type_id,
                 ComponentColumn {
-                    data: old_col.data.clone_empty(),
+                    data: RwLock::new(old_col.data.write().clone_empty()),
                 },
             );
         }
@@ -471,7 +490,7 @@ fn populate_subtracted_columns(
             dst.insert(
                 *type_id,
                 ComponentColumn {
-                    data: old_col.data.clone_empty(),
+                    data: RwLock::new(old_col.data.write().clone_empty()),
                 },
             );
         }
@@ -486,8 +505,9 @@ unsafe fn move_matching_columns(
 ) {
     for (type_id, old_col) in src.iter_mut() {
         if let Some(new_col) = dst.get_mut(type_id) {
-            let dst_ptr = &mut *new_col.data as *mut dyn AnyColumn;
-            unsafe { old_col.data.move_row_erased(row_idx, dst_ptr) };
+            let mut data_gaurd = new_col.data.write();
+            let dst_ptr = &mut **data_gaurd as *mut dyn AnyColumn;
+            unsafe { old_col.data.write().move_row_erased(row_idx, dst_ptr) };
         }
     }
 }
@@ -500,7 +520,7 @@ unsafe fn erase_subtracted_columns(
 ) {
     for id in ids {
         if let Some(col) = columns.get_mut(id) {
-            unsafe { col.data.swap_remove_erased(row_idx) };
+            unsafe { col.data.write().swap_remove_erased(row_idx) };
         }
     }
 }
@@ -593,7 +613,7 @@ unsafe fn erase_subtracted_markers(
             && !new_types.contains(&meta.marker_id)
             && let Some(marker_col) = old_cols.get_mut(&meta.marker_id)
         {
-            unsafe { marker_col.data.swap_remove_erased(row_idx) };
+            unsafe { marker_col.data.write().swap_remove_erased(row_idx) };
         }
     }
 }

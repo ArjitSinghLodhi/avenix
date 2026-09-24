@@ -1,10 +1,17 @@
 use std::{
     any::{Any, TypeId, type_name},
-    cell::UnsafeCell,
     hash::{BuildHasher, Hash},
+    mem::transmute,
+    ops::{Deref, DerefMut},
+    sync::Arc,
 };
 
+use dashmap::{
+    DashMap,
+    mapref::one::{Ref, RefMut},
+};
 use indexmap::{IndexMap, IndexSet};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{commands::bundle::ComponentBundle, ecs::Component, entity::Entity};
@@ -15,6 +22,7 @@ use crate::reactivity::TRACKED_COMPONENTS;
 pub(crate) trait AnyColumn: Any {
     unsafe fn swap_remove_erased(&mut self, idx: usize);
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn as_any(&self) -> &dyn Any;
     unsafe fn move_row_erased(&mut self, index: usize, dst: *mut dyn AnyColumn);
     fn clone_empty(&self) -> Box<dyn AnyColumn>;
 }
@@ -25,6 +33,10 @@ impl<T: Component> AnyColumn for Vec<T> {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(&self) -> &dyn Any {
         self
     }
 
@@ -59,7 +71,7 @@ impl ArchetypeId {
 }
 
 pub struct ComponentColumn {
-    pub(crate) data: Box<dyn AnyColumn>,
+    pub(crate) data: RwLock<Box<dyn AnyColumn>>,
 }
 
 impl ComponentColumn {
@@ -67,8 +79,44 @@ impl ComponentColumn {
     #[allow(private_bounds)]
     pub fn new<T: AnyColumn>(column: T) -> Self {
         Self {
-            data: Box::new(column),
+            data: RwLock::new(Box::new(column)),
         }
+    }
+}
+
+pub struct ComponentColumnRead<'a, T: Component> {
+    _gaurd: RwLockReadGuard<'a, Box<dyn AnyColumn>>,
+    column: *const Vec<T>,
+}
+
+unsafe impl<'a, T: Component> Send for ComponentColumnRead<'a, T> {}
+unsafe impl<'a, T: Component> Sync for ComponentColumnRead<'a, T> {}
+
+impl<'a, T: Component> Deref for ComponentColumnRead<'a, T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &(*self.column) }
+    }
+}
+
+pub struct ComponentColumnWrite<'a, T: Component> {
+    _gaurd: RwLockWriteGuard<'a, Box<dyn AnyColumn>>,
+    column: *mut Vec<T>,
+}
+
+unsafe impl<'a, T: Component> Send for ComponentColumnWrite<'a, T> {}
+unsafe impl<'a, T: Component> Sync for ComponentColumnWrite<'a, T> {}
+
+impl<'a, T: Component> Deref for ComponentColumnWrite<'a, T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &(*self.column) }
+    }
+}
+
+impl<'a, T: Component> DerefMut for ComponentColumnWrite<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut (*self.column) }
     }
 }
 
@@ -76,7 +124,7 @@ pub struct Archetype {
     pub(crate) id: ArchetypeId,
     pub(crate) types: IndexSet<TypeId, FxBuildHasher>,
     pub(crate) entities: Vec<Entity>,
-    pub(crate) columns: UnsafeCell<IndexMap<TypeId, ComponentColumn, FxBuildHasher>>,
+    pub(crate) columns: IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
     pub(crate) type_names: IndexSet<&'static str, FxBuildHasher>,
 }
 
@@ -94,45 +142,71 @@ impl Archetype {
             id,
             types,
             entities: Vec::new(),
-            columns: std::cell::UnsafeCell::new(columns),
+            columns,
             type_names,
         }
     }
 
-    /// # Safety
-    ///
-    /// * **Aliasing**: The caller must guarantee that no other mutable or immutable references
-    ///   to this specific column's `Vec<T>` (or its contents) exist simultaneously.
-    /// * **Data Races**: This function returns a raw pointer. Accessing or mutating the underlying
-    ///   vector across threads without explicit synchronization causes a data race.
-    /// * **In**: Modifying the vector (e.g., pushing/popping) may trigger a reallocation,
-    ///   immediately invalidating any previously derived pointers or references to its elements.
-    pub unsafe fn fetch_column_raw<T: 'static>(&self) -> *mut Vec<T> {
-        unsafe {
-            let cols = &mut *self.columns.get();
-            let col = cols
-                .get_mut(&std::any::TypeId::of::<T>())
-                .unwrap_or_else(|| panic!("Column missing of: {:?}", type_name::<T>()));
-            col.data
-                .as_any_mut()
-                .downcast_mut::<Vec<T>>()
-                .expect("Type mismatch!") as *mut Vec<T>
-        }
+    pub fn get_column<'a, T: Component>(&self) -> ComponentColumnRead<'a, T> {
+        let col = self
+            .columns
+            .get(&TypeId::of::<T>())
+            .unwrap_or_else(|| panic!("Column missing of: {:?}", type_name::<T>()));
+        let read_gaurd = col.data.read();
+        let vector = read_gaurd
+            .as_any()
+            .downcast_ref::<Vec<T>>()
+            .expect("Type mismatch") as *const Vec<T>;
+        let reader = ComponentColumnRead {
+            _gaurd: read_gaurd,
+            column: vector,
+        };
+        unsafe { transmute(reader) }
     }
 
-    /// # Safety
-    ///
-    /// * **Aliasing**: The caller must guarantee that no other mutable or immutable references
-    ///   to this specific column's `Vec<T>` (or its contents) exist simultaneously.
-    /// * **Data Races**: This function returns a raw pointer. Accessing or mutating the underlying
-    ///   vector across threads without explicit synchronization causes a data race.
-    /// * **In**: Modifying the vector (e.g., pushing/popping) may trigger a reallocation,
-    ///   immediately invalidating any previously derived pointers or references to its elements.
-    pub unsafe fn fetch_column_raw_opt<T: 'static>(&self) -> Option<*mut Vec<T>> {
-        let cols = unsafe { &mut *self.columns.get() };
-        let col = cols.get_mut(&TypeId::of::<T>())?;
-        let vec_ptr = col.data.as_any_mut().downcast_mut::<Vec<T>>()? as *mut Vec<T>;
-        Some(vec_ptr)
+    pub fn get_column_opt<'a, T: Component>(&self) -> Option<ComponentColumnRead<'a, T>> {
+        let col = self.columns.get(&TypeId::of::<T>())?;
+        let read_gaurd = col.data.read();
+        let vector = read_gaurd
+            .as_any()
+            .downcast_ref::<Vec<T>>()
+            .expect("Type mismatch") as *const Vec<T>;
+        let opt_read = Some(ComponentColumnRead {
+            _gaurd: read_gaurd,
+            column: vector,
+        });
+        unsafe { transmute(opt_read) }
+    }
+
+    pub fn get_column_mut<'a, T: Component>(&self) -> ComponentColumnWrite<'a, T> {
+        let col = self
+            .columns
+            .get(&TypeId::of::<T>())
+            .unwrap_or_else(|| panic!("Column missing of: {:?}", type_name::<T>()));
+        let mut write_gaurd = col.data.write();
+        let vector = write_gaurd
+            .as_any_mut()
+            .downcast_mut::<Vec<T>>()
+            .expect("Type mismatch") as *mut Vec<T>;
+        let writer = ComponentColumnWrite {
+            _gaurd: write_gaurd,
+            column: vector,
+        };
+        unsafe { transmute(writer) }
+    }
+
+    pub fn get_column_mut_opt<'a, T: Component>(&self) -> Option<ComponentColumnWrite<'a, T>> {
+        let col = self.columns.get(&TypeId::of::<T>())?;
+        let mut write_gaurd = col.data.write();
+        let vector = write_gaurd
+            .as_any_mut()
+            .downcast_mut::<Vec<T>>()
+            .expect("Type mismatch") as *mut Vec<T>;
+        let opt_write = Some(ComponentColumnWrite {
+            _gaurd: write_gaurd,
+            column: vector,
+        });
+        unsafe { transmute(opt_write) }
     }
 
     pub(crate) fn id(&self) -> u32 {
@@ -142,7 +216,7 @@ impl Archetype {
 
 pub(crate) struct ArchetypeManager {
     index: FxHashMap<u64, ArchetypeId>,
-    pub(crate) archetypes: FxHashMap<ArchetypeId, Archetype>,
+    pub(crate) archetypes: Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
     pub(crate) next_id: u32,
 }
 
@@ -150,7 +224,7 @@ impl ArchetypeManager {
     pub(crate) fn new() -> Self {
         Self {
             index: FxHashMap::default(),
-            archetypes: FxHashMap::default(),
+            archetypes: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             next_id: 0,
         }
     }
@@ -278,11 +352,15 @@ impl ArchetypeManager {
         new_id
     }
 
-    pub(crate) fn get(&self, id: ArchetypeId) -> Option<&Archetype> {
+    #[allow(dead_code)]
+    pub(crate) fn get<'a>(&'a self, id: ArchetypeId) -> Option<Ref<'a, ArchetypeId, Archetype>> {
         self.archetypes.get(&id)
     }
 
-    pub(crate) fn get_mut(&mut self, id: ArchetypeId) -> Option<&mut Archetype> {
+    pub(crate) fn get_mut<'a>(
+        &'a self,
+        id: ArchetypeId,
+    ) -> Option<RefMut<'a, ArchetypeId, Archetype>> {
         self.archetypes.get_mut(&id)
     }
 }

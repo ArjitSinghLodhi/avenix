@@ -8,6 +8,7 @@ use crate::system::AccessVec;
 use crate::world::archetypes::{Archetype, ComponentColumn};
 use crate::world::storage::CurrentBufferIdx;
 use indexmap::IndexSet;
+use parking_lot::RwLock;
 use rustc_hash::FxBuildHasher;
 use std::any::TypeId;
 use std::marker::PhantomData;
@@ -22,10 +23,11 @@ pub(crate) fn register_tracked_component<T: Component>() {
             component_id,
             marker_id: TypeId::of::<ChangedMarker<T>>(),
             create_marker_column: || ComponentColumn {
-                data: Box::new(Vec::<ChangedMarker<T>>::new()),
+                data: RwLock::new(Box::new(Vec::<ChangedMarker<T>>::new())),
             },
             push_default_marker: |column| {
-                let raw_any = column.data.as_any_mut();
+                let mut gaurd = column.data.write();
+                let raw_any = gaurd.as_any_mut();
                 let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
                 vec.push(ChangedMarker {
                     markers: [false; 2],
@@ -97,7 +99,8 @@ impl<T: Component> QueryData for ChangedTracker<T> {
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        let marker_ptr = unsafe { (*archetype.fetch_column_raw::<ChangedMarker<T>>()).as_ptr() };
+        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
+        let marker_ptr = vec_gaurd.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
 
         ThreadSafe {
@@ -149,7 +152,8 @@ impl<T: Component> QueryFilter for Changed<T> {
     }
 
     fn filter_indices(archetype: &Archetype, indices: &mut Vec<usize>) {
-        let marker_ptr = unsafe { (*archetype.fetch_column_raw::<ChangedMarker<T>>()).as_ptr() };
+        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
+        let marker_ptr = vec_gaurd.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
 
         indices.retain(|&idx| unsafe { &*marker_ptr.add(idx) }.markers[current_read_idx as usize]);
