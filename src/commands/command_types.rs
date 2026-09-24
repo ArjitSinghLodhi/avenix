@@ -1,5 +1,7 @@
 use dashmap::mapref::one::RefMut;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
+#[cfg(feature = "reactivity")]
+use indexmap::IndexSet;
 use parking_lot::RwLock;
 use rustc_hash::FxBuildHasher;
 use std::{any::TypeId, sync::atomic::AtomicU32};
@@ -184,16 +186,8 @@ impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
             let (mut old_arch, mut new_arch) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
             {
-                #[cfg(feature = "reactivity")]
-                let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
                 let new_cols = &mut new_arch.columns;
                 let old_cols = &mut old_arch.columns;
-                if new_cols.is_empty() {
-                    T::create_empty_columns(new_cols);
-                    clone_existing_columns(old_cols, new_cols);
-                    #[cfg(feature = "reactivity")]
-                    initialize_missing_archetype_markers(new_types, new_cols);
-                }
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
             }
             let new_dense_idx = new_arch.entities.len() as u32;
@@ -247,20 +241,9 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
             let (mut old_arch, mut new_arch) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
             let new_dense_idx = new_arch.entities.len() as u32;
-
             {
-                #[cfg(feature = "reactivity")]
-                let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
                 let new_cols = &mut new_arch.columns;
                 let old_cols = &mut old_arch.columns;
-
-                if new_cols.is_empty() {
-                    T::create_empty_columns(new_cols);
-                    clone_existing_columns(old_cols, new_cols);
-                    #[cfg(feature = "reactivity")]
-                    initialize_missing_archetype_markers(new_types, new_cols);
-                }
-
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
             }
             self.components
@@ -309,15 +292,15 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
             let world_ptr = world as *mut World;
             let (mut old_arch, mut new_arch) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
-            let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+
             #[cfg(feature = "reactivity")]
             let old_types = &(*(&old_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+            #[cfg(feature = "reactivity")]
+            let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
+
             let new_cols = &mut (*(&mut new_arch.columns
                 as *mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>));
             let old_cols = &mut old_arch.columns;
-            if new_cols.is_empty() {
-                populate_subtracted_columns(new_types, old_cols, new_cols);
-            }
             let new_dense_idx = new_arch.entities.len() as u32;
             move_matching_columns(old_cols, new_cols, old_idx as usize);
             erase_subtracted_columns(removed_ids, old_cols, old_idx as usize);
@@ -403,12 +386,15 @@ fn create_addition_archetype<T: ComponentBundle>(
 ) -> ArchetypeId {
     let mut new_types_names;
     let mut new_types;
+
+    let mut cloned_base_cols = IndexMap::with_hasher(FxBuildHasher);
     {
         let old_arch = world
             .archetypes_manager
             .archetypes
-            .get_mut(&old_arch_id)
-            .unwrap();
+            .get(&old_arch_id)
+            .expect("Avenix Engine Fatal: Old Archetype ID not found");
+
         new_types = old_arch.types.clone();
         for id in incoming_ids {
             new_types.insert(*id);
@@ -423,10 +409,31 @@ fn create_addition_archetype<T: ComponentBundle>(
         for id in T::get_type_names().as_ref() {
             new_types_names.insert(id);
         }
+
+        for (type_id, old_col) in old_arch.columns.iter() {
+            cloned_base_cols.insert(
+                *type_id,
+                ComponentColumn {
+                    data: RwLock::new(old_col.data.write().clone_empty()),
+                },
+            );
+        }
     }
-    world
-        .archetypes_manager
-        .get_or_create_from_set(new_types, new_types_names)
+
+    world.archetypes_manager.get_or_create_from_set(
+        new_types,
+        new_types_names,
+        |_types_set, cols| {
+            T::create_empty_columns(cols);
+
+            for (type_id, col) in cloned_base_cols {
+                cols.entry(type_id).or_insert(col);
+            }
+
+            #[cfg(feature = "reactivity")]
+            initialize_missing_archetype_markers(_types_set, cols);
+        },
+    )
 }
 
 fn create_subtraction_archetype<T: ComponentBundle>(
@@ -436,12 +443,14 @@ fn create_subtraction_archetype<T: ComponentBundle>(
 ) -> ArchetypeId {
     let mut new_types;
     let mut new_types_names;
+    let mut cloned_base_cols = IndexMap::with_hasher(FxBuildHasher);
     {
         let old_arch = world
             .archetypes_manager
             .archetypes
-            .get_mut(&old_arch_id)
-            .unwrap();
+            .get(&old_arch_id)
+            .expect("Avenix Engine Fatal: Old Archetype ID not found");
+
         new_types = old_arch.types.clone();
         for id in removed_ids {
             new_types.swap_remove(id);
@@ -456,45 +465,31 @@ fn create_subtraction_archetype<T: ComponentBundle>(
         for id_name in T::get_type_names().as_ref() {
             new_types_names.shift_remove(id_name);
         }
-    }
-    world
-        .archetypes_manager
-        .get_or_create_from_set(new_types, new_types_names)
-}
 
-#[inline(always)]
-fn clone_existing_columns(
-    src: &IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
-    dst: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
-) {
-    for (type_id, old_col) in src.iter() {
-        if !dst.contains_key(type_id) {
-            dst.insert(
-                *type_id,
-                ComponentColumn {
-                    data: RwLock::new(old_col.data.write().clone_empty()),
-                },
-            );
+        for (type_id, old_col) in old_arch.columns.iter() {
+            if new_types.contains(type_id) {
+                cloned_base_cols.insert(
+                    *type_id,
+                    ComponentColumn {
+                        data: RwLock::new(old_col.data.write().clone_empty()),
+                    },
+                );
+            }
         }
     }
-}
 
-#[inline(always)]
-fn populate_subtracted_columns(
-    allowed_types: &IndexSet<TypeId, FxBuildHasher>,
-    src: &IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
-    dst: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
-) {
-    for (type_id, old_col) in src.iter() {
-        if allowed_types.contains(type_id) {
-            dst.insert(
-                *type_id,
-                ComponentColumn {
-                    data: RwLock::new(old_col.data.write().clone_empty()),
-                },
-            );
-        }
-    }
+    world.archetypes_manager.get_or_create_from_set(
+        new_types,
+        new_types_names,
+        |_types_set, cols| {
+            for (type_id, col) in cloned_base_cols {
+                cols.insert(type_id, col);
+            }
+
+            #[cfg(feature = "reactivity")]
+            initialize_missing_archetype_markers(_types_set, cols);
+        },
+    )
 }
 
 #[inline(always)]

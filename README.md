@@ -44,7 +44,7 @@ Avenix provides a suite of thread-safe, thread-clonable handles extracted direct
 
 * **`ParallelQueryAccessor<Q, F>`**
   * **How to get:** Call `app.get_par_query_accessor::<Q, F>()` on the application layer *before* calling `app.build()`. 
-  * **Usage:** Invoking `.scope(|query| ...)` spins up a localized `Query` matrix matching the requested component data structures (`Q`) and criteria filters (`F`). This gives background tasks raw, out-of-band iteration access over matching entity rows. It automatically configures and manages double-buffered component tracking columns based on your query filter signatures without any manual registration boilerplate.
+  * **Usage:** Invoking `.scope(|query| ...)` spins up a localized `Query` matrix matching the requested component data structures (`Q: QueryData`) and criteria filters (`F: QueryFilter`). This gives background tasks raw, out-of-band iteration access over matching entity rows. It automatically configures and manages double-buffered component tracking columns based on your query filter signatures without any manual registration boilerplate.
   * **Critical Deadlock Warning:** Because this handle utilizes granular, column-level `RwLocks` to enable simultaneous multi-threaded table reading, nesting parallel query scopes incorrectly on the *same thread* will cause a deadlock. Specifically, opening a mutable query scope while an immutable or mutable query scope targeting overlapping components is already active within that thread will freeze execution.
 ---
 

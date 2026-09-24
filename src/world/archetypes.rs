@@ -286,11 +286,18 @@ impl ArchetypeManager {
         self.index.get(&hash).copied()
     }
 
-    pub(crate) fn get_or_create_from_set(
+    pub(crate) fn get_or_create_from_set<F>(
         &mut self,
         types_set: IndexSet<TypeId, FxBuildHasher>,
         types_names_set: IndexSet<&'static str, FxBuildHasher>,
-    ) -> ArchetypeId {
+        setup_columns: F,
+    ) -> ArchetypeId
+    where
+        F: FnOnce(
+            &IndexSet<TypeId, FxBuildHasher>,
+            &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
+        ),
+    {
         let order_independent_hash = self.calculate_hash(&types_set);
         if let Some(id) = self.index.get(&order_independent_hash).copied() {
             return id;
@@ -298,8 +305,9 @@ impl ArchetypeManager {
 
         let new_id = ArchetypeId::new(self.next_id);
         self.next_id += 1;
+        let mut columns = IndexMap::with_capacity_and_hasher(types_set.len(), FxBuildHasher);
+        setup_columns(&types_set, &mut columns);
 
-        let columns = IndexMap::with_hasher(FxBuildHasher);
         let new_arch = Archetype::new(new_id, types_set, columns, types_names_set);
 
         self.index.insert(order_independent_hash, new_id);
