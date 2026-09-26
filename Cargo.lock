@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8458e160fc193ffbbb230f15e5ee2d5223cde05acde9f13739872d6f65d726c"
+checksum = "fb6b5ba292aa3014571af82b1c8ce5e72e40999d53aad781d384db613b8e6e2f"
 dependencies = [
  "proc-macro2",
  "quote",

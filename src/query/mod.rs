@@ -7,18 +7,16 @@ pub use params::Has;
 
 pub use filter::*;
 
-use indexmap::IndexSet;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::{any::TypeId, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
     entity::Entity,
     entity_registry::REGISTRY,
     extensions::{AccessVec, SystemMeta, SystemParam},
-    system::AccessHashSet,
     world::{
         archetypes::{Archetype, ArchetypeId},
         storage::World,
@@ -30,7 +28,7 @@ pub trait QueryData {
     type ReadOnlyItem<'w>;
     type Fetch: Send + Sync;
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool;
+    fn matches(archetype: &Archetype) -> bool;
 
     /// # Safety
     ///
@@ -360,15 +358,12 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
 
         for arch in archetypes_map.iter() {
             let arch_id = arch.id();
-            if Q::matches(&arch.types)
-                && F::matches(&AccessHashSet {
-                    set: arch.types.clone(),
-                })
-            {
+            if Q::matches(&arch) && F::matches(&arch) {
                 let fetch = unsafe { Q::init_fetch(&arch) };
                 cached_fetches[arch_id as usize] = Some(fetch);
                 let mut indices = (0..arch.entities.len()).collect::<Vec<usize>>();
-                F::filter_indices(&arch, &mut indices);
+                let filter_data = F::init_filter_data(&arch);
+                indices.retain(|row_idx| F::matches_row(&filter_data, *row_idx));
                 cached_indices[arch_id as usize] = indices;
                 matching_archetypes[arch_id as usize] = Some(arch);
             }

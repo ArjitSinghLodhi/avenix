@@ -367,3 +367,76 @@ fn test_runner_once(app: &mut App) {
     app.update();
     app.update();
 }
+
+fn complex_filter_verify_system(
+    counter: Res<FrameCounter>,
+    not_changed_q: Query<&Position, Not<Changed<Position>>>,
+    not_or_q: Query<&Position, Not<Or<(Changed<Position>, Changed<Velocity>)>>>,
+    or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
+) {
+    let not_changed_count = not_changed_q.iter().map(|v| v.len()).sum::<usize>();
+    let not_or_count = not_or_q.iter().map(|v| v.len()).sum::<usize>();
+    let or_mixed_count = or_mixed_q.iter().map(|v| v.len()).sum::<usize>();
+
+    if counter.current_frame == 1 {
+        assert_eq!(
+            not_changed_count, 1,
+            "❌ Not<Changed> failed on frame 1 baseline!"
+        );
+        assert_eq!(
+            not_or_count, 1,
+            "❌ Not<Or<...>> failed on frame 1 baseline!"
+        );
+        assert_eq!(
+            or_mixed_count, 1,
+            "❌ Or<Changed, With> structural arm failed on frame 1 baseline!"
+        );
+    }
+
+    if counter.current_frame == 3 {
+        assert_eq!(
+            not_changed_count, 0,
+            "❌ Not<Changed> failed to filter out mutated entity on frame 3!"
+        );
+        assert_eq!(
+            not_or_count, 0,
+            "❌ Not<Or<...>> failed to filter out mutated entity on frame 3!"
+        );
+        assert_eq!(
+            or_mixed_count, 1,
+            "❌ Or<Changed, With> dynamic arm failed to catch matching entity on frame 3!"
+        );
+    }
+
+    if counter.current_frame == 4 {
+        assert_eq!(
+            not_changed_count, 1,
+            "❌ Not<Changed> failed to reset after change stagnation on frame 4!"
+        );
+        assert_eq!(
+            not_or_count, 1,
+            "❌ Not<Or<...>> failed to reset after change stagnation on frame 4!"
+        );
+        assert_eq!(
+            or_mixed_count, 1,
+            "❌ Or<Changed, With> dropped evaluation via structural arm on frame 4!"
+        );
+    }
+}
+
+#[test_fork::test]
+fn test_complex_changed_combinator_filters() {
+    let mut app = App::new();
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, setup_multi_frame_entities);
+    app.add_systems(
+        Update,
+        (
+            increment_frame_system,
+            midstream_mutator_system,
+            complex_filter_verify_system,
+        ),
+    );
+    app.set_runner(test_runner_four_frames);
+    app.run();
+}

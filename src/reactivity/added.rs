@@ -1,12 +1,9 @@
-use std::{any::TypeId, marker::PhantomData};
-
-use indexmap::IndexSet;
 use parking_lot::RwLock;
-use rustc_hash::FxBuildHasher;
+use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
     ecs::Component,
-    extensions::ComponentColumn,
+    extensions::{Archetype, ComponentColumn, ComponentColumnRead},
     query::{QueryData, QueryFilter, ThreadSafe},
     reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta},
     world::storage::CurrentBufferIdx,
@@ -64,11 +61,27 @@ impl<T: Component> Component for AddedMarker<T> {}
 /// * **Frame 3 (Purge):** The addition state is unconditionally cleared and resets to `false`.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Added<T: Component>(std::marker::PhantomData<T>);
+pub struct Added<'a, T: Component>(std::marker::PhantomData<&'a T>);
 
-impl<T: Component> QueryFilter for Added<T> {
-    fn matches(types: &crate::extensions::AccessHashSet<TypeId>) -> bool {
-        types.contains(&TypeId::of::<T>())
+pub struct AddedFilterData<'a, T: Component> {
+    vec_gaurd: ComponentColumnRead<'a, AddedMarker<T>>,
+    read_idx: usize,
+}
+
+impl<'a, T: Component> QueryFilter for Added<'a, T> {
+    type FilterData = AddedFilterData<'a, T>;
+    fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
+        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
+        AddedFilterData {
+            vec_gaurd: vec_gaurd,
+            read_idx: CurrentBufferIdx::current_read_idx() as usize,
+        }
+    }
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
+    }
+    fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
+        unsafe { (*filter_data.vec_gaurd.as_ptr().add(row_idx)).added_marker[filter_data.read_idx] }
     }
     fn collect_filter(
         withs: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -76,14 +89,6 @@ impl<T: Component> QueryFilter for Added<T> {
     ) {
         withs.push(TypeId::of::<AddedMarker<T>>());
         register_added_tracked_component::<T>();
-    }
-    fn filter_indices(archetype: &crate::extensions::Archetype, indices: &mut Vec<usize>) {
-        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
-        let marker_ptr = vec_gaurd.as_ptr();
-        let current_read_idx = CurrentBufferIdx::current_read_idx();
-        indices.retain(|idx| {
-            unsafe { &*marker_ptr.add(*idx) }.added_marker[current_read_idx as usize]
-        });
     }
 }
 
@@ -126,10 +131,10 @@ impl<T: Component> QueryData for AddedTracker<T> {
         reads.push(TypeId::of::<AddedMarker<T>>());
         register_added_tracked_component::<T>();
     }
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
-    unsafe fn init_fetch(archetype: &crate::extensions::Archetype) -> Self::Fetch {
+    unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
         let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
         let marker_ptr = vec_gaurd.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();

@@ -71,9 +71,7 @@ pub mod prelude {
         entity::Entity,
         query::{
             Has, Query, QueryArchetypeView, QueryData, QuerySubChunk,
-            filter::{
-                EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
-            },
+            filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without},
             parallel_query::ParallelQueryAccessor,
         },
         resources::{NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut, Resource},
@@ -108,9 +106,7 @@ pub mod ecs {
     pub mod query {
         pub use crate::query::{Has, Query, QueryArchetypeView, QueryData, QuerySubChunk};
         pub mod filter {
-            pub use crate::query::filter::{
-                EmptyQueryFilter, Not, Or, QueryFilter, StructuralQueryFilter, With, Without,
-            };
+            pub use crate::query::filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without};
         }
         pub mod parallel_query {
             pub use crate::query::parallel_query::ParallelQueryAccessor;
