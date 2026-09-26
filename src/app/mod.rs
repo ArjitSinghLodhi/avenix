@@ -130,7 +130,7 @@ impl App {
         app
     }
 
-    pub fn add_schedule<L: ScheduleLabel + 'static>(&mut self, schedule: L) -> &mut Self {
+    pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
         self.configuration.not_ready();
 
         if schedule.id() == Startup.id() {
@@ -138,7 +138,7 @@ impl App {
         } else if schedule.id() == CleanupHandles.id() {
             panic!("CleanupHandles schedule cannnot be overwritten")
         } else {
-            self.schedules.push(Schedule::new(schedule));
+            self.schedules.push(schedule);
         }
         self
     }

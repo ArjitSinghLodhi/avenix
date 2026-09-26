@@ -11,8 +11,7 @@ use crate::{
     reactivity::{ChangedMarker, Mut},
     world::storage::CurrentBufferIdx,
 };
-use indexmap::IndexSet;
-use rustc_hash::FxBuildHasher;
+
 use std::{any::TypeId, marker::PhantomData};
 
 impl<'a, T: Component> QueryData for &'a T {
@@ -20,8 +19,8 @@ impl<'a, T: Component> QueryData for &'a T {
     type ReadOnlyItem<'w> = &'w T;
     type Fetch = ComponentColumnRead<'a, T>;
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
     fn collect_access(
         reads: &mut AccessVec<std::any::TypeId>,
@@ -46,8 +45,8 @@ impl<'a, T: Component> QueryData for &'a mut T {
     type ReadOnlyItem<'w> = &'w T;
     type Fetch = ComponentColumnWrite<'a, T>;
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
@@ -81,8 +80,8 @@ impl<'a, T: Component> QueryData for &'a mut T {
         bool,
     )>;
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
@@ -144,7 +143,7 @@ impl QueryData for Entity {
     type ReadOnlyItem<'w> = &'w Entity;
     type Fetch = ThreadSafe<*const Entity>;
 
-    fn matches(_types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
+    fn matches(_archetype: &Archetype) -> bool {
         true
     }
     fn collect_access(_reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {}
@@ -166,7 +165,7 @@ impl<'a, T: Component> QueryData for Option<&'a T> {
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch = Option<ComponentColumnWrite<'a, T>>;
 
-    fn matches(_types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
+    fn matches(_archetype: &Archetype) -> bool {
         true
     }
 
@@ -205,10 +204,9 @@ impl<'a, T: Component> QueryData for Option<&'a mut T> {
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch = Option<ComponentColumnWrite<'a, T>>;
 
-    fn matches(_types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
+    fn matches(_archetype: &Archetype) -> bool {
         true
     }
-
     fn collect_access(_reads: &mut AccessVec<TypeId>, writes: &mut AccessVec<TypeId>) {
         writes.push(TypeId::of::<T>());
     }
@@ -255,7 +253,7 @@ impl<'a, T: Component> QueryData for Option<&'a mut T> {
         )>,
     >;
 
-    fn matches(_types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
+    fn matches(_archetype: &Archetype) -> bool {
         true
     }
 
@@ -339,8 +337,8 @@ impl<T: Component> QueryData for Has<T> {
     ) {
     }
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
@@ -363,7 +361,7 @@ macro_rules! impl_world_query_tuple {
             type ReadOnlyItem<'w> = ($($name::ReadOnlyItem<'w>,)*);
             type Fetch = ($($name::Fetch,)*);
 
-            fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool { $($name::matches(types))&&* }
+            fn matches(archetype: &Archetype) -> bool { $($name::matches(archetype))&&* }
             unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch { unsafe { ($($name::init_fetch(archetype),)*) } }
             unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
                 unsafe {($($name::fetch_mut(&fetch.$idx, index),)*)}

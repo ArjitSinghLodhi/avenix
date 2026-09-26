@@ -18,11 +18,11 @@ pub(crate) struct DefaultSchedulesPlugin;
 
 impl Plugin for DefaultSchedulesPlugin {
     fn build(self, app: &mut App) {
-        app.add_schedule(First)
-            .add_schedule(PreUpdate)
-            .add_schedule(Update)
-            .add_schedule(PostUpdate)
-            .add_schedule(Last);
+        app.add_schedule(Schedule::new(First))
+            .add_schedule(Schedule::new(PreUpdate))
+            .add_schedule(Schedule::new(Update))
+            .add_schedule(Schedule::new(PostUpdate))
+            .add_schedule(Schedule::new(Last));
 
         app.configure_schedule_order(First, PreUpdate)
             .configure_schedule_order(PreUpdate, Update)

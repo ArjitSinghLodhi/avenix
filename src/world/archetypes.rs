@@ -147,6 +147,10 @@ impl Archetype {
         }
     }
 
+    pub fn has_column<T: Component>(&self) -> bool {
+        self.types.contains(&TypeId::of::<T>())
+    }
+
     pub fn get_column<'a, T: Component>(&self) -> ComponentColumnRead<'a, T> {
         let col = self
             .columns

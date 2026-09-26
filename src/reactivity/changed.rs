@@ -1,15 +1,13 @@
 use crate::ecs::Component;
+use crate::extensions::ComponentColumnRead;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
 use crate::query::ThreadSafe;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
-use crate::system::AccessHashSet;
 use crate::system::AccessVec;
 use crate::world::archetypes::{Archetype, ComponentColumn};
 use crate::world::storage::CurrentBufferIdx;
-use indexmap::IndexSet;
 use parking_lot::RwLock;
-use rustc_hash::FxBuildHasher;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
@@ -86,8 +84,8 @@ impl<T: Component> QueryData for ChangedTracker<T> {
     type ReadOnlyItem<'w> = ChangedTracker<T>;
     type Fetch = ThreadSafe<(u8, *const ChangedMarker<T>)>;
 
-    fn matches(types: &IndexSet<TypeId, FxBuildHasher>) -> bool {
-        types.contains(&TypeId::of::<T>())
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
     }
 
     fn collect_access(
@@ -139,24 +137,34 @@ impl<T: Component> QueryData for ChangedTracker<T> {
 /// * **Frame 3 (Purge):** The change state is unconditionally cleared.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Changed<T: Component>(std::marker::PhantomData<T>);
+pub struct Changed<'a, T: Component>(std::marker::PhantomData<&'a T>);
 
-impl<T: Component> QueryFilter for Changed<T> {
-    fn matches(types: &AccessHashSet<TypeId>) -> bool {
-        types.contains(&TypeId::of::<T>())
+pub struct ChangedFilterData<'a, T: Component> {
+    vec_gaurd: ComponentColumnRead<'a, ChangedMarker<T>>,
+    read_idx: usize,
+}
+
+impl<'a, T: Component> QueryFilter for Changed<'a, T> {
+    type FilterData = ChangedFilterData<'a, T>;
+    fn matches(archetype: &Archetype) -> bool {
+        archetype.has_column::<T>()
+    }
+
+    fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
+        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
+        ChangedFilterData {
+            vec_gaurd,
+            read_idx: CurrentBufferIdx::current_read_idx() as usize,
+        }
+    }
+
+    fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
+        unsafe { (*(filter_data.vec_gaurd.as_ptr().add(row_idx))).markers[filter_data.read_idx] }
     }
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {
         withs.push(TypeId::of::<ChangedMarker<T>>());
         register_tracked_component::<T>();
-    }
-
-    fn filter_indices(archetype: &Archetype, indices: &mut Vec<usize>) {
-        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
-        let marker_ptr = vec_gaurd.as_ptr();
-        let current_read_idx = CurrentBufferIdx::current_read_idx();
-
-        indices.retain(|&idx| unsafe { &*marker_ptr.add(idx) }.markers[current_read_idx as usize]);
     }
 }
 

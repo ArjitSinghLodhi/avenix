@@ -40,7 +40,7 @@ fn main() {
     app.build();
     app.run_startup();
 
-    println!("⚡ Starting concurrent background worker threads and main app frame updates...");
+    println!("Starting concurrent background worker threads and main app frame updates...");
 
     std::thread::scope(|s| {
         let b1 = shared_barrier.clone();
@@ -59,7 +59,7 @@ fn main() {
                     }
                 }
                 println!(
-                    "🔍 [Background Reader Thread] Successfully scanned {} entities concurrently.",
+                    "[Background Reader Thread] Successfully scanned {} entities concurrently.",
                     read_count
                 );
             });
@@ -79,7 +79,7 @@ fn main() {
                     }
                 }
                 println!(
-                    "📝 [Background Writer Thread] Successfully mutated {} entities out-of-band.",
+                    "[Background Writer Thread] Successfully mutated {} entities out-of-band.",
                     write_count
                 );
             });
@@ -93,11 +93,11 @@ fn main() {
         for view in query.iter() {
             total_reactive_catch += view.len();
         }
-        println!("✨ [Main Thread Reactive Sweep] Caught {} mutably modified leaders via Changed<T> filter.", total_reactive_catch);
+        println!("[Main Thread Reactive Sweep] Caught {} mutably modified leaders via Changed<T> filter.", total_reactive_catch);
         assert_eq!(total_reactive_catch, 500);
     });
 
-    println!("✅ Parallel Query Accessor example executed completely error-free!");
+    println!("Parallel Query Accessor example executed completely error-free!");
 }
 
 fn setup_simulation_entities(commands: Commands) {

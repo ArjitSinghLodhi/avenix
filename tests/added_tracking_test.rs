@@ -228,3 +228,72 @@ fn test_runner_double_buffered(app: &mut App) {
     app.update();
     app.update();
 }
+
+fn complex_added_filter_verify_system(
+    counter: Res<FrameCounter>,
+    not_added_q: Query<&EntityTag, Not<Added<Velocity>>>,
+    not_or_q: Query<&EntityTag, Not<Or<(Added<Velocity>, Added<Acceleration>)>>>,
+    or_mixed_q: Query<&EntityTag, Or<(Added<Velocity>, With<Position>)>>,
+) {
+    let mut not_added_count = 0;
+    for view in not_added_q.iter() {
+        for tag in view.iter() {
+            if *tag == EntityTag::AdderTarget {
+                not_added_count += 1;
+            }
+        }
+    }
+
+    let mut not_or_count = 0;
+    for view in not_or_q.iter() {
+        for tag in view.iter() {
+            if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
+                not_or_count += 1;
+            }
+        }
+    }
+
+    let mut or_mixed_count = 0;
+    for view in or_mixed_q.iter() {
+        for tag in view.iter() {
+            if *tag == EntityTag::AdderTarget {
+                or_mixed_count += 1;
+            }
+        }
+    }
+
+    if counter.current_frame == 1 {
+        assert_eq!(not_added_count, 1);
+        assert_eq!(not_or_count, 2);
+        assert_eq!(or_mixed_count, 1);
+    }
+
+    if counter.current_frame == 2 {
+        assert_eq!(not_added_count, 0);
+        assert_eq!(not_or_count, 0);
+        assert_eq!(or_mixed_count, 1);
+    }
+
+    if counter.current_frame == 3 {
+        assert_eq!(not_added_count, 1);
+        assert_eq!(not_or_count, 2);
+        assert_eq!(or_mixed_count, 1);
+    }
+}
+
+#[test_fork::test]
+fn test_complex_added_combinator_filters() {
+    let mut app = App::new();
+    app.insert_resource(FrameCounter { current_frame: 0 })
+        .add_systems(Startup, setup_double_buffer_entities);
+    app.add_systems(
+        Update,
+        (
+            increment_frame_system,
+            apply_frame_1_mutations,
+            complex_added_filter_verify_system,
+        ),
+    );
+    app.set_runner(test_runner_double_buffered);
+    app.run();
+}
