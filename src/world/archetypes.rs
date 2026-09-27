@@ -245,11 +245,15 @@ impl ArchetypeManager {
     #[cfg(feature = "reactivity")]
     pub(crate) fn sync_tracking_markers(&self, types: &mut IndexSet<TypeId, FxBuildHasher>) {
         let tracked = TRACKED_COMPONENTS.read();
-        for meta in tracked.values() {
-            if types.contains(&meta.component_id) {
-                types.insert(meta.marker_id);
+        for (comp_id, meta_list) in tracked.iter() {
+            if types.contains(comp_id) {
+                for meta in meta_list {
+                    types.insert(meta.marker_id);
+                }
             } else {
-                types.swap_remove(&meta.marker_id);
+                for meta in meta_list {
+                    types.swap_remove(&meta.marker_id);
+                }
             }
         }
     }
@@ -351,12 +355,15 @@ impl ArchetypeManager {
         #[cfg(feature = "reactivity")]
         {
             let tracked = TRACKED_COMPONENTS.read();
-            tracked
-                .values()
-                .filter(|m| types_set.contains(&m.marker_id))
-                .for_each(|m| {
-                    columns.insert(m.marker_id, (m.create_marker_column)());
-                });
+            for &comp_id in incoming_ids {
+                if let Some(meta_list) = tracked.get(&comp_id) {
+                    for meta in meta_list {
+                        if types_set.contains(&meta.marker_id) {
+                            columns.insert(meta.marker_id, (meta.create_marker_column)());
+                        }
+                    }
+                }
+            }
         }
         let new_arch = Archetype::new(new_id, types_set, columns, types_names_set);
         self.index.insert(order_independent_hash, new_id);

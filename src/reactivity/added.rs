@@ -11,35 +11,40 @@ use crate::{
 
 pub(crate) fn register_added_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.write();
-    tracked.insert(
-        TypeId::of::<T>(),
-        TrackedComponentMeta {
-            component_id: TypeId::of::<T>(),
-            marker_id: TypeId::of::<AddedMarker<T>>(),
-            create_marker_column: || ComponentColumn {
-                data: RwLock::new(Box::new(Vec::<AddedMarker<T>>::new())),
-            },
-            push_default_marker: |column| {
-                let mut gaurd = column.data.write();
-                let raw_any = gaurd.as_any_mut();
-                let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
-                let current_write_idx = CurrentBufferIdx::current_write_idx();
-                let mut added_marker = [false; 2];
-                added_marker[current_write_idx as usize] = true;
-                vec.push(AddedMarker {
-                    added_marker,
-                    phantom: PhantomData,
-                });
-            },
-            clear_column_markers: |raw_any| {
-                let idx = CurrentBufferIdx::current_write_idx();
-                let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
-                vec.iter_mut().for_each(|marker| {
-                    marker.added_marker[idx as usize] = false;
-                });
-            },
+    let component_id = TypeId::of::<T>();
+    let marker_id = TypeId::of::<AddedMarker<T>>();
+
+    let meta_list = tracked.entry(component_id).or_default();
+
+    if meta_list.iter().any(|m| m.marker_id == marker_id) {
+        return;
+    }
+
+    meta_list.push(TrackedComponentMeta {
+        marker_id,
+        create_marker_column: || ComponentColumn {
+            data: RwLock::new(Box::new(Vec::<AddedMarker<T>>::new())),
         },
-    );
+        push_default_marker: |column| {
+            let mut gaurd = column.data.write();
+            let raw_any = gaurd.as_any_mut();
+            let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
+            let current_write_idx = CurrentBufferIdx::current_write_idx();
+            let mut added_marker = [false; 2];
+            added_marker[current_write_idx as usize] = true;
+            vec.push(AddedMarker {
+                added_marker,
+                phantom: PhantomData,
+            });
+        },
+        clear_column_markers: |raw_any| {
+            let idx = CurrentBufferIdx::current_write_idx();
+            let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
+            vec.iter_mut().for_each(|marker| {
+                marker.added_marker[idx as usize] = false;
+            });
+        },
+    });
 }
 
 pub struct AddedMarker<T> {

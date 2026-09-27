@@ -11,36 +11,39 @@ use parking_lot::RwLock;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-pub(crate) fn register_tracked_component<T: Component>() {
+pub(crate) fn register_changed_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.write();
     let component_id = TypeId::of::<T>();
+    let marker_id = TypeId::of::<ChangedMarker<T>>();
 
-    tracked.insert(
-        component_id,
-        TrackedComponentMeta {
-            component_id,
-            marker_id: TypeId::of::<ChangedMarker<T>>(),
-            create_marker_column: || ComponentColumn {
-                data: RwLock::new(Box::new(Vec::<ChangedMarker<T>>::new())),
-            },
-            push_default_marker: |column| {
-                let mut gaurd = column.data.write();
-                let raw_any = gaurd.as_any_mut();
-                let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
-                vec.push(ChangedMarker {
-                    markers: [false; 2],
-                    phantom: PhantomData,
-                });
-            },
-            clear_column_markers: |raw_any| {
-                let idx = CurrentBufferIdx::current_write_idx();
-                let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
-                vec.iter_mut().for_each(|marker| {
-                    marker.markers[idx as usize] = false;
-                });
-            },
+    let meta_list = tracked.entry(component_id).or_default();
+
+    if meta_list.iter().any(|m| m.marker_id == marker_id) {
+        return;
+    }
+
+    meta_list.push(TrackedComponentMeta {
+        marker_id,
+        create_marker_column: || ComponentColumn {
+            data: RwLock::new(Box::new(Vec::<ChangedMarker<T>>::new())),
         },
-    );
+        push_default_marker: |column| {
+            let mut gaurd = column.data.write();
+            let raw_any = gaurd.as_any_mut();
+            let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
+            vec.push(ChangedMarker {
+                markers: [false; 2],
+                phantom: PhantomData,
+            });
+        },
+        clear_column_markers: |raw_any| {
+            let idx = CurrentBufferIdx::current_write_idx();
+            let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
+            vec.iter_mut().for_each(|marker| {
+                marker.markers[idx as usize] = false;
+            });
+        },
+    });
 }
 
 #[derive(Clone, Copy)]
@@ -93,7 +96,7 @@ impl<T: Component> QueryData for ChangedTracker<T> {
         _writes: &mut AccessVec<std::any::TypeId>,
     ) {
         reads.push(TypeId::of::<ChangedMarker<T>>());
-        register_tracked_component::<T>();
+        register_changed_tracked_component::<T>();
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
@@ -164,7 +167,7 @@ impl<'a, T: Component> QueryFilter for Changed<'a, T> {
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {
         withs.push(TypeId::of::<ChangedMarker<T>>());
-        register_tracked_component::<T>();
+        register_changed_tracked_component::<T>();
     }
 }
 

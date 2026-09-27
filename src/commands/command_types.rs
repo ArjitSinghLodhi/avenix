@@ -536,9 +536,11 @@ unsafe fn swap_remove_entity_registry_update(arch: &mut Archetype, removed_row_i
 #[inline(always)]
 fn initialize_spawn_markers(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
     let tracked = TRACKED_COMPONENTS.read();
-    for meta in tracked.values() {
-        if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
-            unsafe { (meta.push_default_marker)(marker_column) };
+    for meta_list in tracked.values() {
+        for meta in meta_list {
+            if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
+                unsafe { (meta.push_default_marker)(marker_column) };
+            }
         }
     }
 }
@@ -550,10 +552,12 @@ fn initialize_batch_spawn_markers(
     batch_size: usize,
 ) {
     let tracked = TRACKED_COMPONENTS.read();
-    for meta in tracked.values() {
-        if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
-            for _ in 0..batch_size {
-                unsafe { (meta.push_default_marker)(marker_column) };
+    for meta_list in tracked.values() {
+        for meta in meta_list {
+            if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
+                for _ in 0..batch_size {
+                    unsafe { (meta.push_default_marker)(marker_column) };
+                }
             }
         }
     }
@@ -566,9 +570,11 @@ fn initialize_missing_archetype_markers(
     columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
 ) {
     let tracked = TRACKED_COMPONENTS.read();
-    for meta in tracked.values() {
-        if types.contains(&meta.marker_id) && !columns.contains_key(&meta.marker_id) {
-            columns.insert(meta.marker_id, (meta.create_marker_column)());
+    for meta_list in tracked.values() {
+        for meta in meta_list {
+            if types.contains(&meta.marker_id) && !columns.contains_key(&meta.marker_id) {
+                columns.insert(meta.marker_id, (meta.create_marker_column)());
+            }
         }
     }
 }
@@ -581,14 +587,19 @@ unsafe fn migrate_addition_markers(
     new_cols: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
 ) {
     let tracked = TRACKED_COMPONENTS.read();
-    for meta in tracked.values() {
-        if new_cols.contains_key(&meta.marker_id) {
-            if old_types.contains(&meta.marker_id) {
-                continue;
-            } else if incoming_ids.contains(&meta.component_id)
-                && let Some(marker_column) = new_cols.get_mut(&meta.marker_id)
-            {
-                unsafe { (meta.push_default_marker)(marker_column) };
+
+    // Performance Win: Instead of scanning all global trackers, only iterate
+    // over the explicit subset of components being introduced to the entity.
+    for &comp_id in incoming_ids {
+        if let Some(meta_list) = tracked.get(&comp_id) {
+            for meta in meta_list {
+                if new_cols.contains_key(&meta.marker_id) {
+                    if old_types.contains(&meta.marker_id) {
+                        continue;
+                    } else if let Some(marker_column) = new_cols.get_mut(&meta.marker_id) {
+                        unsafe { (meta.push_default_marker)(marker_column) };
+                    }
+                }
             }
         }
     }
@@ -603,12 +614,14 @@ unsafe fn erase_subtracted_markers(
     row_idx: usize,
 ) {
     let tracked = TRACKED_COMPONENTS.read();
-    for meta in tracked.values() {
-        if old_types.contains(&meta.marker_id)
-            && !new_types.contains(&meta.marker_id)
-            && let Some(marker_col) = old_cols.get_mut(&meta.marker_id)
-        {
-            unsafe { marker_col.data.write().swap_remove_erased(row_idx) };
+    for meta_list in tracked.values() {
+        for meta in meta_list {
+            if old_types.contains(&meta.marker_id)
+                && !new_types.contains(&meta.marker_id)
+                && let Some(marker_col) = old_cols.get_mut(&meta.marker_id)
+            {
+                unsafe { marker_col.data.write().swap_remove_erased(row_idx) };
+            }
         }
     }
 }

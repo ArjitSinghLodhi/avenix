@@ -11,7 +11,6 @@ mod changed;
 mod removed;
 
 pub(crate) struct TrackedComponentMeta {
-    pub(crate) component_id: TypeId,
     pub(crate) marker_id: TypeId,
     pub(crate) create_marker_column: fn() -> ComponentColumn,
     pub(crate) push_default_marker: unsafe fn(&mut ComponentColumn),
@@ -19,7 +18,7 @@ pub(crate) struct TrackedComponentMeta {
 }
 
 pub(crate) static TRACKED_COMPONENTS: RwLock<
-    IndexMap<TypeId, TrackedComponentMeta, FxBuildHasher>,
+    IndexMap<TypeId, Vec<TrackedComponentMeta>, FxBuildHasher>,
 > = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
 
 pub use changed::{Changed, ChangedTracker};
