@@ -27,10 +27,18 @@ use crate::extensions::{SystemMeta, SystemParam, World};
 ///   be dropped across the frame layout before execution occurs.
 ///
 /// [`.get_par_commands()`]: crate::world::storage::World::get_par_commands
-#[derive(Clone)]
 pub struct ParallelCommands {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
     pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,
+}
+
+impl Clone for ParallelCommands {
+    fn clone(&self) -> Self {
+        Self {
+            queue: self.queue.clone(),
+            despawns: self.despawns.clone(),
+        }
+    }
 }
 
 impl ParallelCommands {

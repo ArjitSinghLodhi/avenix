@@ -22,9 +22,16 @@ use crate::{
 /// Also usable as a system param.
 ///
 /// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer
-#[derive(Clone)]
 pub struct ParallelEventWriter<T: Event> {
     pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
+}
+
+impl<T: Event> Clone for ParallelEventWriter<T> {
+    fn clone(&self) -> Self {
+        Self {
+            write_queue: self.write_queue.clone(),
+        }
+    }
 }
 
 impl<T: Event> ParallelEventWriter<T> {
@@ -73,9 +80,16 @@ unsafe impl<T: Event> Sync for ParallelEventWriter<T> {}
 /// Also usable as a system param.
 ///
 /// [`.get_par_event_reader()`]: crate::world::storage::World::get_par_event_reader
-#[derive(Clone)]
 pub struct ParallelEventReader<T: Event> {
     pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
+}
+
+impl<T: Event> Clone for ParallelEventReader<T> {
+    fn clone(&self) -> Self {
+        Self {
+            read_queue: self.read_queue.clone(),
+        }
+    }
 }
 
 impl<T: Event> ParallelEventReader<T> {

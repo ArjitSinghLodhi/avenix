@@ -26,10 +26,18 @@ use crate::{
 /// register demand-driven component tracking configurations behind the scenes.
 ///
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
-#[derive(Clone)]
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,
+}
+
+impl<Q: QueryData, F: QueryFilter> Clone for ParallelQueryAccessor<Q, F> {
+    fn clone(&self) -> Self {
+        Self {
+            archetypes_map: self.archetypes_map.clone(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<Q: QueryData, F: QueryFilter> ParallelQueryAccessor<Q, F> {
