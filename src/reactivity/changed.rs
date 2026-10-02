@@ -3,6 +3,7 @@ use crate::extensions::ComponentColumnRead;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
 use crate::query::ThreadSafe;
+use crate::reactivity::verify_app_not_build_yet;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
 use crate::system::AccessVec;
 use crate::world::archetypes::{Archetype, ComponentColumn};
@@ -12,6 +13,7 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 
 pub(crate) fn register_changed_tracked_component<T: Component>() {
+    let _lock = verify_app_not_build_yet();
     let mut tracked = TRACKED_COMPONENTS.write();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<ChangedMarker<T>>();

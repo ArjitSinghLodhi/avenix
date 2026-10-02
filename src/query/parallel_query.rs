@@ -9,21 +9,31 @@ use crate::{
     world::archetypes::ArchetypeId,
 };
 
-/// A thread-safe, thread-clonable handle that acts as a detached remote to query the engine's archetype data blocks.
+/// A thread-safe, clonable handle providing detached remote access to the engine's archetype data blocks.
 ///
 /// `ParallelQueryAccessor` can be passed to external or background worker threads, allowing them to
 /// concurrently read or modify component data arrays outside the main execution path. It can be obtained
 /// directly from the application layer via [`.get_par_query_accessor()`] before building the app.
 ///
-/// # Rules
+/// # Initialization Requirement
+/// Unlike other parallel handles, this handle must be initialized prior to app compilation. This ensures the
+/// engine can automatically register and configure the underlying demand-driven component tracking.
 ///
+/// # Safety and Undefined Behaviour
+/// To prevent **Undefined Behaviour (UB)** and memory unsafety within the engine's internal query mechanics,
+/// you must strictly adhere to the following rules while this parallel handle is active:
+/// * **No Handle Cloning:** Do not clone entity handles.
+/// * **No Random Query Lookups:** Do not perform random lookups using queries.
+///
+/// **Exception:** These actions are only permissible if you explicitly guarantee that absolutely no entity handle clones
+/// or query-based random lookups can occur while commands are being applied at the end of the frame.
+///
+/// # Deadlock Safety Rules
 /// Because the underlying storage utilizes granular, column-level `RwLocks` to enable simultaneous
-/// multi-threaded table reading, nesting parallel query scopes incorrectly on the *same thread* will trigger a deadlock.
-/// Specifically, opening a mutable query scope while an immutable or mutable query scope targeting overlapping
-/// components is already active within that thread will freeze execution.
-///
-/// Unlike other parallel handles, this handle must be initialized prior to app compilation to automatically
-/// register demand-driven component tracking configurations behind the scenes.
+/// multi-threaded table access, nesting parallel query scopes incorrectly on the *same thread* will freeze execution:
+/// * **Same-Thread Deadlocks:** Nesting parallel query scopes incorrectly on the *same thread* will freeze execution.
+/// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
+///   targets overlapping components on that same thread will trigger a deadlock.
 ///
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {

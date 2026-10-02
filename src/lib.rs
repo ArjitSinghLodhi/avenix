@@ -48,7 +48,11 @@ pub mod prelude {
             CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
             Update,
         },
-        system::{IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam},
+        system::{
+            IntoSystem, IntoSystemConfigs, System, SystemCondition, SystemConfigs,
+            SystemConfigsCondition, SystemConfigsOrder, SystemMeta, SystemOrder, SystemParam,
+            SystemsChain,
+        },
     };
     pub use crate::derive::{
         Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
@@ -143,6 +147,10 @@ pub mod app {
     pub mod system {
         pub use crate::system::{
             IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
+            system_traits::{
+                SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
+                SystemsChain,
+            },
         };
     }
     pub mod schedule {

@@ -25,11 +25,11 @@ Avenix provides a suite of thread-safe, thread-clonable handles extracted direct
 
 * **`ParallelCommands`**
   * **How to get:** Call `world.get_par_commands()`.
-  * **Usage:** Invoking `.scope(|mut cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
+  * **Usage:** Invoking `.scope(|cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
 
 * **`ParallelEventWriter<T>`**
   * **How to get:** Call `world.get_par_event_writer::<T>()`.
-  * **Usage:** Invoking `.scope(|mut writer| ...)` allows out-of-band threads or network workers to push events into the shared event pipelines.
+  * **Usage:** Invoking `.scope(|writer| ...)` allows out-of-band threads or network workers to push events into the shared event pipelines.
   * **Critical Constraints:** Subject to the engine's internal 3-frame buffering rule. Refer to the event system API docs for more information.
 
 * **`ParallelEventReader<T>`**

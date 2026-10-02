@@ -21,7 +21,7 @@ pub struct UnlinkChild;
 pub struct HierarchyPlugin;
 
 impl Plugin for HierarchyPlugin {
-    fn build(self, app: &mut App) {
+    fn build(&self, app: &mut App) {
         app.add_systems(Update, automatic_hierarchy_linker_system)
             .add_systems(CleanupHandles, hirearchy_cleanup);
     }

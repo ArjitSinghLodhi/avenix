@@ -17,7 +17,7 @@ use std::{
 pub(crate) struct DefaultSchedulesPlugin;
 
 impl Plugin for DefaultSchedulesPlugin {
-    fn build(self, app: &mut App) {
+    fn build(&self, app: &mut App) {
         app.add_schedule(Schedule::new(First))
             .add_schedule(Schedule::new(PreUpdate))
             .add_schedule(Schedule::new(Update))
@@ -74,7 +74,6 @@ impl RunConditionsList {
     }
 }
 
-#[doc(hidden)]
 pub struct SystemNode {
     system: Box<dyn System>,
 }
@@ -86,6 +85,14 @@ impl SystemNode {
 
     pub fn run(&mut self, world: &mut World) {
         self.system.run(world);
+    }
+
+    pub fn system(&self) -> &dyn System {
+        &*self.system
+    }
+
+    pub fn system_mut(&mut self) -> &mut dyn System {
+        &mut *self.system
     }
 }
 
@@ -100,8 +107,12 @@ impl SystemsSchedule {
         }
     }
 
-    pub fn systems_mut(&mut self) -> impl Iterator<Item = &mut SystemNode> {
-        self.systems.iter_mut()
+    pub fn systems(&self) -> &Vec<SystemNode> {
+        &self.systems
+    }
+
+    pub fn systems_mut(&mut self) -> &mut Vec<SystemNode> {
+        &mut self.systems
     }
 }
 
@@ -153,8 +164,22 @@ impl Schedule {
         self.executor = Box::new(executor);
     }
 
-    pub fn add_system(&mut self, system: Box<dyn System>) {
+    pub fn add_system<S: System + 'static>(&mut self, system: S) {
+        self.systems_schedule
+            .systems
+            .push(SystemNode::new(Box::new(system)));
+    }
+
+    pub fn add_system_boxed(&mut self, system: Box<dyn System>) {
         self.systems_schedule.systems.push(SystemNode::new(system));
+    }
+
+    pub fn systems_schedule(&self) -> &SystemsSchedule {
+        &self.systems_schedule
+    }
+
+    pub fn systems_schedule_mut(&mut self) -> &mut SystemsSchedule {
+        &mut self.systems_schedule
     }
 
     pub fn run(&mut self, world: &mut World) {

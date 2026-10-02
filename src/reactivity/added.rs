@@ -5,11 +5,12 @@ use crate::{
     ecs::Component,
     extensions::{Archetype, ComponentColumn, ComponentColumnRead},
     query::{QueryData, QueryFilter, ThreadSafe},
-    reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta},
+    reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta, verify_app_not_build_yet},
     world::storage::CurrentBufferIdx,
 };
 
 pub(crate) fn register_added_tracked_component<T: Component>() {
+    let _lock = verify_app_not_build_yet();
     let mut tracked = TRACKED_COMPONENTS.write();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<AddedMarker<T>>();

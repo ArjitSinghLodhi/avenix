@@ -1,14 +1,23 @@
 #![cfg(feature = "reactivity")]
 
-use crate::extensions::ComponentColumn;
+use crate::{app_impl::APP_BUILT, extensions::ComponentColumn};
 use indexmap::IndexMap;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockReadGuard};
 use rustc_hash::FxBuildHasher;
 use std::any::{Any, TypeId};
 
 mod added;
 mod changed;
 mod removed;
+
+fn verify_app_not_build_yet<'a>() -> RwLockReadGuard<'a, bool> {
+    let built = APP_BUILT.read();
+    if *built {
+        panic!("App already built when trying to register a tracked component");
+    } else {
+        built
+    }
+}
 
 pub(crate) struct TrackedComponentMeta {
     pub(crate) marker_id: TypeId,

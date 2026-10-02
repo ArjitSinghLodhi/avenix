@@ -60,19 +60,26 @@ pub trait QueryData {
 pub struct Mutable;
 pub struct ReadOnly;
 
-pub struct QuerySubChunk<'w, Q: QueryData, I> {
-    safe_fetch: &'w Q::Fetch,
+pub struct QuerySubChunk<'w, Q: QueryData, T> {
+    fetch: &'w Q::Fetch,
     sub_indices: &'w [usize],
-    _marker: std::marker::PhantomData<I>,
+    _marker: std::marker::PhantomData<T>,
 }
 
 impl<'w, Q: QueryData, T> QuerySubChunk<'w, Q, T> {
-    #[inline(always)]
     pub fn iter<'b>(&'b self) -> impl Iterator<Item = Q::ReadOnlyItem<'b>> {
-        let safe_fetch = self.safe_fetch;
         self.sub_indices
             .iter()
-            .map(move |&idx| unsafe { Q::fetch_read_only(safe_fetch, idx) })
+            .map(move |idx| unsafe { Q::fetch_read_only(self.fetch, *idx) })
+    }
+
+    pub fn par_iter<'b>(&'b self) -> impl IndexedParallelIterator<Item = Q::ReadOnlyItem<'b>>
+    where
+        Q::ReadOnlyItem<'b>: Send,
+    {
+        self.sub_indices
+            .into_par_iter()
+            .map(|idx| unsafe { Q::fetch_read_only(self.fetch, *idx) })
     }
 
     pub fn len(&self) -> usize {
@@ -85,28 +92,19 @@ impl<'w, Q: QueryData, T> QuerySubChunk<'w, Q, T> {
 }
 
 impl<'w, Q: QueryData> QuerySubChunk<'w, Q, Mutable> {
-    #[inline(always)]
     pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = Q::Item<'b>> {
-        let safe_fetch = self.safe_fetch;
         self.sub_indices
             .iter()
-            .map(move |&idx| unsafe { Q::fetch_mut(safe_fetch, idx) })
+            .map(move |idx| unsafe { Q::fetch_mut(self.fetch, *idx) })
     }
-}
 
-struct ThreadSafeFetch<'a, Q: QueryData>(&'a Q::Fetch);
-
-unsafe impl<'a, Q: QueryData> Send for ThreadSafeFetch<'a, Q> {}
-unsafe impl<'a, Q: QueryData> Sync for ThreadSafeFetch<'a, Q> {}
-
-impl<'a, Q: QueryData> ThreadSafeFetch<'a, Q> {
-    #[inline(always)]
-    unsafe fn fetch_read_only<'w>(&self, index: usize) -> Q::ReadOnlyItem<'w> {
-        unsafe { Q::fetch_read_only(self.0, index) }
-    }
-    #[inline(always)]
-    unsafe fn fetch_mut<'w>(&self, index: usize) -> Q::Item<'w> {
-        unsafe { Q::fetch_mut(self.0, index) }
+    pub fn par_iter_mut<'b>(&'b mut self) -> impl IndexedParallelIterator<Item = Q::Item<'b>>
+    where
+        Q::Item<'b>: Send,
+    {
+        self.sub_indices
+            .into_par_iter()
+            .map(|idx| unsafe { Q::fetch_mut(self.fetch, *idx) })
     }
 }
 
@@ -190,11 +188,9 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
     where
         Q::ReadOnlyItem<'b>: Send,
     {
-        let safe_fetch = ThreadSafeFetch::<Q>(self.fetch);
-
         self.indices
             .into_par_iter()
-            .map(move |i| unsafe { safe_fetch.fetch_read_only(*i) })
+            .map(move |i| unsafe { Q::fetch_read_only(self.fetch, *i) })
     }
 
     pub fn par_chunks<'b>(
@@ -207,7 +203,6 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
         assert!(chunk_size > 0, "Chunk size must be greater than zero");
         let indices_slice = self.indices;
         let len = self.indices.len();
-        let safe_fetch = self.fetch;
 
         (0..len)
             .into_par_iter()
@@ -215,7 +210,7 @@ impl<'a, Q: QueryData, T> QueryArchetypeView<'a, Q, T> {
             .map(move |start_pos| {
                 let end_pos = std::cmp::min(start_pos + chunk_size, len);
                 QuerySubChunk {
-                    safe_fetch,
+                    fetch: self.fetch,
                     sub_indices: &indices_slice[start_pos..end_pos],
                     _marker: std::marker::PhantomData,
                 }
@@ -263,10 +258,9 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
     where
         Q::Item<'b>: Send,
     {
-        let safe_fetch = ThreadSafeFetch::<Q>(self.fetch);
         self.indices
             .into_par_iter()
-            .map(move |i| unsafe { safe_fetch.fetch_mut(*i) })
+            .map(move |i| unsafe { Q::fetch_mut(self.fetch, *i) })
     }
 
     pub fn par_chunks_mut<'b>(
@@ -280,7 +274,6 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
 
         let indices_slice = self.indices;
         let len = indices_slice.len();
-        let safe_fetch = self.fetch;
 
         (0..len)
             .into_par_iter()
@@ -288,7 +281,7 @@ impl<'a, Q: QueryData> QueryArchetypeView<'a, Q, Mutable> {
             .map(move |start_pos| {
                 let end_pos = std::cmp::min(start_pos + chunk_size, len);
                 QuerySubChunk {
-                    safe_fetch,
+                    fetch: self.fetch,
                     sub_indices: &indices_slice[start_pos..end_pos],
                     _marker: std::marker::PhantomData,
                 }

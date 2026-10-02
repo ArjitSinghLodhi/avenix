@@ -10,6 +10,7 @@ use crate::{
     ecs::Component,
     entity::Entity,
     extensions::World,
+    reactivity::verify_app_not_build_yet,
     resources::Resource,
     system::{SystemMeta, SystemParam},
 };
@@ -34,6 +35,7 @@ pub(crate) static REMOVAL_TRACKED_COMPS: RwLock<
 > = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
 
 fn register_removal_tracking_comp<T: Component>() {
+    let _lock = verify_app_not_build_yet();
     let mut tracked = REMOVAL_TRACKED_COMPS.write();
     tracked.insert(
         TypeId::of::<T>(),

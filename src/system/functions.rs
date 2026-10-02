@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use crate::system::FunctionSystem;
 use crate::system::IntoSystem;
 use crate::system::System;
@@ -19,6 +21,14 @@ macro_rules! impl_system_for_functions {
                 #[allow(non_snake_case)]
                 (self.func)($($param),*);
             }
+
+            fn pub_type_id(&self) -> TypeId {
+                TypeId::of::<F>()
+            }
+
+            fn name(&self) -> &'static str {
+                std::any::type_name::<F>()
+            }
         }
 
         impl<$($param,)* F> IntoSystem<($($param,)*)> for F
@@ -35,6 +45,17 @@ macro_rules! impl_system_for_functions {
                 )*
 
                 FunctionSystem::new(self)
+            }
+        }
+
+        impl<$($param,)* F> IntoSystem<($($param,)*)> for FunctionSystem<($($param,)*), F>
+        where
+            $( $param: SystemParam + 'static, )*
+            F: Fn($($param),*) + 'static,
+        {
+            type SystemType = FunctionSystem<($($param,)*), F>;
+            fn into_system(self) -> Self::SystemType {
+                self
             }
         }
     };
@@ -55,10 +76,18 @@ impl_system_for_functions!(A, B, C, D, E, G, H, I, J, K, L, M);
 
 impl<F> System for FunctionSystem<(), F>
 where
-    F: Fn(),
+    F: Fn() + 'static,
 {
     fn run(&mut self, _world: &mut World) {
         (self.func)();
+    }
+
+    fn pub_type_id(&self) -> TypeId {
+        TypeId::of::<F>()
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<F>()
     }
 }
 
@@ -69,5 +98,15 @@ where
     type SystemType = FunctionSystem<(), F>;
     fn into_system(self) -> Self::SystemType {
         FunctionSystem::new(self)
+    }
+}
+
+impl<F> IntoSystem<()> for FunctionSystem<(), F>
+where
+    F: Fn() + 'static,
+{
+    type SystemType = FunctionSystem<(), F>;
+    fn into_system(self) -> Self::SystemType {
+        self
     }
 }

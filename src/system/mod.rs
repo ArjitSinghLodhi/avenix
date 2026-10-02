@@ -1,9 +1,11 @@
 pub(crate) mod functions;
 pub(crate) mod system_storage;
+pub(crate) mod system_traits;
 
 use std::{
     any::{Any, TypeId},
     hash::Hash,
+    marker::PhantomData,
 };
 
 use indexmap::IndexSet;
@@ -184,10 +186,11 @@ pub trait SystemParam {
 #[doc(hidden)]
 pub trait System: SystemData {
     fn run(&mut self, world: &mut World);
+    fn pub_type_id(&self) -> TypeId;
+    fn name(&self) -> &'static str;
 }
 
 #[doc(hidden)]
-#[derive(Debug)]
 pub struct FunctionSystem<Marker, F> {
     pub(crate) func: F,
     pub(crate) data: FunctionData,
@@ -220,18 +223,22 @@ impl<Marker, F> SystemData for FunctionSystem<Marker, F> {
 
 #[doc(hidden)]
 pub trait IntoSystem<Marker> {
+    #[doc(hidden)]
     type SystemType: System + 'static;
+    #[doc(hidden)]
     fn into_system(self) -> Self::SystemType;
 }
 
 #[doc(hidden)]
-pub struct SystemConfigs {
+pub struct SystemConfigs<Marker> {
     pub(crate) systems: Vec<Box<dyn System>>,
+    pub(crate) _marker: PhantomData<Marker>,
 }
 
 #[doc(hidden)]
 pub trait IntoSystemConfigs<MarkerGroup> {
-    fn into_configs(self) -> SystemConfigs;
+    #[doc(hidden)]
+    fn into_configs(self) -> SystemConfigs<MarkerGroup>;
 }
 
 macro_rules! impl_system_configs_tuple {
@@ -240,14 +247,22 @@ macro_rules! impl_system_configs_tuple {
         where
             $( $sys: IntoSystem<$marker> + 'static ),*
         {
-            fn into_configs(self) -> SystemConfigs {
+            fn into_configs(self) -> SystemConfigs<($($marker,)*)> {
                 #[allow(non_snake_case)]
                 let ($($sys,)*) = self;
                 SystemConfigs {
                     systems: vec![
                         $( Box::new($sys.into_system()) ),*
-                    ]
+                    ],
+                    _marker: PhantomData,
                 }
+            }
+        }
+
+        impl<$($marker,)*> IntoSystemConfigs<($($marker,)*)> for SystemConfigs<($($marker,)*)>
+        {
+            fn into_configs(self) -> SystemConfigs<($($marker,)*)> {
+                self
             }
         }
     };
@@ -267,9 +282,16 @@ impl<S, Marker> IntoSystemConfigs<(Marker,)> for S
 where
     S: IntoSystem<Marker> + 'static,
 {
-    fn into_configs(self) -> SystemConfigs {
+    fn into_configs(self) -> SystemConfigs<(Marker,)> {
         SystemConfigs {
             systems: vec![Box::new(self.into_system())],
+            _marker: PhantomData,
         }
+    }
+}
+
+impl IntoSystemConfigs<()> for SystemConfigs<()> {
+    fn into_configs(self) -> SystemConfigs<()> {
+        self
     }
 }
