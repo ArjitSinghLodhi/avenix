@@ -1,7 +1,7 @@
 use crate::{
     extensions::World,
     resources::{ConcurrentResourceRegistry, Res, ResMut, Resource},
-    system::{SystemMeta, SystemParam},
+    system::{ParallelSystemParam, SystemMeta, SystemParam},
 };
 use std::{marker::PhantomData, sync::Arc};
 
@@ -36,6 +36,7 @@ impl<T: Resource + Send + Sync> Clone for ParallelResourceAccessor<T> {
 
 unsafe impl<T: Resource + Send + Sync> Send for ParallelResourceAccessor<T> {}
 unsafe impl<T: Resource + Send + Sync> Sync for ParallelResourceAccessor<T> {}
+unsafe impl<T: Resource + Send + Sync> ParallelSystemParam for ParallelResourceAccessor<T> {}
 
 impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     pub fn scope<F, R>(&self, f: F) -> R

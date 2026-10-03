@@ -120,7 +120,7 @@ fn parallel_verification_system(
         });
 
         std::thread::scope(|s| {
-            s.spawn(|| {
+            s.spawn(move || {
                 score_accessor.scope_mut(|mut score| {
                     println!("[System-Spawned Thread 3] Incrementing GlobalScore (+50)...");
                     score.value += 50;

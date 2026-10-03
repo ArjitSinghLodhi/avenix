@@ -1,9 +1,9 @@
-use crate::app::schedule::RunConditionsList;
 use crate::app::system::SystemParam;
 use crate::extensions::FunctionSystem;
+use crate::system::System;
+use crate::system::condition::{Condition, RunConditionsList};
 use crate::system::system_storage::SystemExt;
 use crate::system::{IntoSystem, SystemConfigs};
-use crate::{extensions::World, system::System};
 use std::any::TypeId;
 use std::marker::PhantomData;
 
@@ -11,8 +11,9 @@ use std::marker::PhantomData;
 
 #[doc(hidden)]
 pub trait SystemCondition<Marker> {
+    #[doc(hidden)]
     type SystemType: System + 'static;
-    fn run_if(self, condition: impl Fn(&World) -> bool + 'static) -> Self::SystemType;
+    fn run_if<P>(self, condition: impl Condition<P>) -> Self::SystemType;
 }
 
 #[derive(Default)]
@@ -23,6 +24,7 @@ pub(crate) struct SystemOrderings {
 
 #[doc(hidden)]
 pub trait SystemOrder<Marker> {
+    #[doc(hidden)]
     type SystemType: System + 'static;
     fn before<Target: 'static>(self, target: Target) -> Self::SystemType;
     fn after<Target: 'static>(self, target: Target) -> Self::SystemType;
@@ -36,7 +38,7 @@ macro_rules! impl_traits_for_function {
             F: Fn($($param),*) + 'static,
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
-            fn run_if(self, condition: impl Fn(&World) -> bool + 'static) -> FunctionSystem<($($param,)*), F> {
+            fn run_if<P>(self, condition: impl Condition<P>) -> FunctionSystem<($($param,)*), F> {
                 let system = self.into_system();
                 system.run_if(condition)
             }
@@ -77,7 +79,7 @@ where
     F: Fn() + 'static,
 {
     type SystemType = FunctionSystem<(), F>;
-    fn run_if(self, condition: impl Fn(&World) -> bool + 'static) -> FunctionSystem<(), F> {
+    fn run_if<P>(self, condition: impl Condition<P>) -> FunctionSystem<(), F> {
         let system = self.into_system();
         system.run_if(condition)
     }
@@ -108,9 +110,9 @@ macro_rules! impl_traits_for_function_system {
             F: Fn($($param),*) + 'static,
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
-            fn run_if(self, condition: impl Fn(&World) -> bool + 'static) -> FunctionSystem<($($param,)*), F> {
+            fn run_if<P>(self, condition: impl Condition<P>) -> FunctionSystem<($($param,)*), F> {
                 let mut system = self.into_system();
-                system.get_or_init_mut::<RunConditionsList>(RunConditionsList::default).conditions_mut().push(Box::new(condition));
+                system.get_or_init_mut::<RunConditionsList>(RunConditionsList::default).add_condition(condition);
                 system
             }
         }
@@ -155,12 +157,11 @@ where
     F: Fn() + 'static,
 {
     type SystemType = FunctionSystem<(), F>;
-    fn run_if(self, condition: impl Fn(&World) -> bool + 'static) -> FunctionSystem<(), F> {
+    fn run_if<P>(self, condition: impl Condition<P>) -> FunctionSystem<(), F> {
         let mut system = self.into_system();
         system
             .get_or_init_mut::<RunConditionsList>(RunConditionsList::default)
-            .conditions_mut()
-            .push(Box::new(condition));
+            .add_condition(condition);
         system
     }
 }
@@ -194,10 +195,7 @@ where
 
 #[doc(hidden)]
 pub trait SystemConfigsCondition<MarkerGroup> {
-    fn run_if(
-        self,
-        condition: impl Fn(&World) -> bool + 'static + Clone,
-    ) -> SystemConfigs<MarkerGroup>;
+    fn run_if<P>(self, condition: impl Condition<P> + Clone) -> SystemConfigs<MarkerGroup>;
 }
 
 #[doc(hidden)]
@@ -217,7 +215,7 @@ macro_rules! impl_traits_for_function_system_configs {
         where
             $( $sys: IntoSystem<$marker> + 'static + SystemCondition<$marker> ),*
         {
-            fn run_if(self, condition: impl Fn(&World) -> bool + 'static + Clone) -> SystemConfigs<($($marker,)*)> {
+            fn run_if<P>(self, condition: impl Condition<P> + Clone) -> SystemConfigs<($($marker,)*)> {
                 #[allow(non_snake_case)]
                 let ($($sys,)*) = self;
                 SystemConfigs {
@@ -288,6 +286,7 @@ macro_rules! impl_traits_for_function_system_configs {
     };
 }
 
+impl_traits_for_function_system_configs!(S1 ; M1);
 impl_traits_for_function_system_configs!(S1, S2 ; M1, M2);
 impl_traits_for_function_system_configs!(S1, S2, S3 ; M1, M2, M3);
 impl_traits_for_function_system_configs!(S1, S2, S3, S4; M1, M2, M3, M4);
@@ -305,9 +304,9 @@ macro_rules! impl_traits_for_system_configs {
         impl<$($marker,)*> SystemConfigsCondition<($($marker,)*)> for SystemConfigs<($($marker,)*)>
 
         {
-            fn run_if(self, condition: impl Fn(&World) -> bool + 'static + Clone) -> SystemConfigs<($($marker,)*)> {
+            fn run_if<P>(self, condition: impl Condition<P> + Clone) -> SystemConfigs<($($marker,)*)> {
                 let systems = self.systems.into_iter().map(|mut sys| {
-                    sys.get_or_init_mut::<RunConditionsList>(RunConditionsList::default).conditions_mut().push(Box::new(condition.clone()));
+                    sys.get_or_init_mut::<RunConditionsList>(RunConditionsList::default).add_condition(condition.clone());
                     sys
                 }).collect::<Vec<Box<dyn System>>>();
                 SystemConfigs {
@@ -343,6 +342,7 @@ macro_rules! impl_traits_for_system_configs {
     };
 }
 
+impl_traits_for_system_configs!(S1 ; M1);
 impl_traits_for_system_configs!(S1, S2 ; M1, M2);
 impl_traits_for_system_configs!(S1, S2, S3 ; M1, M2, M3);
 impl_traits_for_system_configs!(S1, S2, S3, S4; M1, M2, M3, M4);

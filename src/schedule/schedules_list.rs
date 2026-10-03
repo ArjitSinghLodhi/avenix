@@ -24,9 +24,9 @@ impl SystemExecutor for StartupExecutor {
             let should_run = system
                 .system
                 .get_or_init(RunConditionsList::default)
-                .run_conditions
+                .runtime_gates
                 .iter()
-                .all(|cond| cond(world));
+                .all(|cond| cond());
             if should_run {
                 system.run(world);
             }
@@ -119,9 +119,9 @@ impl SystemExecutor for CleanupHandlesExecutor {
                 let should_run = system
                     .system
                     .get_or_init(RunConditionsList::default)
-                    .run_conditions
+                    .runtime_gates
                     .iter()
-                    .all(|cond| cond(world));
+                    .all(|cond| cond());
                 if should_run {
                     system.run(world);
                 }

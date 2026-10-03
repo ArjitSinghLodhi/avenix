@@ -31,7 +31,8 @@ mod world;
 
 pub mod derive {
     pub use avenix_macros::{
-        Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
+        Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
+        ScheduleLabel, SystemParam,
     };
 }
 
@@ -55,7 +56,8 @@ pub mod prelude {
         },
     };
     pub use crate::derive::{
-        Component, ComponentBundle, Event, QueryData, QueryFilter, Resource, SystemParam,
+        Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
+        ScheduleLabel, SystemParam,
     };
     #[cfg(feature = "events")]
     pub use crate::ecs::events::{
@@ -146,7 +148,9 @@ pub mod app {
     pub use crate::app_impl::App;
     pub mod system {
         pub use crate::system::{
-            IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
+            IntoSystem, IntoSystemConfigs, ParallelSystemParam, System, SystemConfigs, SystemMeta,
+            SystemParam,
+            condition::{Condition, ConditionBuilder, ConditionFn, RunConditionsList},
             system_traits::{
                 SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
                 SystemsChain,
@@ -155,9 +159,9 @@ pub mod app {
     }
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, ConditionFn, First, IntoScheduleId, Last, PostUpdate, PreUpdate,
-            RunConditionsList, Schedule, ScheduleId, ScheduleLabel, SingleThreadedExecutor,
-            Startup, SystemExecutor, SystemNode, SystemsSchedule, Update,
+            CleanupHandles, First, IntoScheduleId, Last, PostUpdate, PreUpdate, Schedule,
+            ScheduleId, ScheduleLabel, SingleThreadedExecutor, Startup, SystemExecutor, SystemNode,
+            SystemsSchedule, Update,
         };
     }
     pub mod plugin {

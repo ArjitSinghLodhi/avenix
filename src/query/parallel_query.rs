@@ -59,3 +59,6 @@ impl<Q: QueryData, F: QueryFilter> ParallelQueryAccessor<Q, F> {
         f(query)
     }
 }
+
+unsafe impl<Q: QueryData, F: QueryFilter> Send for ParallelQueryAccessor<Q, F> {}
+unsafe impl<Q: QueryData, F: QueryFilter> Sync for ParallelQueryAccessor<Q, F> {}

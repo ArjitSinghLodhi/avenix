@@ -1,3 +1,4 @@
+pub(crate) mod condition;
 pub(crate) mod functions;
 pub(crate) mod system_storage;
 pub(crate) mod system_traits;
@@ -15,6 +16,11 @@ use crate::{
     extensions::{FunctionData, SystemData},
     world::storage::World,
 };
+
+/// # Safety
+///
+/// Anything implementing this trait must guarantee it can be used concurrently from any thread.
+pub unsafe trait ParallelSystemParam: SystemParam + Send + Sync + 'static {}
 
 pub struct AccessHashSet<T: Eq + Hash> {
     pub(crate) set: IndexSet<T, FxBuildHasher>,
@@ -186,7 +192,9 @@ pub trait SystemParam {
 #[doc(hidden)]
 pub trait System: SystemData {
     fn run(&mut self, world: &mut World);
+    #[doc(hidden)]
     fn pub_type_id(&self) -> TypeId;
+    #[doc(hidden)]
     fn name(&self) -> &'static str;
 }
 
@@ -208,15 +216,18 @@ impl<Marker, F> FunctionSystem<Marker, F> {
 }
 
 impl<Marker, F> SystemData for FunctionSystem<Marker, F> {
-    fn get_raw(&self, id: TypeId) -> Option<&Box<dyn Any>> {
+    #[doc(hidden)]
+    fn get_raw(&self, id: TypeId) -> Option<&Box<dyn Any + Send + Sync>> {
         self.data.get_raw_data(&id)
     }
 
-    fn get_raw_mut(&mut self, id: TypeId) -> Option<&mut Box<dyn Any>> {
+    #[doc(hidden)]
+    fn get_raw_mut(&mut self, id: TypeId) -> Option<&mut Box<dyn Any + Send + Sync>> {
         self.data.get_raw_data_mut(&id)
     }
 
-    fn insert_raw(&mut self, id: TypeId, value: Box<dyn Any>) {
+    #[doc(hidden)]
+    fn insert_raw(&mut self, id: TypeId, value: Box<dyn Any + Send + Sync>) {
         self.data.insert_raw_data(&id, value);
     }
 }
@@ -267,7 +278,6 @@ macro_rules! impl_system_configs_tuple {
         }
     };
 }
-
 impl_system_configs_tuple!(S1, S2 ; M1, M2);
 impl_system_configs_tuple!(S1, S2, S3 ; M1, M2, M3);
 impl_system_configs_tuple!(S1, S2, S3, S4; M1, M2, M3, M4);
@@ -278,15 +288,33 @@ impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8; M1, M2, M3, M4, M5, M
 impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9; M1, M2, M3, M4, M5, M6, M7, M8, M9);
 impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10; M1, M2, M3, M4, M5, M6, M7, M8, M9, M10);
 
-impl<S, Marker> IntoSystemConfigs<(Marker,)> for S
+impl<S, Marker> IntoSystemConfigs<Marker> for S
+where
+    S: IntoSystem<Marker> + 'static,
+{
+    fn into_configs(self) -> SystemConfigs<Marker> {
+        SystemConfigs {
+            systems: vec![Box::new(self.into_system())],
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<S, Marker> IntoSystemConfigs<(Marker,)> for (S,)
 where
     S: IntoSystem<Marker> + 'static,
 {
     fn into_configs(self) -> SystemConfigs<(Marker,)> {
         SystemConfigs {
-            systems: vec![Box::new(self.into_system())],
+            systems: vec![Box::new(self.0.into_system())],
             _marker: PhantomData,
         }
+    }
+}
+
+impl<Marker> IntoSystemConfigs<(Marker,)> for SystemConfigs<(Marker,)> {
+    fn into_configs(self) -> SystemConfigs<(Marker,)> {
+        self
     }
 }
 

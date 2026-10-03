@@ -8,6 +8,7 @@ use crate::commands::Commands;
 use crate::commands::command_queue::CommandQueue;
 use crate::entity::Entity;
 use crate::extensions::{SystemMeta, SystemParam, World};
+use crate::system::ParallelSystemParam;
 
 /// A thread-safe, thread-clonable handle that acts as a detached remote input into the ECS engine.
 ///
@@ -60,6 +61,7 @@ impl ParallelCommands {
 
 unsafe impl Send for ParallelCommands {}
 unsafe impl Sync for ParallelCommands {}
+unsafe impl ParallelSystemParam for ParallelCommands {}
 
 impl SystemParam for ParallelCommands {
     fn init_access(_system_meta: &mut SystemMeta) {}
