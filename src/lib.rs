@@ -26,13 +26,14 @@ mod query;
 mod reactivity;
 mod resources;
 mod schedule;
+mod states;
 mod system;
 mod world;
 
 pub mod derive {
     pub use avenix_macros::{
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
-        ScheduleLabel, SystemParam,
+        ScheduleLabel, States, SystemParam,
     };
 }
 
@@ -49,15 +50,19 @@ pub mod prelude {
             CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
             Update,
         },
+        states::{NextState, State, States, entered_state, exited_state, in_state},
         system::{
-            IntoSystem, IntoSystemConfigs, System, SystemCondition, SystemConfigs,
-            SystemConfigsCondition, SystemConfigsOrder, SystemMeta, SystemOrder, SystemParam,
-            SystemsChain,
+            IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
+            condition::{Condition, ConditionBuilder, ConditionFn, RunConditionsList, not},
+            system_traits::{
+                SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
+                SystemsChain,
+            },
         },
     };
     pub use crate::derive::{
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
-        ScheduleLabel, SystemParam,
+        ScheduleLabel, States, SystemParam,
     };
     #[cfg(feature = "events")]
     pub use crate::ecs::events::{
@@ -150,12 +155,18 @@ pub mod app {
         pub use crate::system::{
             IntoSystem, IntoSystemConfigs, ParallelSystemParam, System, SystemConfigs, SystemMeta,
             SystemParam,
-            condition::{Condition, ConditionBuilder, ConditionFn, RunConditionsList},
-            system_traits::{
+        };
+        pub mod condition {
+            pub use crate::system::condition::{
+                Condition, ConditionBuilder, ConditionFn, RunConditionsList, not,
+            };
+        }
+        pub mod system_traits {
+            pub use crate::system::system_traits::{
                 SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
                 SystemsChain,
-            },
-        };
+            };
+        }
     }
     pub mod schedule {
         pub use crate::schedule::{
@@ -166,5 +177,8 @@ pub mod app {
     }
     pub mod plugin {
         pub use crate::app_impl::{Plugin, PluginsBuildAll};
+    }
+    pub mod states {
+        pub use crate::states::{NextState, State, States, entered_state, exited_state, in_state};
     }
 }

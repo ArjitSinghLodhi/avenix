@@ -11,7 +11,7 @@ use std::{
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
-    app::system::RunConditionsList,
+    app::system::condition::RunConditionsList,
     extensions::SystemExt,
     query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
     resources::Resource,
@@ -20,6 +20,7 @@ use crate::{
         ScheduleLabel, Startup,
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
+    states::{States, setup_states_schedules_and_systems},
     system::{AccessVec, IntoSystemConfigs, System},
     world::storage::World,
 };
@@ -136,6 +137,15 @@ impl App {
         app
     }
 
+    pub fn init_state<T: States + Default>(&mut self) -> &mut Self {
+        self.insert_state(T::default())
+    }
+
+    pub fn insert_state<T: States>(&mut self, state: T) -> &mut Self {
+        setup_states_schedules_and_systems(self, state);
+        self
+    }
+
     pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
         self.configuration.not_ready();
 
@@ -149,14 +159,12 @@ impl App {
         self
     }
 
-    pub fn configure_schedule_order(
+    pub fn configure_schedule_order<Before: ScheduleLabel, After: ScheduleLabel>(
         &mut self,
-        before: impl ScheduleLabel,
-        after: impl ScheduleLabel,
     ) -> &mut Self {
         self.configuration.not_ready();
         self.schedule_order_constraints
-            .push((before.id(), after.id()));
+            .push((Before::schedule_id(), After::schedule_id()));
         self
     }
 

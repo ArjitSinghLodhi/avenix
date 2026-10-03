@@ -26,10 +26,10 @@ impl Plugin for DefaultSchedulesPlugin {
             .add_schedule(Schedule::new(PostUpdate))
             .add_schedule(Schedule::new(Last));
 
-        app.configure_schedule_order(First, PreUpdate)
-            .configure_schedule_order(PreUpdate, Update)
-            .configure_schedule_order(Update, PostUpdate)
-            .configure_schedule_order(PostUpdate, Last);
+        app.configure_schedule_order::<First, PreUpdate>()
+            .configure_schedule_order::<PreUpdate, Update>()
+            .configure_schedule_order::<Update, PostUpdate>()
+            .configure_schedule_order::<PostUpdate, Last>();
     }
 }
 
@@ -41,6 +41,16 @@ pub struct ScheduleId {
 
 pub trait IntoScheduleId: ScheduleLabel {
     fn id(&self) -> ScheduleId
+    where
+        Self: Sized,
+    {
+        ScheduleId {
+            id: TypeId::of::<Self>(),
+            name: std::any::type_name::<Self>(),
+        }
+    }
+
+    fn schedule_id() -> ScheduleId
     where
         Self: Sized,
     {

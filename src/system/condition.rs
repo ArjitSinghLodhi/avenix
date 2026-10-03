@@ -59,3 +59,12 @@ where
         (self)(data)
     }
 }
+
+pub fn not<P, C>(condition: C) -> impl Condition<P, ConditionData = P>
+where
+    P: 'static + ParallelSystemParam,
+    C: Condition<P, ConditionData = P> + 'static,
+{
+    let condition = condition;
+    move |param: &P| !condition.run(param)
+}

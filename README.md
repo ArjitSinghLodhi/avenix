@@ -101,15 +101,8 @@ Avenix enforces a strict handle count invariant to maintain safety with recycled
 
 ## Feature & Module
 
-### Required Procedural Macro Derives
-Avenix requires explicit macro derives for core types to enforce static bounds checks and clean memory layouts. These respect standard visibility constraints (`pub`, `pub(crate)`):
-* `#[derive(Component)]` – Marks a type as an archetype component.
-* `#[derive(Resource)]` – Marks a type as a global unique resource.
-* `#[derive(Event)]` – Marks a type as an event broadcast message.
-* `#[derive(ComponentBundle)]` – Makes a bundle of components to make it type safe and easier to spawn entities.
-* `#[derive(QueryData)]` – Makes a struct that can be used as QueryData to make it easier to code.
-* `#[derive(QueryFilter)]` – Combines multiple conditional filters into a single struct.
-* `#[derive(SystemParam)]` – Groups complex system parameters into a unified layout.
+### Procedural Macro Derives
+Avenix requires explicit macro derives to enforce static bounds checks and clean memory layouts. The primary user-facing options include, but are not limited to, key derives such as `Component`, `Resource`, `Event`, `ComponentBundle`, `QueryData`, `QueryFilter`, `SystemParam`, and `States`.
 
 ### Cargo Features
 Avenix keeps components, resources, and basic derives enabled by default. You could opt into optional compilation flags:
