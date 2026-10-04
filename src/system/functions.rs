@@ -13,7 +13,7 @@ macro_rules! impl_system_for_functions {
             $( $param: SystemParam + 'static, )*
             F: Fn($($param),*) + 'static,
         {
-            fn run(&mut self, world: &mut World) {
+            fn run(&mut self, world: &World) {
                 $(
                     #[allow(non_snake_case)]
                     let $param = <$param>::get_param(world);
@@ -78,7 +78,7 @@ impl<F> System for FunctionSystem<(), F>
 where
     F: Fn() + 'static,
 {
-    fn run(&mut self, _world: &mut World) {
+    fn run(&mut self, _world: &World) {
         (self.func)();
     }
 

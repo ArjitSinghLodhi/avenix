@@ -121,7 +121,7 @@ impl<'w, T: Component> SystemParam for RemovedComponents<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {
         register_removal_tracking_comp::<T>();
     }
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         let removed_comp_buffer = world.get_resource_mut::<RemovedComponentsBuffer<T>>();
         let reader = removed_comp_buffer.read_queue.read();
         let reader = unsafe {

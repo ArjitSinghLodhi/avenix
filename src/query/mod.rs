@@ -2,7 +2,7 @@ pub mod filter;
 pub(crate) mod parallel_query;
 mod params;
 
-use dashmap::{DashMap, mapref::multiple::RefMulti};
+use dashmap::DashMap;
 pub use params::Has;
 
 pub use filter::*;
@@ -111,7 +111,6 @@ impl<'w, Q: QueryData> QuerySubChunk<'w, Q, Mutable> {
 pub struct QueryArchetypeView<'a, Q: QueryData, I> {
     indices: &'a [usize],
     fetch: &'a Q::Fetch,
-    total_entity_count: usize,
     archetype_id: ArchetypeId,
     _marker: std::marker::PhantomData<I>,
 }
@@ -121,12 +120,6 @@ impl<'w, Q: QueryData, T> QueryArchetypeView<'w, Q, T> {
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.indices.len()
-    }
-
-    /// Gets the total length of the entities inside the archetype, including unfiltered ones.
-    #[inline(always)]
-    pub fn entities_len(&self) -> usize {
-        self.total_entity_count
     }
 
     #[inline(always)]
@@ -329,10 +322,10 @@ unsafe impl<T> Send for ThreadSafe<T> {}
 unsafe impl<T> Sync for ThreadSafe<T> {}
 
 pub struct Query<'q, 'a, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
-    matching_archetypes: Vec<Option<RefMulti<'a, ArchetypeId, Archetype>>>,
+    matching_archetypes: Vec<Option<ArchetypeId>>,
     cached_fetches: Vec<Option<Q::Fetch>>,
     cached_indices: Vec<Vec<usize>>,
-    _marker: std::marker::PhantomData<(&'q (), F)>,
+    _marker: std::marker::PhantomData<(&'q (), &'a (), F)>,
 }
 unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Send for Query<'q, 'a, Q, F> {}
 unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Sync for Query<'q, 'a, Q, F> {}
@@ -343,13 +336,13 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     ) -> Self {
         let mut matching_archetypes = (0..archetypes_map.len())
             .map(|_| None)
-            .collect::<Vec<Option<RefMulti<'_, ArchetypeId, Archetype>>>>();
+            .collect::<Vec<Option<ArchetypeId>>>();
         let mut cached_fetches = (0..archetypes_map.len())
             .map(|_| None)
             .collect::<Vec<Option<Q::Fetch>>>();
         let mut cached_indices = vec![Vec::new(); archetypes_map.len()];
 
-        for arch in archetypes_map.iter() {
+        for arch in archetypes_map.iter_mut() {
             let arch_id = arch.id();
             if Q::matches(&arch) && F::matches(&arch) {
                 let fetch = unsafe { Q::init_fetch(&arch) };
@@ -358,7 +351,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
                 let filter_data = F::init_filter_data(&arch);
                 indices.retain(|row_idx| F::matches_row(&filter_data, *row_idx));
                 cached_indices[arch_id as usize] = indices;
-                matching_archetypes[arch_id as usize] = Some(arch);
+                matching_archetypes[arch_id as usize] = Some(arch.archetype_id());
             }
         }
 
@@ -422,59 +415,61 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         self.matching_archetypes.iter().flatten().count()
     }
 
-    /// Returns the number of total entities in all matching archetypes combined.
-    ///
-    /// Note: it is not the number of entities in the query with dynamic filters accounted for.
+    /// Returns the number of entities accross all matching archetype with dynamic filters
+    /// accounted for.
     pub fn total_entities(&self) -> usize {
         self.matching_archetypes
             .iter()
             .flatten()
-            .map(|arch| arch.entities.len())
+            .map(|arch_id| self.cached_indices[arch_id.id() as usize].len())
             .sum()
     }
 
     pub fn iter<'b>(&'b self) -> impl Iterator<Item = QueryArchetypeView<'b, Q, ReadOnly>> {
-        self.matching_archetypes.iter().flatten().map(move |arch| {
-            let arch_idx = arch.id() as usize;
-            let fetch_opt = &self.cached_fetches[arch_idx];
-            let fetch = fetch_opt.as_ref().unwrap();
-            QueryArchetypeView {
-                indices: &self.cached_indices[arch_idx],
-                fetch,
-                total_entity_count: arch.entities.len(),
-                archetype_id: arch.id,
-                _marker: PhantomData,
-            }
-        })
+        self.matching_archetypes
+            .iter()
+            .flatten()
+            .map(move |arch_id| {
+                let arch_idx = arch_id.id() as usize;
+                let fetch_opt = &self.cached_fetches[arch_idx];
+                let fetch = fetch_opt.as_ref().unwrap();
+                QueryArchetypeView {
+                    indices: &self.cached_indices[arch_idx],
+                    fetch,
+                    archetype_id: *arch_id,
+                    _marker: PhantomData,
+                }
+            })
     }
 
     pub fn par_iter<'b>(
         &'b self,
     ) -> impl ParallelIterator<Item = QueryArchetypeView<'b, Q, ReadOnly>> {
-        self.matching_archetypes.par_iter().flatten().map(|arch| {
-            let arch_idx = arch.id() as usize;
-            let fetch_opt = &self.cached_fetches[arch_idx];
-            let fetch = fetch_opt.as_ref().unwrap();
-            QueryArchetypeView {
-                indices: &self.cached_indices[arch_idx],
-                fetch,
-                total_entity_count: arch.entities.len(),
-                archetype_id: arch.id,
-                _marker: PhantomData,
-            }
-        })
+        self.matching_archetypes
+            .par_iter()
+            .flatten()
+            .map(|arch_id| {
+                let arch_idx = arch_id.id() as usize;
+                let fetch_opt = &self.cached_fetches[arch_idx];
+                let fetch = fetch_opt.as_ref().unwrap();
+                QueryArchetypeView {
+                    indices: &self.cached_indices[arch_idx],
+                    fetch,
+                    archetype_id: *arch_id,
+                    _marker: PhantomData,
+                }
+            })
     }
 
     pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = QueryArchetypeView<'b, Q, Mutable>> {
-        self.matching_archetypes.iter().flatten().map(|arch| {
-            let arch_idx = arch.id() as usize;
+        self.matching_archetypes.iter().flatten().map(|arch_id| {
+            let arch_idx = arch_id.id() as usize;
             let fetch_opt = &self.cached_fetches[arch_idx];
             let fetch = fetch_opt.as_ref().unwrap();
             QueryArchetypeView {
                 indices: &self.cached_indices[arch_idx],
                 fetch,
-                total_entity_count: arch.entities.len(),
-                archetype_id: arch.id,
+                archetype_id: *arch_id,
                 _marker: PhantomData,
             }
         })
@@ -483,18 +478,20 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     pub fn par_iter_mut<'b>(
         &'b mut self,
     ) -> impl ParallelIterator<Item = QueryArchetypeView<'b, Q, Mutable>> {
-        self.matching_archetypes.par_iter().flatten().map(|arch| {
-            let arch_idx = arch.id() as usize;
-            let fetch_opt = &self.cached_fetches[arch_idx];
-            let fetch = fetch_opt.as_ref().unwrap();
-            QueryArchetypeView {
-                indices: &self.cached_indices[arch_idx],
-                fetch,
-                total_entity_count: arch.entities.len(),
-                archetype_id: arch.id,
-                _marker: PhantomData,
-            }
-        })
+        self.matching_archetypes
+            .par_iter()
+            .flatten()
+            .map(|arch_id| {
+                let arch_idx = arch_id.id() as usize;
+                let fetch_opt = &self.cached_fetches[arch_idx];
+                let fetch = fetch_opt.as_ref().unwrap();
+                QueryArchetypeView {
+                    indices: &self.cached_indices[arch_idx],
+                    fetch,
+                    archetype_id: *arch_id,
+                    _marker: PhantomData,
+                }
+            })
     }
 
     /// Random access lookup via Entity handle.
@@ -645,7 +642,7 @@ impl<'q, 'a, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Q
         }
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         let query = Query::<Q, F>::new(&world.archetypes_manager.archetypes);
 
         unsafe { std::mem::transmute::<Query<'_, '_, Q, F>, Query<'_, '_, Q, F>>(query) }

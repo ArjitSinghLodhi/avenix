@@ -40,7 +40,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avenix"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "avenix_macros",
  "criterion",
@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5a90b9acf9d9b2ab3d5c5227de9cff5638790f944a86504b2af8799ec8a24c1"
+checksum = "c09d93f801d706c6974914951c8271a8e7cd56aff219aa4579957ed9fc41d53c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -799,9 +799,9 @@ dependencies = [
 
 [[package]]
 name = "test-fork"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3f6630ff809074fa1c60cb3ef18829a2bc9eb81cdaaffc7530082ce8024fecf"
+checksum = "2356a5571da06fe06efc9cd4360ced27f6da0cfeee27fd717bb0a18dcfdf43b5"
 dependencies = [
  "test-fork-core",
  "test-fork-macros",
@@ -809,22 +809,22 @@ dependencies = [
 
 [[package]]
 name = "test-fork-core"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8597f6b65c2c328b5c1f2f0c0a0f0b77c1d2eaec95ace746438ce1db0e9195e7"
+checksum = "837022bdf57df52252e90ee67301d2113862260bccbf8e41dfb6d3465e689de9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
 name = "test-fork-macros"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "538d31f35d5795e671f34748cb8541cf6606587a8f3bb61e8214a06eb0545814"
+checksum = "cfd7e03904f29d299e9ca68642c3d926bbc47776ca25da9121fbd65de40c0eb8"
 dependencies = [
- "syn 2.0.119",
+ "syn 3.0.6",
  "test-fork-core",
 ]
 

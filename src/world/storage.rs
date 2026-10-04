@@ -86,7 +86,7 @@ impl World {
         self.resources.has_resource::<T>()
     }
 
-    pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) -> Option<T> {
+    pub fn insert_resource<T: Resource + Send + Sync>(&self, resource: T) -> Option<T> {
         self.resources.insert_resource(resource)
     }
 
@@ -102,7 +102,7 @@ impl World {
         }
     }
 
-    pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> Option<T> {
+    pub fn remove_resource<T: Resource + Send + Sync>(&self) -> Option<T> {
         self.resources.remove_resource::<T>()
     }
 
@@ -143,7 +143,7 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&'w mut self) -> ResMut<'w, T> {
+    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&'w self) -> ResMut<'w, T> {
         self.resources.get_resource_mut::<T>()
     }
 
@@ -188,9 +188,7 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(
-        &'w mut self,
-    ) -> Option<ResMut<'w, T>> {
+    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(&'w self) -> Option<ResMut<'w, T>> {
         self.resources.get_resource_mut_opt::<T>()
     }
 
@@ -220,7 +218,7 @@ impl World {
         apply_despawns(self, &mut despawns_gaurd);
     }
 
-    pub(crate) fn end_of_frame_sync(&mut self) {
+    pub fn end_of_frame_sync(&mut self) {
         CurrentBufferIdx::advance();
         #[cfg(feature = "reactivity")]
         self.clear_trackers();
@@ -263,12 +261,13 @@ impl World {
             return;
         }
         for meta in tracked_events.iter() {
-            let mut unsafecell = self
+            let entry = self
                 .resources
                 .resources
-                .get_mut(&meta.event_id)
+                .get(&meta.event_id)
                 .expect("Registered event Not initialized somehow? maybe removed");
-            (meta.clear_events)(&mut *unsafecell);
+            let mut res = entry.value().write();
+            (meta.clear_events)(&mut *res);
         }
     }
 
@@ -345,5 +344,54 @@ pub(crate) fn apply_despawns(
             let cmd_ref = unsafe { &*(&entity_ref as *const Entity as *const DespawnCommand) };
             cmd_ref.apply(world);
         }
+    }
+}
+
+impl World {
+    /// # Safety
+    ///
+    /// The caller must guarantee that:
+    /// 1. This method is called exclusively from the **Main Thread** (the thread on which the non-send resource was originally registered and allocated).
+    /// 2. No other active references (`&T` or `&mut T`) to this specific resource exist anywhere in the engine for the duration of the returned `NonSendMut` lifetime.
+    /// 3. Concurrent execution phases do not attempt to look up or access this resource type asynchronously from background worker pool threads.
+    pub unsafe fn get_non_send_resource_mut_unsafe<'w, T: Resource>(&'w self) -> NonSendMut<'w, T> {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        let cell = self.non_send_resources.get(&type_id).unwrap_or_else(|| {
+            panic!(
+                "Requested non-send resource: '{}' was never registered!",
+                type_name::<T>()
+            );
+        });
+        let base_any = cell.get();
+        unsafe {
+            let res = (*base_any)
+                .downcast_mut::<T>()
+                .expect("Resource type mismatch!");
+            NonSendMut {
+                val_ptr: res as *mut T,
+                _marker: PhantomData,
+            }
+        }
+    }
+
+    /// # Safety
+    ///
+    /// The caller must guarantee that:
+    /// 1. This method is called exclusively from the **Main Thread**.
+    /// 2. No other active mutable or immutable references to this specific resource exist simultaneously within the current execution scope.
+    /// 3. Access is strictly isolated from out-of-band parallel execution workers.
+    pub unsafe fn get_non_send_resource_mut_opt_unsafe<'w, T: Resource>(
+        &'w self,
+    ) -> Option<NonSendMut<'w, T>> {
+        self.validate_thread_safety::<T>();
+        let type_id = TypeId::of::<T>();
+        let cell = self.non_send_resources.get(&type_id)?;
+        let base_any = cell.get();
+        let casted_mut = unsafe { (&mut *base_any).downcast_mut::<T>()? };
+        Some(NonSendMut {
+            val_ptr: casted_mut as *mut T,
+            _marker: PhantomData,
+        })
     }
 }

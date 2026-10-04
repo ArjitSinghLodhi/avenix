@@ -228,7 +228,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
 
 impl<'a> SystemParam for Commands<'a> {
     fn init_access(_system_meta: &mut SystemMeta) {}
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         let queue_local = world.commands.queue.read();
         let despawns_local = world.commands.despawns.read();
         unsafe {

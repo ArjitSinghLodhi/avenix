@@ -1,8 +1,6 @@
 use crate::{extensions::SystemParam, system::SystemMeta, world::storage::World};
-use dashmap::{
-    DashMap,
-    mapref::one::{Ref, RefMut},
-};
+use dashmap::DashMap;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 use std::{
     any::{Any, TypeId, type_name},
@@ -15,7 +13,7 @@ mod parallel_resources;
 pub use parallel_resources::ParallelResourceAccessor;
 
 pub(crate) struct ConcurrentResourceRegistry {
-    pub(crate) resources: DashMap<TypeId, Box<dyn Any>, FxBuildHasher>,
+    pub(crate) resources: DashMap<TypeId, RwLock<Box<dyn Any>>, FxBuildHasher>,
 }
 
 unsafe impl Send for ConcurrentResourceRegistry {}
@@ -35,8 +33,9 @@ impl ConcurrentResourceRegistry {
     pub(crate) fn insert_resource<T: Resource + Send + Sync>(&self, resource: T) -> Option<T> {
         let type_id = TypeId::of::<T>();
         let boxed_res = Box::new(resource) as Box<dyn Any>;
-        if let Some(res) = self.resources.insert(type_id, boxed_res) {
-            let res = res.downcast::<T>().unwrap();
+        if let Some(res_lock) = self.resources.insert(type_id, RwLock::new(boxed_res)) {
+            let boxed_any = res_lock.into_inner();
+            let res = boxed_any.downcast::<T>().unwrap();
             Some(*res)
         } else {
             None
@@ -45,8 +44,9 @@ impl ConcurrentResourceRegistry {
 
     pub(crate) fn remove_resource<T: Resource + Send + Sync>(&self) -> Option<T> {
         let type_id = TypeId::of::<T>();
-        if let Some((_, res)) = self.resources.remove(&type_id) {
-            let res = res.downcast::<T>().unwrap();
+        if let Some((_, res_lock)) = self.resources.remove(&type_id) {
+            let boxed_any = res_lock.into_inner();
+            let res = boxed_any.downcast::<T>().unwrap();
             Some(*res)
         } else {
             None
@@ -55,59 +55,63 @@ impl ConcurrentResourceRegistry {
 
     pub(crate) fn get_resource<'w, T: Resource + Send + Sync>(&self) -> Res<'w, T> {
         let type_id = TypeId::of::<T>();
-        let gaurd = self.resources.get(&type_id).unwrap_or_else(|| {
+        let entry = self.resources.get(&type_id).unwrap_or_else(|| {
             panic!(
                 "Requested resource: '{}' was never registered!",
                 type_name::<T>()
             );
         });
 
-        let gaurd = unsafe {
-            std::mem::transmute::<Ref<'_, TypeId, Box<dyn Any>>, Ref<'_, TypeId, Box<dyn Any>>>(
-                gaurd,
-            )
-        };
-
-        let res_ptr = gaurd.downcast_ref::<T>().expect("Resource type mismatch!") as *const T;
-        Res {
-            _gaurd: gaurd,
-            res_ptr,
+        unsafe {
+            let raw_guard = entry.value().read();
+            let guard = std::mem::transmute::<
+                RwLockReadGuard<'_, Box<dyn Any>>,
+                RwLockReadGuard<'w, Box<dyn Any>>,
+            >(raw_guard);
+            let res_ptr = guard.downcast_ref::<T>().expect("Resource type mismatch!") as *const T;
+            Res {
+                _guard: guard,
+                res_ptr,
+            }
         }
     }
 
     pub(crate) fn get_resource_mut<'w, T: Resource + Send + Sync>(&self) -> ResMut<'w, T> {
         let type_id = TypeId::of::<T>();
-        let gaurd = self.resources.get_mut(&type_id).unwrap_or_else(|| {
+        let entry = self.resources.get(&type_id).unwrap_or_else(|| {
             panic!(
                 "Requested resource: '{}' was never registered!",
                 type_name::<T>()
             );
         });
 
-        let mut gaurd = unsafe {
-            std::mem::transmute::<RefMut<'_, TypeId, Box<dyn Any>>, RefMut<'_, TypeId, Box<dyn Any>>>(
-                gaurd,
-            )
-        };
-
-        let res_ptr = gaurd.downcast_mut::<T>().expect("Resource type mismatch!") as *mut T;
-        ResMut {
-            _gaurd: gaurd,
-            res_ptr,
+        unsafe {
+            let raw_guard = entry.value().write();
+            let mut guard = std::mem::transmute::<
+                RwLockWriteGuard<'_, Box<dyn Any>>,
+                RwLockWriteGuard<'w, Box<dyn Any>>,
+            >(raw_guard);
+            let res_ptr = guard.downcast_mut::<T>().expect("Resource type mismatch!") as *mut T;
+            ResMut {
+                _guard: guard,
+                res_ptr,
+            }
         }
     }
 
     pub(crate) fn get_resource_opt<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
         let type_id = TypeId::of::<T>();
+        let entry = self.resources.get(&type_id)?;
+
         unsafe {
-            let gaurd = self.resources.get(&type_id)?;
-            let gaurd = std::mem::transmute::<
-                Ref<'_, TypeId, Box<dyn Any>>,
-                Ref<'_, TypeId, Box<dyn Any>>,
-            >(gaurd);
-            let res_ptr = gaurd.downcast_ref::<T>()? as *const T;
+            let raw_guard = entry.value().read();
+            let guard = std::mem::transmute::<
+                RwLockReadGuard<'_, Box<dyn Any>>,
+                RwLockReadGuard<'w, Box<dyn Any>>,
+            >(raw_guard);
+            let res_ptr = guard.downcast_ref::<T>()? as *const T;
             Some(Res {
-                _gaurd: gaurd,
+                _guard: guard,
                 res_ptr,
             })
         }
@@ -117,15 +121,17 @@ impl ConcurrentResourceRegistry {
         &self,
     ) -> Option<ResMut<'w, T>> {
         let type_id = TypeId::of::<T>();
+        let entry = self.resources.get(&type_id)?;
+
         unsafe {
-            let gaurd = self.resources.get_mut(&type_id)?;
-            let mut gaurd = std::mem::transmute::<
-                RefMut<'_, TypeId, Box<dyn Any>>,
-                RefMut<'_, TypeId, Box<dyn Any>>,
-            >(gaurd);
-            let res_ptr = gaurd.downcast_mut::<T>()? as *mut T;
+            let raw_guard = entry.value().write();
+            let mut guard = std::mem::transmute::<
+                RwLockWriteGuard<'_, Box<dyn Any>>,
+                RwLockWriteGuard<'w, Box<dyn Any>>,
+            >(raw_guard);
+            let res_ptr = guard.downcast_mut::<T>()? as *mut T;
             Some(ResMut {
-                _gaurd: gaurd,
+                _guard: guard,
                 res_ptr,
             })
         }
@@ -135,7 +141,7 @@ impl ConcurrentResourceRegistry {
 pub trait Resource: 'static {}
 
 pub struct Res<'w, T: Resource + Send + Sync> {
-    pub(crate) _gaurd: Ref<'w, TypeId, Box<dyn Any>>,
+    pub(crate) _guard: RwLockReadGuard<'w, Box<dyn Any>>,
     pub(crate) res_ptr: *const T,
 }
 
@@ -167,18 +173,18 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Res<'w, T> {
         system_meta.add_resource_read(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe { Self::new(world) }
     }
 }
 
 pub struct ResMut<'w, T: Resource + Send + Sync> {
-    pub(crate) _gaurd: RefMut<'w, TypeId, Box<dyn Any>>,
+    pub(crate) _guard: RwLockWriteGuard<'w, Box<dyn Any>>,
     pub(crate) res_ptr: *mut T,
 }
 
 impl<'w, T: Resource + Send + Sync> ResMut<'w, T> {
-    pub(crate) unsafe fn new(world: &mut World) -> Self {
+    pub(crate) unsafe fn new(world: &World) -> Self {
         unsafe { transmute::<ResMut<'_, T>, ResMut<'_, T>>(world.get_resource_mut::<T>()) }
     }
 }
@@ -211,7 +217,7 @@ impl<'w, T: Resource + Send + Sync> SystemParam for ResMut<'w, T> {
         system_meta.add_resource_write(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe { Self::new(world) }
     }
 }
@@ -228,7 +234,7 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Option<Res<'w, T>> {
         system_meta.add_resource_read(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<Res<'_, T>>, Option<Res<'_, T>>>(world.get_resource_opt::<T>())
         }
@@ -247,7 +253,7 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Option<ResMut<'w, T>> {
         system_meta.add_resource_write(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<ResMut<'_, T>>, Option<ResMut<'_, T>>>(
                 world.get_resource_mut_opt::<T>(),
@@ -290,7 +296,7 @@ impl<'w, T: Resource> SystemParam for NonSend<'w, T> {
         system_meta.add_resource_read(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe { Self::new(world) }
     }
 }
@@ -301,10 +307,10 @@ pub struct NonSendMut<'w, T: Resource> {
 }
 
 impl<'w, T: Resource> NonSendMut<'w, T> {
-    pub(crate) unsafe fn new(world: &mut World) -> Self {
+    pub(crate) unsafe fn new(world: &World) -> Self {
         unsafe {
             transmute::<NonSendMut<'_, T>, NonSendMut<'_, T>>(
-                world.get_non_send_resource_mut::<T>(),
+                world.get_non_send_resource_mut_unsafe::<T>(),
             )
         }
     }
@@ -335,7 +341,7 @@ impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
         system_meta.add_resource_write(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe { Self::new(world) }
     }
 }
@@ -352,7 +358,7 @@ impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
         system_meta.add_resource_read(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<NonSend<'_, T>>, Option<NonSend<'_, T>>>(
                 world.get_non_send_resource_opt::<T>(),
@@ -373,10 +379,10 @@ impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
         system_meta.add_resource_write(res_id);
     }
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<NonSendMut<'_, T>>, Option<NonSendMut<'_, T>>>(
-                world.get_non_send_resource_mut_opt::<T>(),
+                world.get_non_send_resource_mut_opt_unsafe::<T>(),
             )
         }
     }

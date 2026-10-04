@@ -125,7 +125,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
 impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             let buffer = world.get_resource::<EventBuffer<T>>();
 
@@ -176,7 +176,7 @@ impl<'w, T: Event> EventReader<'w, T> {
 impl<'w, T: Event> SystemParam for EventReader<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         unsafe {
             let buffer = world.get_resource::<EventBuffer<T>>();
 

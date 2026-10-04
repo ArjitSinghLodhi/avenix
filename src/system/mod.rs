@@ -186,12 +186,12 @@ impl SystemMeta {
 
 pub trait SystemParam {
     fn init_access(system_meta: &mut SystemMeta);
-    fn get_param(world: &mut World) -> Self;
+    fn get_param(world: &World) -> Self;
 }
 
 #[doc(hidden)]
 pub trait System: SystemData {
-    fn run(&mut self, world: &mut World);
+    fn run(&mut self, world: &World);
     #[doc(hidden)]
     fn pub_type_id(&self) -> TypeId;
     #[doc(hidden)]

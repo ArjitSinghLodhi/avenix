@@ -41,7 +41,7 @@ impl RunConditionsList {
 
 pub trait Condition<T>: Send + Sync + 'static {
     type ConditionData: Send + Sync + 'static;
-    fn init_condition_data(&self, world: &mut World) -> Self::ConditionData;
+    fn init_condition_data(&self, world: &World) -> Self::ConditionData;
     fn run(&self, data: &Self::ConditionData) -> bool;
 }
 
@@ -51,7 +51,7 @@ where
     P: ParallelSystemParam,
 {
     type ConditionData = P;
-    fn init_condition_data(&self, world: &mut World) -> Self::ConditionData {
+    fn init_condition_data(&self, world: &World) -> Self::ConditionData {
         P::get_param(world)
     }
 

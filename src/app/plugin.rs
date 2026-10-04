@@ -6,7 +6,9 @@ pub trait Plugin: 'static {
 
 #[doc(hidden)]
 pub trait PluginsBuildAll {
+    #[doc(hidden)]
     fn build_all(&self, app: &mut App);
+    #[doc(hidden)]
     fn get_plugin_names(&self) -> Vec<&'static str>;
 }
 

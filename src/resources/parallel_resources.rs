@@ -80,6 +80,8 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     /// This method acquires a write lock and instantly registers the resource, returning the previous
     /// instance if it was already present in the resource registry.
     ///
+    /// It is best to use it inside a background thread.
+    ///
     /// [`Commands::insert_resource`]: crate::commands::Commands::insert_resource
     pub fn insert_resource(&self, resource: T) -> Option<T> {
         self.resources.insert_resource(resource)
@@ -90,6 +92,8 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     /// This method acquires a write lock and instantly removes the resource, returning the
     /// instance if it was present in the resource registry.
     ///
+    /// It is best to use it inside a background thread.
+    ///
     /// [`Commands::remove_resource`]: crate::commands::Commands::remove_resource
     pub fn remove_resource(&self) -> Option<T> {
         self.resources.remove_resource::<T>()
@@ -99,7 +103,7 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
 impl<T: Resource + Send + Sync> SystemParam for ParallelResourceAccessor<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         ParallelResourceAccessor {
             resources: world.resources.clone(),
             _marker: PhantomData,

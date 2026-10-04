@@ -216,6 +216,10 @@ impl Archetype {
     pub(crate) fn id(&self) -> u32 {
         self.id.0
     }
+
+    pub(crate) fn archetype_id(&self) -> ArchetypeId {
+        self.id
+    }
 }
 
 pub(crate) struct ArchetypeManager {

@@ -66,7 +66,7 @@ unsafe impl ParallelSystemParam for ParallelCommands {}
 impl SystemParam for ParallelCommands {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &mut World) -> Self {
+    fn get_param(world: &World) -> Self {
         Self {
             queue: world.commands.queue.clone(),
             despawns: world.commands.despawns.clone(),
