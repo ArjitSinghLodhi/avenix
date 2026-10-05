@@ -59,6 +59,9 @@ pub struct World {
     pub(crate) main_thread_id: ThreadId,
 }
 
+unsafe impl Send for World {}
+unsafe impl Sync for World {}
+
 impl World {
     pub(crate) fn new() -> Self {
         Self {

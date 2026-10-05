@@ -294,6 +294,7 @@ impl<'w, T: Resource> SystemParam for NonSend<'w, T> {
             );
         }
         system_meta.add_resource_read(res_id);
+        system_meta.set_non_send();
     }
 
     fn get_param(world: &World) -> Self {
@@ -339,6 +340,7 @@ impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
             );
         }
         system_meta.add_resource_write(res_id);
+        system_meta.set_non_send();
     }
 
     fn get_param(world: &World) -> Self {
@@ -356,6 +358,7 @@ impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
             );
         }
         system_meta.add_resource_read(res_id);
+        system_meta.set_non_send();
     }
 
     fn get_param(world: &World) -> Self {
@@ -377,6 +380,7 @@ impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
             );
         }
         system_meta.add_resource_write(res_id);
+        system_meta.set_non_send();
     }
 
     fn get_param(world: &World) -> Self {

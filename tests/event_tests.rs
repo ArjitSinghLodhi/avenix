@@ -97,7 +97,8 @@ fn test_events_multi_frame_lifecycle() {
                 pre_emit_verify_system,
                 emitter_system,
                 post_emit_verify_system,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(test_runner_frames);
@@ -241,7 +242,8 @@ fn test_events_parallel_lifecycle() {
                 increment_frame_system,
                 parallel_execution_system,
                 parallel_verification_system,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(test_two_frames);

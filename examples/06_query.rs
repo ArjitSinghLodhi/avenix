@@ -20,8 +20,10 @@ fn main() {
     println!("=== Sequential quries example ===\n");
 
     let mut app = App::new();
-    app.add_systems(Startup, spawn_entities_system)
-        .add_systems(Update, (sequential_read_system, sequential_write_system));
+    app.add_systems(Startup, spawn_entities_system).add_systems(
+        Update,
+        (sequential_read_system, sequential_write_system).chain(),
+    );
 
     app.set_runner(run_query_test_loop);
     app.run();

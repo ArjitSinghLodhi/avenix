@@ -29,6 +29,8 @@ use crate::{
 /// **Exception:** These actions are only permissible if you explicitly guarantee that absolutely no entity handle clones
 /// or query-based random lookups can occur while commands are being applied at the end of the frame.
 ///
+/// But standard concurrent reads and writes for component columns is completely safe without any extra rules.
+///
 /// # Deadlock Safety Rules
 /// Because the underlying storage utilizes granular, column-level `RwLocks` to enable simultaneous
 /// multi-threaded table access, nesting parallel query scopes incorrectly on the *same thread* will freeze execution:

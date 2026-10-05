@@ -93,6 +93,7 @@ pub struct SystemMeta {
     resource_writes: AccessHashSet<TypeId>,
     with_filters: AccessHashSet<TypeId>,
     without_filters: AccessHashSet<TypeId>,
+    is_send: bool,
 }
 
 impl SystemMeta {
@@ -105,11 +106,20 @@ impl SystemMeta {
             resource_writes: AccessHashSet::new(),
             with_filters: AccessHashSet::new(),
             without_filters: AccessHashSet::new(),
+            is_send: true,
         }
     }
 
     pub fn get_func_name(&self) -> String {
         self.name.clone()
+    }
+
+    pub fn set_non_send(&mut self) {
+        self.is_send = false;
+    }
+
+    pub fn is_send(&self) -> bool {
+        self.is_send
     }
 
     pub fn add_component_read(&mut self, type_id: TypeId) {
@@ -162,6 +172,32 @@ impl SystemMeta {
 }
 
 impl SystemMeta {
+    pub fn component_reads(&self) -> impl Iterator<Item = &TypeId> {
+        self.component_reads.iter()
+    }
+
+    pub fn component_writes(&self) -> impl Iterator<Item = &TypeId> {
+        self.component_writes.iter()
+    }
+
+    pub fn resource_reads(&self) -> impl Iterator<Item = &TypeId> {
+        self.resource_reads.iter()
+    }
+
+    pub fn resource_writes(&self) -> impl Iterator<Item = &TypeId> {
+        self.resource_writes.iter()
+    }
+
+    pub fn with_filters(&self) -> impl Iterator<Item = &TypeId> {
+        self.with_filters.iter()
+    }
+
+    pub fn without_filters(&self) -> impl Iterator<Item = &TypeId> {
+        self.without_filters.iter()
+    }
+}
+
+impl SystemMeta {
     pub fn extend(&mut self, param_access_other: &mut SystemMeta) {
         self.component_reads
             .set
@@ -190,10 +226,10 @@ pub trait SystemParam {
 }
 
 #[doc(hidden)]
-pub trait System: SystemData {
+pub trait System: SystemData + 'static {
     fn run(&mut self, world: &World);
     #[doc(hidden)]
-    fn pub_type_id(&self) -> TypeId;
+    fn func_type_id(&self) -> TypeId;
     #[doc(hidden)]
     fn name(&self) -> &'static str;
 }
@@ -278,6 +314,8 @@ macro_rules! impl_system_configs_tuple {
         }
     };
 }
+
+impl_system_configs_tuple!(S1 ; M1);
 impl_system_configs_tuple!(S1, S2 ; M1, M2);
 impl_system_configs_tuple!(S1, S2, S3 ; M1, M2, M3);
 impl_system_configs_tuple!(S1, S2, S3, S4; M1, M2, M3, M4);
@@ -297,24 +335,6 @@ where
             systems: vec![Box::new(self.into_system())],
             _marker: PhantomData,
         }
-    }
-}
-
-impl<S, Marker> IntoSystemConfigs<(Marker,)> for (S,)
-where
-    S: IntoSystem<Marker> + 'static,
-{
-    fn into_configs(self) -> SystemConfigs<(Marker,)> {
-        SystemConfigs {
-            systems: vec![Box::new(self.0.into_system())],
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<Marker> IntoSystemConfigs<(Marker,)> for SystemConfigs<(Marker,)> {
-    fn into_configs(self) -> SystemConfigs<(Marker,)> {
-        self
     }
 }
 

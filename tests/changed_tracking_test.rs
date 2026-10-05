@@ -291,7 +291,8 @@ fn test_multiple_changed_filters_lifecycle() {
             pre_mutation_verify_system,
             midstream_mutator_system,
             post_mutation_verify_system,
-        ),
+        )
+            .chain(),
     );
 
     app.set_runner(test_runner_four_frames);
@@ -353,7 +354,8 @@ fn test_changed_generational_tracking() {
                 modify_component_system,
                 verify_change_tracking,
                 verify_change_tracking_data,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(test_runner_once);
@@ -428,15 +430,16 @@ fn complex_filter_verify_system(
 fn test_complex_changed_combinator_filters() {
     let mut app = App::new();
     app.insert_resource(FrameCounter { current_frame: 0 })
-        .add_systems(Startup, setup_multi_frame_entities);
-    app.add_systems(
-        Update,
-        (
-            increment_frame_system,
-            midstream_mutator_system,
-            complex_filter_verify_system,
-        ),
-    );
-    app.set_runner(test_runner_four_frames);
+        .add_systems(Startup, setup_multi_frame_entities)
+        .add_systems(
+            Update,
+            (
+                increment_frame_system,
+                midstream_mutator_system,
+                complex_filter_verify_system,
+            )
+                .chain(),
+        )
+        .set_runner(test_runner_four_frames);
     app.run();
 }

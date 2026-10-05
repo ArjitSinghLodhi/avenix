@@ -31,7 +31,7 @@ fn main() {
 
     app.add_systems(
         Update,
-        (increment_frame_system, parallel_verification_system),
+        (increment_frame_system, parallel_verification_system).chain(),
     );
     app.set_runner(run_resource_test_loop);
 

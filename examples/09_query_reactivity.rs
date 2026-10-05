@@ -179,7 +179,8 @@ fn main() {
             reactive_changed_filter_system,
             complex_combinator_filter_system,
             granular_tracker_inspection_system,
-        ),
+        )
+            .chain(),
     );
 
     app.set_runner(test_runner_four_frames);

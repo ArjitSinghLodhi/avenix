@@ -5,8 +5,8 @@ pub type ConditionFn = Box<dyn Fn() -> bool + Send + Sync>;
 
 #[derive(Default)]
 pub struct RunConditionsList {
-    pub(crate) builders: Vec<ConditionBuilder>,
-    pub(crate) runtime_gates: Vec<ConditionFn>,
+    builders: Vec<ConditionBuilder>,
+    runtime_gates: Vec<ConditionFn>,
 }
 
 impl RunConditionsList {

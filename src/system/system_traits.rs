@@ -268,7 +268,7 @@ macro_rules! impl_traits_for_function_system_configs {
 
                 let n = boxed_systems.len();
                 for idx in 1..n {
-                    let prev_type_id = boxed_systems[idx - 1].pub_type_id();
+                    let prev_type_id = boxed_systems[idx - 1].func_type_id();
                     if let Some(sys_mut) = boxed_systems.get_mut(idx) {
                         sys_mut
                             .get_or_init_mut::<SystemOrderings>(SystemOrderings::default)

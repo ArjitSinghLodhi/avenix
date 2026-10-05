@@ -1,11 +1,12 @@
 use crate::{
     app::{App, plugin::Plugin},
-    extensions::SystemExt,
-    schedule::dyn_eq::DynEq,
+    schedule::{dyn_eq::DynEq, executors::multi_threaded::MultiThreadedExecutor},
     system::condition::RunConditionsList,
 };
 
 pub(crate) mod dyn_eq;
+pub(crate) mod executors;
+pub(crate) mod schedule_sorter;
 mod schedules_list;
 pub(crate) mod system_sorter;
 
@@ -34,7 +35,7 @@ impl Plugin for DefaultSchedulesPlugin {
 
 pub trait ScheduleLabel: Any + Send + Sync + DynEq + Debug {
     fn default_executor(&mut self) -> Box<dyn SystemExecutor> {
-        Box::new(SingleThreadedExecutor)
+        Box::new(MultiThreadedExecutor::new())
     }
 }
 
@@ -42,12 +43,15 @@ pub struct SystemNode {
     system: Box<dyn System>,
 }
 
+unsafe impl Send for SystemNode {}
+unsafe impl Sync for SystemNode {}
+
 impl SystemNode {
     pub fn new(system: Box<dyn System>) -> Self {
         Self { system }
     }
 
-    pub fn run(&mut self, world: &mut World) {
+    pub fn run(&mut self, world: &World) {
         self.system.run(world);
     }
 
@@ -81,27 +85,8 @@ impl SystemsSchedule {
 }
 
 pub trait SystemExecutor: Send + Sync + 'static {
+    fn init(&mut self, schedule: &SystemsSchedule);
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World);
-}
-
-#[derive(Default)]
-pub struct SingleThreadedExecutor;
-
-impl SystemExecutor for SingleThreadedExecutor {
-    fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
-        for node in schedule.systems_mut() {
-            let should_run = node
-                .system
-                .get_or_init(RunConditionsList::default)
-                .runtime_gates
-                .iter()
-                .all(|cond| cond());
-
-            if should_run {
-                node.system.run(world);
-            }
-        }
-    }
 }
 
 pub struct Schedule {
@@ -145,8 +130,12 @@ impl Schedule {
         &*self.schedule
     }
 
-    pub fn schedule_mut(&mut self) -> &dyn ScheduleLabel {
+    pub fn schedule_mut(&mut self) -> &mut dyn ScheduleLabel {
         &mut *self.schedule
+    }
+
+    pub(crate) fn init_executor(&mut self) {
+        self.executor.init(&self.systems_schedule);
     }
 
     pub fn run(&mut self, world: &mut World) {

@@ -317,7 +317,8 @@ fn main() {
                 increment_frame,
                 trigger_runtime_lifecycle_stages,
                 test_unlink_edge_cases_system,
-            ),
+            )
+                .chain(),
         )
         .set_runner(run_test_frames)
         .run();

@@ -3,19 +3,19 @@ use parking_lot::RwLock;
 pub use plugin::{Plugin, PluginsBuildAll};
 
 use std::{
-    collections::VecDeque,
     marker::PhantomData,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use crate::{
-    app::{schedule::DynEq, system::condition::RunConditionsList},
+    app::system::condition::RunConditionsList,
     extensions::SystemExt,
     query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
     resources::Resource,
     schedule::{
         CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
         Startup,
+        schedule_sorter::sort_schedules,
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
@@ -115,13 +115,20 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        let mut app = Self::empty();
+        DefaultSchedulesPlugin::build(&DefaultSchedulesPlugin, &mut app);
+        app
+    }
+
+    /// Initializes App with no default schedules except `Startup` and `CleanupHandles` schedules.
+    pub fn empty() -> Self {
         if APP_INITIALIZED.swap(true, Ordering::Relaxed) {
             panic!(
                 "❌ AVENIX ARCHITECTURE VIOLATION: Multiple App instances detected!\nEnsure you only instantiate exactly one App::new() across your entire binary runtime."
             );
         }
 
-        let mut app = Self {
+        Self {
             world: World::new(),
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
@@ -130,9 +137,7 @@ impl App {
             schedule_order_constraints: Vec::new(),
             runner_fn: Box::new(runner_once),
             configuration: ConfigurationContext::new(),
-        };
-        DefaultSchedulesPlugin::build(&DefaultSchedulesPlugin, &mut app);
-        app
+        }
     }
 
     pub fn init_state<T: States + Default>(&mut self) -> &mut Self {
@@ -324,6 +329,10 @@ impl App {
     fn build_everything(&mut self) {
         self.configure_schedules();
         self.configure_systems();
+        self.schedules.iter_mut().for_each(|schedule| {
+            schedule.init_executor();
+        });
+        self.configuration.schedules_added = true;
         #[cfg(feature = "reactivity")]
         register_removal_tracking_buffers(self);
     }
@@ -359,96 +368,10 @@ impl App {
     }
 
     fn configure_schedules(&mut self) {
-        let unarranged = std::mem::take(&mut self.schedules);
-
-        let mut unique_schedules: Vec<Schedule> = Vec::with_capacity(unarranged.len());
-        for s in unarranged {
-            if unique_schedules
-                .iter()
-                .any(|existing| (*existing.schedule()).dyn_eq(s.schedule()))
-            {
-                panic!("❌ CONFIGURATION ERROR: Duplicate Schedule detected!");
-            }
-            unique_schedules.push(s);
-        }
-
-        let total_schedules = unique_schedules.len();
-        let mut adjacency_list: Vec<Vec<usize>> = vec![Vec::new(); total_schedules];
-        let mut in_degree: Vec<usize> = vec![0; total_schedules];
-
-        for ScheduleConstraint { before, after } in &self.schedule_order_constraints {
-            if before.dyn_eq(&Startup) || after.dyn_eq(&Startup) {
-                panic!(
-                    "❌ CONFIGURATION ERROR: Ordering constraint references the 'Startup' root! Startup is completely isolated from dynamic ordering rules."
-                );
-            }
-            if before.dyn_eq(&CleanupHandles) || after.dyn_eq(&CleanupHandles) {
-                panic!("CleanupHandles cannot be used for ordering schedules")
-            }
-
-            let before_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**before)).or_else(|| {
-            panic!(
-                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
-                before
-            );
-        });
-
-            let after_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**after)).or_else(|| {
-            panic!(
-                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
-                after
-            );
-        });
-
-            let b_idx = before_idx.unwrap();
-            let a_idx = after_idx.unwrap();
-
-            adjacency_list[b_idx].push(a_idx);
-            in_degree[a_idx] += 1;
-        }
-
-        let mut sorted_indices = Vec::with_capacity(total_schedules);
-        let mut queue: VecDeque<usize> = in_degree
-            .iter()
-            .enumerate()
-            .filter(|&(_, &deg)| deg == 0)
-            .map(|(idx, _)| idx)
-            .collect();
-
-        while let Some(u) = queue.pop_front() {
-            sorted_indices.push(u);
-
-            for &v in &adjacency_list[u] {
-                in_degree[v] -= 1;
-                if in_degree[v] == 0 {
-                    queue.push_back(v);
-                }
-            }
-        }
-
-        if sorted_indices.len() != total_schedules {
-            let mut trapped_schedules = Vec::new();
-            for (idx, s) in unique_schedules.iter().enumerate() {
-                if !sorted_indices.contains(&idx) {
-                    trapped_schedules.push(format!("  • {:?}", s.schedule()));
-                }
-            }
-            panic!(
-                "❌ CONFIGURATION ERROR: Circular dependency deadlock detected in Schedule constraints!\n\nThe following schedules are deadlocked in the cycle:\n{}\n",
-                trapped_schedules.join("\n")
-            );
-        }
-
-        let mut sorted_schedules = Vec::with_capacity(total_schedules);
-        let mut temp_movable: Vec<Option<Schedule>> =
-            unique_schedules.into_iter().map(Some).collect();
-
-        for idx in sorted_indices {
-            sorted_schedules.push(temp_movable[idx].take().unwrap());
-        }
-
-        self.schedules = sorted_schedules;
-        self.configuration.schedules_added = true;
+        self.schedules = sort_schedules(
+            std::mem::take(&mut self.schedules),
+            &self.schedule_order_constraints,
+        );
     }
 }
 

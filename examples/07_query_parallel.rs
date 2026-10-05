@@ -31,7 +31,8 @@ fn main() {
                 parallel_view_write_system,
                 parallel_chunk_read_system,
                 parallel_chunk_write_system,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(run_parallel_test_loop);

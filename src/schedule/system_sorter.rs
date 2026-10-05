@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::VecDeque};
+use std::any::TypeId;
 
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
@@ -6,7 +6,7 @@ use crate::{
     app_impl::SystemsBlock,
     extensions::SystemExt,
     schedule::{CleanupHandles, Schedule, Startup, SystemNode},
-    system::system_traits::SystemOrderings,
+    system::{SystemMeta, system_traits::SystemOrderings},
 };
 
 pub(crate) fn dispatch_system_blocks(
@@ -59,24 +59,55 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         name: &'static str,
         run_after: Vec<TypeId>,
         run_before: Vec<TypeId>,
+        is_send: bool,
+        component_reads: Vec<TypeId>,
+        component_writes: Vec<TypeId>,
+        resource_reads: Vec<TypeId>,
+        resource_writes: Vec<TypeId>,
+        with_filters: Vec<TypeId>,
+        without_filters: Vec<TypeId>,
     }
 
     let mut meta_list = Vec::with_capacity(n);
-    for node in schedule_systems.iter_mut().take(n) {
+    for node in schedule_systems.iter_mut() {
         unsafe {
             let node_ptr = node as *mut SystemNode;
             let system_ref = (*node_ptr).system();
-            let tid = system_ref.pub_type_id();
+            let tid = system_ref.func_type_id();
             let sys_name = system_ref.name();
 
             let system_mut_ref = (*node_ptr).system_mut();
-            let orderings = system_mut_ref.get_or_init(SystemOrderings::default);
+
+            let run_after = system_mut_ref
+                .get_or_init(SystemOrderings::default)
+                .run_after
+                .clone();
+            let run_before = system_mut_ref
+                .get_or_init(SystemOrderings::default)
+                .run_before
+                .clone();
+
+            let meta = system_mut_ref.get_or_init(SystemMeta::default);
+            let is_send = meta.is_send();
+            let component_reads = meta.component_reads().copied().collect();
+            let component_writes = meta.component_writes().copied().collect();
+            let resource_reads = meta.resource_reads().copied().collect();
+            let resource_writes = meta.resource_writes().copied().collect();
+            let with_filters = meta.with_filters().copied().collect();
+            let without_filters = meta.without_filters().copied().collect();
 
             meta_list.push(SortingMeta {
                 type_id: tid,
                 name: sys_name,
-                run_after: orderings.run_after.clone(),
-                run_before: orderings.run_before.clone(),
+                run_after,
+                run_before,
+                is_send,
+                component_reads,
+                component_writes,
+                resource_reads,
+                resource_writes,
+                with_filters,
+                without_filters,
             });
         }
     }
@@ -133,35 +164,141 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         }
     }
 
-    let mut queue = VecDeque::new();
-    for (i, &deg) in in_degree.iter().enumerate().take(n) {
-        if deg == 0 {
-            queue.push_back(i);
-        }
-    }
-
     let mut sorted_indices = Vec::with_capacity(n);
-    while let Some(u) = queue.pop_front() {
-        sorted_indices.push(u);
-        for &v in &graph[u] {
-            in_degree[v] -= 1;
-            if in_degree[v] == 0 {
-                queue.push_back(v);
-            }
-        }
-    }
+    let mut completed = vec![false; n];
 
-    if sorted_indices.len() != n {
-        let mut stuck_systems = Vec::new();
+    let mut active_batch_systems: Vec<usize> = Vec::new();
+
+    while sorted_indices.len() < n {
+        let mut candidates = Vec::new();
         for i in 0..n {
-            if in_degree[i] > 0 {
-                stuck_systems.push(format!("  • {}", meta_list[i].name));
+            if !completed[i] && in_degree[i] == 0 {
+                candidates.push(i);
             }
         }
-        panic!(
-            "❌ SCHEDULING ERROR: A circular dependency cycle was detected between systems!\n\nThe following systems are deadlocked in the cycle:\n{}\n",
-            stuck_systems.join("\n")
-        );
+
+        if candidates.is_empty() {
+            let mut stuck_systems = Vec::new();
+            for i in 0..n {
+                if !completed[i] {
+                    stuck_systems.push(format!("  • {}", meta_list[i].name));
+                }
+            }
+            panic!(
+                "❌ SCHEDULING ERROR: A circular dependency cycle was detected between systems!\n\nThe following systems are deadlocked in the cycle:\n{}\n",
+                stuck_systems.join("\n")
+            );
+        }
+
+        let mut batch_indices = Vec::new();
+        active_batch_systems.clear();
+        let mut has_non_send = false;
+
+        for &idx in &candidates {
+            let meta = &meta_list[idx];
+
+            if !meta.is_send {
+                if batch_indices.is_empty() {
+                    batch_indices.push(idx);
+                    break;
+                } else {
+                    continue;
+                }
+            }
+
+            if has_non_send {
+                continue;
+            }
+
+            let mut conflict = false;
+
+            for &active_idx in &active_batch_systems {
+                let active_meta = &meta_list[active_idx];
+
+                for r in &meta.resource_reads {
+                    if active_meta.resource_writes.contains(r) {
+                        conflict = true;
+                        break;
+                    }
+                }
+                if conflict {
+                    break;
+                }
+
+                for w in &meta.resource_writes {
+                    if active_meta.resource_writes.contains(w)
+                        || active_meta.resource_reads.contains(w)
+                    {
+                        conflict = true;
+                        break;
+                    }
+                }
+                if conflict {
+                    break;
+                }
+
+                for r in &meta.component_reads {
+                    if active_meta.component_writes.contains(r) {
+                        let is_disjoint = meta
+                            .with_filters
+                            .iter()
+                            .any(|f| active_meta.without_filters.contains(f))
+                            || meta
+                                .without_filters
+                                .iter()
+                                .any(|f| active_meta.with_filters.contains(f));
+                        if !is_disjoint {
+                            conflict = true;
+                            break;
+                        }
+                    }
+                }
+                if conflict {
+                    break;
+                }
+
+                for w in &meta.component_writes {
+                    if active_meta.component_writes.contains(w)
+                        || active_meta.component_reads.contains(w)
+                    {
+                        let is_disjoint = meta
+                            .with_filters
+                            .iter()
+                            .any(|f| active_meta.without_filters.contains(f))
+                            || meta
+                                .without_filters
+                                .iter()
+                                .any(|f| active_meta.with_filters.contains(f));
+                        if !is_disjoint {
+                            conflict = true;
+                            break;
+                        }
+                    }
+                }
+                if conflict {
+                    break;
+                }
+            }
+
+            if conflict {
+                continue;
+            }
+
+            if !meta.is_send {
+                has_non_send = true;
+            }
+
+            batch_indices.push(idx);
+            active_batch_systems.push(idx);
+        }
+
+        for &idx in &batch_indices {
+            completed[idx] = true;
+            sorted_indices.push(idx);
+            for &v in &graph[idx] {
+                in_degree[v] -= 1;
+            }
+        }
     }
 
     let old_systems = std::mem::take(schedule_systems);

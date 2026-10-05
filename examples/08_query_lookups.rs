@@ -22,7 +22,8 @@ fn main() {
                 simple_global_lookup_system,
                 complex_coordinated_view_lookup_system,
                 zero_allocation_nested_lookup_system,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(run_lookup_test_loop);

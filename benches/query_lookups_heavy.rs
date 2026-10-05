@@ -104,7 +104,10 @@ fn bench_entry_point(_c: &mut Criterion) {
             entities: Vec::new(),
         })
         .add_systems(Startup, setup_fragmented_world)
-        .add_systems(Update, collect_and_scramble_targets)
+        .add_systems(
+            Update,
+            collect_and_scramble_targets.before(run_fragmented_criterion_bench),
+        )
         .add_systems(Update, run_fragmented_criterion_bench)
         .run();
 }

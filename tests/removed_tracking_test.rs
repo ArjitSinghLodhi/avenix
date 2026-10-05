@@ -153,7 +153,8 @@ fn test_double_buffered_removals() {
                 verify_frame_1_removal_isolation,
                 verify_frame_2_removal_reads,
                 verify_frame_3_removal_decay,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(test_runner_removals);

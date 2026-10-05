@@ -1,11 +1,11 @@
-use std::any::TypeId;
-
 use crate::system::FunctionSystem;
 use crate::system::IntoSystem;
 use crate::system::System;
 use crate::system::SystemMeta;
 use crate::system::SystemParam;
+use crate::system::system_storage::SystemExt;
 use crate::world::storage::World;
+use std::any::TypeId;
 macro_rules! impl_system_for_functions {
     ($($param:ident),*) => {
         impl<$($param,)* F> System for FunctionSystem<($($param,)*), F>
@@ -22,7 +22,7 @@ macro_rules! impl_system_for_functions {
                 (self.func)($($param),*);
             }
 
-            fn pub_type_id(&self) -> TypeId {
+            fn func_type_id(&self) -> TypeId {
                 TypeId::of::<F>()
             }
 
@@ -44,7 +44,9 @@ macro_rules! impl_system_for_functions {
                     <$param>::init_access(&mut system_meta);
                 )*
 
-                FunctionSystem::new(self)
+                let mut system = FunctionSystem::new(self);
+                system.insert(system_meta);
+                system
             }
         }
 
@@ -82,7 +84,7 @@ where
         (self.func)();
     }
 
-    fn pub_type_id(&self) -> TypeId {
+    fn func_type_id(&self) -> TypeId {
         TypeId::of::<F>()
     }
 

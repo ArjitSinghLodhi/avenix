@@ -22,7 +22,8 @@ fn main() {
                 increment_frame_system,
                 event_execution_system,
                 event_verification_system,
-            ),
+            )
+                .chain(),
         );
 
     app.set_runner(test_three_frames);
