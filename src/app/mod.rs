@@ -8,16 +8,14 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use rustc_hash::{FxBuildHasher, FxHashMap};
-
 use crate::{
-    app::system::condition::RunConditionsList,
+    app::{schedule::DynEq, system::condition::RunConditionsList},
     extensions::SystemExt,
     query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
     resources::Resource,
     schedule::{
-        CleanupHandles, DefaultSchedulesPlugin, IntoScheduleId, Schedule, ScheduleId,
-        ScheduleLabel, Startup,
+        CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
+        Startup,
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
@@ -92,7 +90,7 @@ impl ConfigurationContext {
 }
 
 pub(crate) struct SystemsBlock {
-    pub(crate) schedule_id: ScheduleId,
+    pub(crate) schedule: Box<dyn ScheduleLabel>,
     pub(crate) systems: Vec<Box<dyn System>>,
 }
 
@@ -110,7 +108,7 @@ pub struct App {
     cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
     systems_blocks: Vec<SystemsBlock>,
-    pub(crate) schedule_order_constraints: Vec<(ScheduleId, ScheduleId)>,
+    pub(crate) schedule_order_constraints: Vec<ScheduleConstraint>,
     runner_fn: RunnerFn,
     configuration: ConfigurationContext,
 }
@@ -149,9 +147,9 @@ impl App {
     pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
         self.configuration.not_ready();
 
-        if schedule.id() == Startup.id() {
+        if schedule.schedule().dyn_eq(&Startup) {
             panic!("Startup schedule cannot be overwritten")
-        } else if schedule.id() == CleanupHandles.id() {
+        } else if schedule.schedule().dyn_eq(&CleanupHandles) {
             panic!("CleanupHandles schedule cannnot be overwritten")
         } else {
             self.schedules.push(schedule);
@@ -159,12 +157,16 @@ impl App {
         self
     }
 
-    pub fn configure_schedule_order<Before: ScheduleLabel, After: ScheduleLabel>(
+    pub fn configure_schedule_order(
         &mut self,
+        before: impl ScheduleLabel,
+        after: impl ScheduleLabel,
     ) -> &mut Self {
         self.configuration.not_ready();
-        self.schedule_order_constraints
-            .push((Before::schedule_id(), After::schedule_id()));
+        self.schedule_order_constraints.push(ScheduleConstraint {
+            before: Box::new(before),
+            after: Box::new(after),
+        });
         self
     }
 
@@ -175,15 +177,16 @@ impl App {
     ) -> &mut Self {
         self.configuration.not_ready();
         let configs = systems.into_configs();
+
         if let Some(existing_block) = self
             .systems_blocks
             .iter_mut()
-            .find(|b| b.schedule_id == schedule.id())
+            .find(|b| (*b.schedule).dyn_eq(&schedule))
         {
             existing_block.systems.extend(configs.systems);
         } else {
             let block = SystemsBlock {
-                schedule_id: schedule.id(),
+                schedule: Box::new(schedule),
                 systems: configs.systems,
             };
             self.systems_blocks.push(block);
@@ -357,78 +360,77 @@ impl App {
 
     fn configure_schedules(&mut self) {
         let unarranged = std::mem::take(&mut self.schedules);
-        let mut schedule_map: FxHashMap<ScheduleId, Schedule> =
-            FxHashMap::with_capacity_and_hasher(unarranged.len(), FxBuildHasher);
+
+        let mut unique_schedules: Vec<Schedule> = Vec::with_capacity(unarranged.len());
         for s in unarranged {
-            let id = s.id();
-            if schedule_map.contains_key(&id) {
-                panic!(
-                    "❌ CONFIGURATION ERROR: Duplicate Schedule detected for '{}'!",
-                    id.name
-                );
+            if unique_schedules
+                .iter()
+                .any(|existing| (*existing.schedule()).dyn_eq(s.schedule()))
+            {
+                panic!("❌ CONFIGURATION ERROR: Duplicate Schedule detected!");
             }
-            schedule_map.insert(id, s);
+            unique_schedules.push(s);
         }
 
-        let mut adjacency_list: FxHashMap<ScheduleId, Vec<ScheduleId>> = FxHashMap::default();
-        let mut in_degree: FxHashMap<ScheduleId, usize> = FxHashMap::default();
+        let total_schedules = unique_schedules.len();
+        let mut adjacency_list: Vec<Vec<usize>> = vec![Vec::new(); total_schedules];
+        let mut in_degree: Vec<usize> = vec![0; total_schedules];
 
-        for &id in schedule_map.keys() {
-            in_degree.insert(id, 0);
-            adjacency_list.entry(id).or_default();
-        }
-
-        for &(before_id, after_id) in &self.schedule_order_constraints {
-            if before_id == Startup.id() || after_id == Startup.id() {
+        for ScheduleConstraint { before, after } in &self.schedule_order_constraints {
+            if before.dyn_eq(&Startup) || after.dyn_eq(&Startup) {
                 panic!(
                     "❌ CONFIGURATION ERROR: Ordering constraint references the 'Startup' root! Startup is completely isolated from dynamic ordering rules."
                 );
             }
-            if before_id == CleanupHandles.id() || after_id == CleanupHandles.id() {
+            if before.dyn_eq(&CleanupHandles) || after.dyn_eq(&CleanupHandles) {
                 panic!("CleanupHandles cannot be used for ordering schedules")
             }
-            if !schedule_map.contains_key(&before_id) {
-                panic!(
-                    "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{}'",
-                    before_id.name
-                );
-            }
-            if !schedule_map.contains_key(&after_id) {
-                panic!(
-                    "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{}'",
-                    after_id.name
-                );
-            }
 
-            adjacency_list.entry(before_id).or_default().push(after_id);
-            *in_degree.entry(after_id).or_default() += 1;
+            let before_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**before)).or_else(|| {
+            panic!(
+                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
+                before
+            );
+        });
+
+            let after_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**after)).or_else(|| {
+            panic!(
+                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
+                after
+            );
+        });
+
+            let b_idx = before_idx.unwrap();
+            let a_idx = after_idx.unwrap();
+
+            adjacency_list[b_idx].push(a_idx);
+            in_degree[a_idx] += 1;
         }
-        let mut sorted_ids = Vec::with_capacity(schedule_map.len());
 
-        let mut queue: VecDeque<ScheduleId> = in_degree
+        let mut sorted_indices = Vec::with_capacity(total_schedules);
+        let mut queue: VecDeque<usize> = in_degree
             .iter()
+            .enumerate()
             .filter(|&(_, &deg)| deg == 0)
-            .map(|(&id, _)| id)
+            .map(|(idx, _)| idx)
             .collect();
 
         while let Some(u) = queue.pop_front() {
-            sorted_ids.push(u);
+            sorted_indices.push(u);
 
-            if let Some(neighbors) = adjacency_list.get(&u) {
-                for &v in neighbors {
-                    let deg = in_degree.get_mut(&v).unwrap();
-                    *deg -= 1;
-                    if *deg == 0 {
-                        queue.push_back(v);
-                    }
+            for &v in &adjacency_list[u] {
+                in_degree[v] -= 1;
+                if in_degree[v] == 0 {
+                    queue.push_back(v);
                 }
             }
         }
-        if sorted_ids.len() != schedule_map.len() {
+
+        if sorted_indices.len() != total_schedules {
             let mut trapped_schedules = Vec::new();
-            for id in schedule_map.keys() {
-                if !sorted_ids.contains(id) {
-                    trapped_schedules.push(format!("  • {}", id.name));
+            for (idx, s) in unique_schedules.iter().enumerate() {
+                if !sorted_indices.contains(&idx) {
+                    trapped_schedules.push(format!("  • {:?}", s.schedule()));
                 }
             }
             panic!(
@@ -437,11 +439,15 @@ impl App {
             );
         }
 
-        self.schedules = sorted_ids
-            .into_iter()
-            .map(|id| schedule_map.remove(&id).unwrap())
-            .collect();
+        let mut sorted_schedules = Vec::with_capacity(total_schedules);
+        let mut temp_movable: Vec<Option<Schedule>> =
+            unique_schedules.into_iter().map(Some).collect();
 
+        for idx in sorted_indices {
+            sorted_schedules.push(temp_movable[idx].take().unwrap());
+        }
+
+        self.schedules = sorted_schedules;
         self.configuration.schedules_added = true;
     }
 }

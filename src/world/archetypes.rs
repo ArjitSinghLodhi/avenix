@@ -376,7 +376,7 @@ impl ArchetypeManager {
 
     pub(crate) fn get_mut<'a>(&'a self, id: ArchetypeId) -> Option<MutexGuard<'a, Archetype>> {
         let mutex = self.archetypes.get_mut(&id)?;
-        
+
         unsafe { std::mem::transmute(mutex.lock()) }
     }
 }

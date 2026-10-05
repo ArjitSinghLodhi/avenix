@@ -1,9 +1,11 @@
 use crate::{
     app::{App, plugin::Plugin},
     extensions::SystemExt,
+    schedule::dyn_eq::DynEq,
     system::condition::RunConditionsList,
 };
 
+pub(crate) mod dyn_eq;
 mod schedules_list;
 pub(crate) mod system_sorter;
 
@@ -11,10 +13,7 @@ pub use schedules_list::{CleanupHandles, First, Last, PostUpdate, PreUpdate, Sta
 
 use crate::extensions::{System, World};
 
-use std::{
-    any::{Any, TypeId},
-    fmt::Debug,
-};
+use std::{any::Any, fmt::Debug};
 
 pub(crate) struct DefaultSchedulesPlugin;
 
@@ -26,44 +25,14 @@ impl Plugin for DefaultSchedulesPlugin {
             .add_schedule(Schedule::new(PostUpdate))
             .add_schedule(Schedule::new(Last));
 
-        app.configure_schedule_order::<First, PreUpdate>()
-            .configure_schedule_order::<PreUpdate, Update>()
-            .configure_schedule_order::<Update, PostUpdate>()
-            .configure_schedule_order::<PostUpdate, Last>();
+        app.configure_schedule_order(First, PreUpdate)
+            .configure_schedule_order(PreUpdate, Update)
+            .configure_schedule_order(Update, PostUpdate)
+            .configure_schedule_order(PostUpdate, Last);
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ScheduleId {
-    pub(crate) id: TypeId,
-    pub(crate) name: &'static str,
-}
-
-pub trait IntoScheduleId: ScheduleLabel {
-    fn id(&self) -> ScheduleId
-    where
-        Self: Sized,
-    {
-        ScheduleId {
-            id: TypeId::of::<Self>(),
-            name: std::any::type_name::<Self>(),
-        }
-    }
-
-    fn schedule_id() -> ScheduleId
-    where
-        Self: Sized,
-    {
-        ScheduleId {
-            id: TypeId::of::<Self>(),
-            name: std::any::type_name::<Self>(),
-        }
-    }
-}
-
-impl<T: ?Sized + ScheduleLabel> IntoScheduleId for T {}
-
-pub trait ScheduleLabel: Any + Send + Sync {
+pub trait ScheduleLabel: Any + Send + Sync + DynEq + Debug {
     fn default_executor(&mut self) -> Box<dyn SystemExecutor> {
         Box::new(SingleThreadedExecutor)
     }
@@ -111,7 +80,7 @@ impl SystemsSchedule {
     }
 }
 
-pub trait SystemExecutor: Send + Sync {
+pub trait SystemExecutor: Send + Sync + 'static {
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World);
 }
 
@@ -135,9 +104,8 @@ impl SystemExecutor for SingleThreadedExecutor {
     }
 }
 
-#[doc(hidden)]
 pub struct Schedule {
-    id: ScheduleId,
+    schedule: Box<dyn ScheduleLabel>,
     systems_schedule: SystemsSchedule,
     executor: Box<dyn SystemExecutor>,
 }
@@ -145,21 +113,17 @@ pub struct Schedule {
 impl Schedule {
     pub fn new<L: ScheduleLabel + 'static>(mut label: L) -> Self {
         Self {
-            id: label.id(),
             executor: label.default_executor(),
+            schedule: Box::new(label),
             systems_schedule: SystemsSchedule::new(),
         }
-    }
-
-    pub fn id(&self) -> ScheduleId {
-        self.id
     }
 
     pub fn set_executor(&mut self, executor: impl SystemExecutor + 'static) {
         self.executor = Box::new(executor);
     }
 
-    pub fn add_system<S: System + 'static>(&mut self, system: S) {
+    pub fn add_system(&mut self, system: impl System + 'static) {
         self.systems_schedule
             .systems
             .push(SystemNode::new(Box::new(system)));
@@ -177,7 +141,20 @@ impl Schedule {
         &mut self.systems_schedule
     }
 
+    pub fn schedule(&self) -> &dyn ScheduleLabel {
+        &*self.schedule
+    }
+
+    pub fn schedule_mut(&mut self) -> &dyn ScheduleLabel {
+        &mut *self.schedule
+    }
+
     pub fn run(&mut self, world: &mut World) {
         self.executor.run(&mut self.systems_schedule, world);
     }
+}
+
+pub(crate) struct ScheduleConstraint {
+    pub(crate) before: Box<dyn ScheduleLabel>,
+    pub(crate) after: Box<dyn ScheduleLabel>,
 }

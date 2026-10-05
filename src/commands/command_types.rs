@@ -295,15 +295,19 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
                 get_double_archetypes(world, old_arch_id, new_arch_id);
             let mut old_arch = old_arch_mutex.lock();
             let mut new_arch = new_arch_mutex.lock();
-            #[cfg(feature = "reactivity")]
-            let old_types = &(*(&old_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
-            #[cfg(feature = "reactivity")]
-            let new_types = &(*(&new_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
-
-            let new_cols = &mut (*(&mut new_arch.columns
-                as *mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>));
-            let old_cols = &mut old_arch.columns;
             let new_dense_idx = new_arch.entities.len() as u32;
+            let Archetype {
+                columns: new_cols,
+                #[cfg(feature = "reactivity")]
+                    types: new_types,
+                ..
+            } = &mut *new_arch;
+            let Archetype {
+                columns: old_cols,
+                #[cfg(feature = "reactivity")]
+                    types: old_types,
+                ..
+            } = &mut *old_arch;
             move_matching_columns(old_cols, new_cols, old_idx as usize);
             erase_subtracted_columns(removed_ids, old_cols, old_idx as usize);
 

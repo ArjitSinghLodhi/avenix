@@ -8,6 +8,7 @@ use crate::{
 };
 
 /// A schedule where queue commands are applied between each system that runs registered in this schedule.
+#[derive(PartialEq, Eq, Debug)]
 pub struct Startup;
 
 impl ScheduleLabel for Startup {
@@ -35,18 +36,22 @@ impl SystemExecutor for StartupExecutor {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct First;
 
 impl ScheduleLabel for First {}
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct PreUpdate;
 
 impl ScheduleLabel for PreUpdate {}
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct Update;
 
 impl ScheduleLabel for Update {}
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct PostUpdate;
 
 impl ScheduleLabel for PostUpdate {}
@@ -64,6 +69,7 @@ impl ScheduleLabel for PostUpdate {}
 /// despawns before they are finalized and applied.
 ///
 /// See the `hierarchy_cleanup` example for guidance on how to effectively use it.
+#[derive(PartialEq, Eq, Debug)]
 pub struct CleanupHandles;
 
 impl ScheduleLabel for CleanupHandles {
@@ -163,6 +169,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct Last;
 
 impl ScheduleLabel for Last {}

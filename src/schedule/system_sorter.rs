@@ -5,7 +5,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 use crate::{
     app_impl::SystemsBlock,
     extensions::SystemExt,
-    schedule::{CleanupHandles, IntoScheduleId, Schedule, Startup, SystemNode},
+    schedule::{CleanupHandles, Schedule, Startup, SystemNode},
     system::system_traits::SystemOrderings,
 };
 
@@ -16,13 +16,13 @@ pub(crate) fn dispatch_system_blocks(
     schedules: &mut [Schedule],
 ) {
     for system_block in systems_blocks.drain(..) {
-        if system_block.schedule_id == Startup.id() {
+        if (*system_block.schedule).dyn_eq(&Startup) {
             for system in system_block.systems {
                 startup_schedule.add_system_boxed(system);
             }
             continue;
         }
-        if system_block.schedule_id == CleanupHandles.id() {
+        if (*system_block.schedule).dyn_eq(&CleanupHandles) {
             for system in system_block.systems {
                 cleanup_schedule.add_system_boxed(system);
             }
@@ -31,14 +31,13 @@ pub(crate) fn dispatch_system_blocks(
 
         let target_schedule = match schedules
             .iter_mut()
-            .find(|s| s.id() == system_block.schedule_id)
+            .find(|s| (*s.schedule()).dyn_eq(&*system_block.schedule))
         {
             Some(schedule) => schedule,
             None => {
-                let missing_name = system_block.schedule_id.name;
                 panic!(
-                    "❌ CONFIGURATION ERROR: Attempted to add systems to Schedule '{}' which was never registered via add_schedule()!",
-                    missing_name
+                    "❌ CONFIGURATION ERROR: Attempted to add systems to Schedule '{:?}' which was never registered via add_schedule()!",
+                    system_block.schedule
                 );
             }
         };
