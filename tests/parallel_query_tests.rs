@@ -1,7 +1,7 @@
 use avenix::prelude::*;
-use std::{
-    sync::{Arc, Barrier},
-    time::Duration,
+use std::sync::{
+    Arc, Barrier,
+    atomic::{AtomicBool, Ordering},
 };
 
 #[derive(Component)]
@@ -22,6 +22,7 @@ struct IsFollower;
 #[derive(Resource, Clone)]
 struct TestSyncContext {
     barrier: Arc<Barrier>,
+    system_done: Arc<AtomicBool>,
 }
 
 #[test_fork::test]
@@ -38,6 +39,7 @@ fn test_parallel_query_accessor_mixed_workload() {
     let shared_barrier = Arc::new(Barrier::new(3));
     app.insert_resource(TestSyncContext {
         barrier: shared_barrier.clone(),
+        system_done: Arc::new(AtomicBool::new(false)),
     });
 
     app.build();
@@ -65,8 +67,6 @@ fn test_parallel_query_accessor_mixed_workload() {
 
         s.spawn(move || {
             b2.wait();
-            std::thread::sleep(Duration::from_millis(2));
-
             par_writer.scope(|mut query| {
                 for mut view in query.iter_mut() {
                     for (mut pos, vel) in view.iter_mut() {
@@ -145,8 +145,11 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
         .add_systems(Update, dynamic_chaos_mutator_system);
 
     let shared_barrier = Arc::new(Barrier::new(3));
+    let system_done_flag = Arc::new(AtomicBool::new(false));
+
     app.insert_resource(TestSyncContext {
         barrier: shared_barrier.clone(),
+        system_done: system_done_flag.clone(),
     });
 
     app.build();
@@ -155,11 +158,12 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
     std::thread::scope(|s| {
         let b1 = shared_barrier.clone();
         let b2 = shared_barrier.clone();
+        let done1 = system_done_flag.clone();
+        let done2 = system_done_flag.clone();
 
         s.spawn(move || {
             b1.wait();
-            let start = std::time::Instant::now();
-            while start.elapsed() < Duration::from_millis(50) {
+            while !done1.load(Ordering::Relaxed) {
                 par_reader.scope(|query| {
                     let mut count = 0;
                     for view in query.iter() {
@@ -177,8 +181,7 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
 
         s.spawn(move || {
             b2.wait();
-            let start = std::time::Instant::now();
-            while start.elapsed() < Duration::from_millis(50) {
+            while !done2.load(Ordering::Relaxed) {
                 par_writer.scope(|mut query| {
                     for mut view in query.iter_mut() {
                         for (mut pos, vel) in view.iter_mut() {
@@ -211,4 +214,6 @@ fn dynamic_chaos_mutator_system(
             i += 1;
         }
     }
+
+    sync_ctx.system_done.store(true, Ordering::Relaxed);
 }

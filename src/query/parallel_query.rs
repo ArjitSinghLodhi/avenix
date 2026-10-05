@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use dashmap::DashMap;
+use parking_lot::Mutex;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
 ///
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
-    pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
+    pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,
 }
 

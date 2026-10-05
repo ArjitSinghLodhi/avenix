@@ -1,8 +1,8 @@
-use dashmap::mapref::one::RefMut;
+use dashmap::mapref::one::Ref;
 use indexmap::IndexMap;
 #[cfg(feature = "reactivity")]
 use indexmap::IndexSet;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rustc_hash::FxBuildHasher;
 use std::{any::TypeId, sync::atomic::AtomicU32};
 
@@ -108,12 +108,9 @@ impl DespawnCommand {
             let arch_id = (*data_ptr).archetype_id;
             let handle_count = REGISTRY_HANDLE_COUNT.get_count(target_registry_idx);
             if handle_count > 0 {
-                let types_names = &world
-                    .archetypes_manager
-                    .archetypes
-                    .get(&arch_id)
-                    .unwrap_unchecked()
-                    .type_names;
+                let arch_mutex = &world.archetypes_manager.archetypes.get(&arch_id).unwrap();
+                let lock = arch_mutex.lock();
+                let types_names = &lock.type_names;
                 panic!(
                     "\n\
                     Avenix Handle Violation: Cloned handles for an entity were not dropped before despawn execution!\n\
@@ -183,8 +180,10 @@ impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
         }
 
         unsafe {
-            let (mut old_arch, mut new_arch) =
+            let (old_arch_mutex, new_arch_mutex) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
+            let mut old_arch = old_arch_mutex.lock();
+            let mut new_arch = new_arch_mutex.lock();
             {
                 let new_cols = &mut new_arch.columns;
                 let old_cols = &mut old_arch.columns;
@@ -238,8 +237,10 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
         }
 
         unsafe {
-            let (mut old_arch, mut new_arch) =
+            let (old_arch_mutex, new_arch_mutex) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
+            let mut old_arch = old_arch_mutex.lock();
+            let mut new_arch = new_arch_mutex.lock();
             let new_dense_idx = new_arch.entities.len() as u32;
             {
                 let new_cols = &mut new_arch.columns;
@@ -290,9 +291,10 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
         unsafe {
             #[cfg(feature = "reactivity")]
             let world_ptr = world as *mut World;
-            let (mut old_arch, mut new_arch) =
+            let (old_arch_mutex, new_arch_mutex) =
                 get_double_archetypes(world, old_arch_id, new_arch_id);
-
+            let mut old_arch = old_arch_mutex.lock();
+            let mut new_arch = new_arch_mutex.lock();
             #[cfg(feature = "reactivity")]
             let old_types = &(*(&old_arch.types as *const IndexSet<TypeId, FxBuildHasher>));
             #[cfg(feature = "reactivity")]
@@ -370,12 +372,12 @@ unsafe fn get_double_archetypes(
     old_id: ArchetypeId,
     new_id: ArchetypeId,
 ) -> (
-    RefMut<'_, ArchetypeId, Archetype>,
-    RefMut<'_, ArchetypeId, Archetype>,
+    Ref<'_, ArchetypeId, Mutex<Archetype>>,
+    Ref<'_, ArchetypeId, Mutex<Archetype>>,
 ) {
     let map = &mut world.archetypes_manager.archetypes;
-    let old_arch = map.get_mut(&old_id).expect("Old archetype missing");
-    let new_arch = map.get_mut(&new_id).expect("New archetype missing");
+    let old_arch = map.get(&old_id).expect("Old archetype missing");
+    let new_arch = map.get(&new_id).expect("New archetype missing");
     (old_arch, new_arch)
 }
 
@@ -389,12 +391,12 @@ fn create_addition_archetype<T: ComponentBundle>(
 
     let mut cloned_base_cols = IndexMap::with_hasher(FxBuildHasher);
     {
-        let old_arch = world
+        let old_arch_mutex = world
             .archetypes_manager
             .archetypes
             .get(&old_arch_id)
             .expect("Avenix Engine Fatal: Old Archetype ID not found");
-
+        let old_arch = old_arch_mutex.lock();
         new_types = old_arch.types.clone();
         for id in incoming_ids {
             new_types.insert(*id);
@@ -445,12 +447,12 @@ fn create_subtraction_archetype<T: ComponentBundle>(
     let mut new_types_names;
     let mut cloned_base_cols = IndexMap::with_hasher(FxBuildHasher);
     {
-        let old_arch = world
+        let old_arch_mutex = world
             .archetypes_manager
             .archetypes
             .get(&old_arch_id)
             .expect("Avenix Engine Fatal: Old Archetype ID not found");
-
+        let old_arch = old_arch_mutex.lock();
         new_types = old_arch.types.clone();
         for id in removed_ids {
             new_types.swap_remove(id);

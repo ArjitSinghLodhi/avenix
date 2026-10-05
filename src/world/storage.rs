@@ -231,11 +231,12 @@ impl World {
         use crate::reactivity::REMOVAL_TRACKED_COMPS;
         let tracked_comps = TRACKED_COMPONENTS.read();
         if !tracked_comps.is_empty() {
-            for mut archetype in self.archetypes_manager.archetypes.iter_mut() {
+            for archetype in self.archetypes_manager.archetypes.iter_mut() {
                 unsafe {
                     for meta_list in tracked_comps.values() {
                         for meta in meta_list {
-                            if let Some(marker_column) = archetype.columns.get_mut(&meta.marker_id)
+                            if let Some(marker_column) =
+                                archetype.lock().columns.get_mut(&meta.marker_id)
                             {
                                 let mut gaurd = marker_column.data.write();
                                 let raw_any = gaurd.as_any_mut();

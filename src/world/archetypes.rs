@@ -6,12 +6,9 @@ use std::{
     sync::Arc,
 };
 
-use dashmap::{
-    DashMap,
-    mapref::one::{Ref, RefMut},
-};
+use dashmap::DashMap;
 use indexmap::{IndexMap, IndexSet};
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{commands::bundle::ComponentBundle, ecs::Component, entity::Entity};
@@ -224,7 +221,7 @@ impl Archetype {
 
 pub(crate) struct ArchetypeManager {
     index: FxHashMap<u64, ArchetypeId>,
-    pub(crate) archetypes: Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
+    pub(crate) archetypes: Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     pub(crate) next_id: u32,
 }
 
@@ -267,7 +264,8 @@ impl ArchetypeManager {
         old_id: ArchetypeId,
         incoming_ids: &[TypeId],
     ) -> Option<ArchetypeId> {
-        let old_arch = self.archetypes.get(&old_id)?;
+        let old_arch_mutex = self.archetypes.get(&old_id)?;
+        let old_arch = old_arch_mutex.lock();
         let mut target_types = old_arch.types.clone();
         for id in incoming_ids {
             target_types.insert(*id);
@@ -285,7 +283,8 @@ impl ArchetypeManager {
         old_id: ArchetypeId,
         removed_ids: &[TypeId],
     ) -> Option<ArchetypeId> {
-        let old_arch = self.archetypes.get(&old_id)?;
+        let old_arch_mutex = self.archetypes.get(&old_id)?;
+        let old_arch = old_arch_mutex.lock();
         let mut target_types = old_arch.types.clone();
         for id in removed_ids {
             target_types.swap_remove(id);
@@ -323,7 +322,7 @@ impl ArchetypeManager {
         let new_arch = Archetype::new(new_id, types_set, columns, types_names_set);
 
         self.index.insert(order_independent_hash, new_id);
-        self.archetypes.insert(new_id, new_arch);
+        self.archetypes.insert(new_id, Mutex::new(new_arch));
         new_id
     }
 
@@ -371,19 +370,13 @@ impl ArchetypeManager {
         }
         let new_arch = Archetype::new(new_id, types_set, columns, types_names_set);
         self.index.insert(order_independent_hash, new_id);
-        self.archetypes.insert(new_id, new_arch);
+        self.archetypes.insert(new_id, Mutex::new(new_arch));
         new_id
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn get<'a>(&'a self, id: ArchetypeId) -> Option<Ref<'a, ArchetypeId, Archetype>> {
-        self.archetypes.get(&id)
-    }
-
-    pub(crate) fn get_mut<'a>(
-        &'a self,
-        id: ArchetypeId,
-    ) -> Option<RefMut<'a, ArchetypeId, Archetype>> {
-        self.archetypes.get_mut(&id)
+    pub(crate) fn get_mut<'a>(&'a self, id: ArchetypeId) -> Option<MutexGuard<'a, Archetype>> {
+        let mutex = self.archetypes.get_mut(&id)?;
+        
+        unsafe { std::mem::transmute(mutex.lock()) }
     }
 }

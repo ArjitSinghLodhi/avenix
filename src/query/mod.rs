@@ -7,6 +7,7 @@ pub use params::Has;
 
 pub use filter::*;
 
+use parking_lot::Mutex;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -332,7 +333,7 @@ unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Sync for Query<'q, 'a, Q, F> {
 
 impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     pub(crate) fn new(
-        archetypes_map: &'a Arc<DashMap<ArchetypeId, Archetype, FxBuildHasher>>,
+        archetypes_map: &'a Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     ) -> Self {
         let mut matching_archetypes = (0..archetypes_map.len())
             .map(|_| None)
@@ -342,7 +343,8 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .collect::<Vec<Option<Q::Fetch>>>();
         let mut cached_indices = vec![Vec::new(); archetypes_map.len()];
 
-        for arch in archetypes_map.iter_mut() {
+        for arch_mutex in archetypes_map.iter() {
+            let arch = arch_mutex.lock();
             let arch_id = arch.id();
             if Q::matches(&arch) && F::matches(&arch) {
                 let fetch = unsafe { Q::init_fetch(&arch) };
@@ -504,10 +506,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self
-                .cached_fetches
-                .get_unchecked(arch_id.id() as usize)
-                .as_ref()?;
+            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
             Some(Q::fetch_read_only(fetch, row_idx as usize))
         }
     }
@@ -522,10 +521,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self
-                .cached_fetches
-                .get_unchecked(arch_id.id() as usize)
-                .as_ref()?;
+            let fetch = self.cached_fetches[arch_id.id() as usize].as_ref()?;
             Some(Q::fetch_mut(fetch, row_idx as usize))
         }
     }
@@ -542,9 +538,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self
-                .cached_fetches
-                .get_unchecked(arch_id.id() as usize)
+            let fetch = self.cached_fetches[arch_id.id() as usize]
                 .as_ref()
                 .unwrap_unchecked();
             Q::fetch_read_only(fetch, row_idx as usize)
@@ -563,9 +557,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self
-                .cached_fetches
-                .get_unchecked(arch_id.id() as usize)
+            let fetch = self.cached_fetches[arch_id.id() as usize]
                 .as_ref()
                 .unwrap_unchecked();
             Q::fetch_mut(fetch, row_idx as usize)
