@@ -8,7 +8,7 @@ use crate::{
 pub struct SingleThreadedExecutor;
 
 impl SystemExecutor for SingleThreadedExecutor {
-    fn init(&mut self, _schedule: &SystemsSchedule) {}
+    fn init(&mut self, _schedule: &mut SystemsSchedule) {}
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         for node in schedule.systems_mut() {
             let should_run = node

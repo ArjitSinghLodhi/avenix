@@ -20,7 +20,7 @@ impl ScheduleLabel for Startup {
 pub(crate) struct StartupExecutor;
 
 impl SystemExecutor for StartupExecutor {
-    fn init(&mut self, _schedule: &SystemsSchedule) {}
+    fn init(&mut self, _schedule: &mut SystemsSchedule) {}
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         for system in schedule.systems_mut() {
             let should_run = system
@@ -92,7 +92,7 @@ pub(crate) struct CleanupHandlesExecutor {
 }
 
 impl SystemExecutor for CleanupHandlesExecutor {
-    fn init(&mut self, _schedule: &SystemsSchedule) {}
+    fn init(&mut self, _schedule: &mut SystemsSchedule) {}
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         world.apply_queue_commands();
 

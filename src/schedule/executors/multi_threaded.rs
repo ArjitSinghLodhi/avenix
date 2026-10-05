@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use crate::{
     extensions::{SystemExt, World},
-    schedule::{SystemExecutor, SystemNode, SystemsSchedule},
+    schedule::{SystemExecutor, SystemsSchedule},
     system::{SystemMeta, condition::RunConditionsList},
 };
 
@@ -36,9 +36,9 @@ enum ExecutionMode {
 }
 
 impl SystemExecutor for MultiThreadedExecutor {
-    fn init(&mut self, schedule: &SystemsSchedule) {
+    fn init(&mut self, schedule: &mut SystemsSchedule) {
         self.parallel_batches.clear();
-        let systems = schedule.systems();
+        let systems = schedule.systems_mut();
         let n = systems.len();
         if n == 0 {
             return;
@@ -56,21 +56,18 @@ impl SystemExecutor for MultiThreadedExecutor {
 
         let mut cached_meta_list = Vec::with_capacity(n);
         for sys_node in systems {
-            unsafe {
-                let node_ptr = sys_node as *const SystemNode as *mut SystemNode;
-                let system_mut_ref = (*node_ptr).system_mut();
-                let meta = system_mut_ref.get_or_init(SystemMeta::default);
+            let system_mut_ref = sys_node.system_mut();
+            let meta = system_mut_ref.get_or_init(SystemMeta::default);
 
-                cached_meta_list.push(CachedMeta {
-                    is_send: meta.is_send(),
-                    component_reads: meta.component_reads().copied().collect(),
-                    component_writes: meta.component_writes().copied().collect(),
-                    resource_reads: meta.resource_reads().copied().collect(),
-                    resource_writes: meta.resource_writes().copied().collect(),
-                    with_filters: meta.with_filters().copied().collect(),
-                    without_filters: meta.without_filters().copied().collect(),
-                });
-            }
+            cached_meta_list.push(CachedMeta {
+                is_send: meta.is_send(),
+                component_reads: meta.component_reads().copied().collect(),
+                component_writes: meta.component_writes().copied().collect(),
+                resource_reads: meta.resource_reads().copied().collect(),
+                resource_writes: meta.resource_writes().copied().collect(),
+                with_filters: meta.with_filters().copied().collect(),
+                without_filters: meta.without_filters().copied().collect(),
+            });
         }
 
         let mut current_start = 0;

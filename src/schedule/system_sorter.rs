@@ -70,46 +70,41 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
 
     let mut meta_list = Vec::with_capacity(n);
     for node in schedule_systems.iter_mut() {
-        unsafe {
-            let node_ptr = node as *mut SystemNode;
-            let system_ref = (*node_ptr).system();
-            let tid = system_ref.func_type_id();
-            let sys_name = system_ref.name();
+        let system_mut_ref = node.system_mut();
+        let tid = system_mut_ref.func_type_id();
+        let sys_name = system_mut_ref.name();
 
-            let system_mut_ref = (*node_ptr).system_mut();
+        let run_after = system_mut_ref
+            .get_or_init(SystemOrderings::default)
+            .run_after
+            .clone();
+        let run_before = system_mut_ref
+            .get_or_init(SystemOrderings::default)
+            .run_before
+            .clone();
 
-            let run_after = system_mut_ref
-                .get_or_init(SystemOrderings::default)
-                .run_after
-                .clone();
-            let run_before = system_mut_ref
-                .get_or_init(SystemOrderings::default)
-                .run_before
-                .clone();
+        let meta = system_mut_ref.get_or_init(SystemMeta::default);
+        let is_send = meta.is_send();
+        let component_reads = meta.component_reads().copied().collect();
+        let component_writes = meta.component_writes().copied().collect();
+        let resource_reads = meta.resource_reads().copied().collect();
+        let resource_writes = meta.resource_writes().copied().collect();
+        let with_filters = meta.with_filters().copied().collect();
+        let without_filters = meta.without_filters().copied().collect();
 
-            let meta = system_mut_ref.get_or_init(SystemMeta::default);
-            let is_send = meta.is_send();
-            let component_reads = meta.component_reads().copied().collect();
-            let component_writes = meta.component_writes().copied().collect();
-            let resource_reads = meta.resource_reads().copied().collect();
-            let resource_writes = meta.resource_writes().copied().collect();
-            let with_filters = meta.with_filters().copied().collect();
-            let without_filters = meta.without_filters().copied().collect();
-
-            meta_list.push(SortingMeta {
-                type_id: tid,
-                name: sys_name,
-                run_after,
-                run_before,
-                is_send,
-                component_reads,
-                component_writes,
-                resource_reads,
-                resource_writes,
-                with_filters,
-                without_filters,
-            });
-        }
+        meta_list.push(SortingMeta {
+            type_id: tid,
+            name: sys_name,
+            run_after,
+            run_before,
+            is_send,
+            component_reads,
+            component_writes,
+            resource_reads,
+            resource_writes,
+            with_filters,
+            without_filters,
+        });
     }
 
     let mut type_to_idx: FxHashMap<TypeId, usize> =

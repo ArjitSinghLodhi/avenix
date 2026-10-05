@@ -85,7 +85,7 @@ impl SystemsSchedule {
 }
 
 pub trait SystemExecutor: Send + Sync + 'static {
-    fn init(&mut self, schedule: &SystemsSchedule);
+    fn init(&mut self, schedule: &mut SystemsSchedule);
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World);
 }
 
@@ -135,7 +135,7 @@ impl Schedule {
     }
 
     pub(crate) fn init_executor(&mut self) {
-        self.executor.init(&self.systems_schedule);
+        self.executor.init(&mut self.systems_schedule);
     }
 
     pub fn run(&mut self, world: &mut World) {
