@@ -3,7 +3,7 @@ use std::any::TypeId;
 use crate::{
     extensions::{SystemExt, World},
     schedule::{SystemExecutor, SystemsSchedule},
-    system::{SystemMeta, condition::RunConditionsList},
+    system::{SystemMeta, condition::RunConditionsList, system_traits::SystemOrderings},
 };
 
 pub struct MultiThreadedExecutor {
@@ -46,6 +46,9 @@ impl SystemExecutor for MultiThreadedExecutor {
 
         struct CachedMeta {
             is_send: bool,
+            type_id: TypeId,
+            run_after: Vec<TypeId>,
+            run_before: Vec<TypeId>,
             component_reads: Vec<TypeId>,
             component_writes: Vec<TypeId>,
             resource_reads: Vec<TypeId>,
@@ -57,10 +60,15 @@ impl SystemExecutor for MultiThreadedExecutor {
         let mut cached_meta_list = Vec::with_capacity(n);
         for sys_node in systems {
             let system_mut_ref = sys_node.system_mut();
+            let orderings = system_mut_ref.get_or_init(SystemOrderings::default).clone();
+            let func_id = system_mut_ref.func_type_id();
             let meta = system_mut_ref.get_or_init(SystemMeta::default);
 
             cached_meta_list.push(CachedMeta {
                 is_send: meta.is_send(),
+                type_id: func_id,
+                run_after: orderings.run_after.clone(),
+                run_before: orderings.run_before.clone(),
                 component_reads: meta.component_reads().copied().collect(),
                 component_writes: meta.component_writes().copied().collect(),
                 resource_reads: meta.resource_reads().copied().collect(),
@@ -105,6 +113,24 @@ impl SystemExecutor for MultiThreadedExecutor {
             for active_idx in current_start..i {
                 let active_meta = &cached_meta_list[active_idx];
 
+                if meta.run_after.contains(&active_meta.type_id) {
+                    conflict = true;
+                    break;
+                }
+
+                if meta.run_before.contains(&active_meta.type_id) {
+                    conflict = true;
+                    break;
+                }
+
+                if active_meta.run_before.contains(&meta.type_id) {
+                    conflict = true;
+                    break;
+                }
+                if active_meta.run_after.contains(&meta.type_id) {
+                    conflict = true;
+                    break;
+                }
                 for r in &meta.resource_reads {
                     if active_meta.resource_writes.contains(r) {
                         conflict = true;

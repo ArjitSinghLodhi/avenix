@@ -16,7 +16,7 @@ pub trait SystemCondition<Marker> {
     fn run_if<P>(self, condition: impl Condition<P>) -> Self::SystemType;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub(crate) struct SystemOrderings {
     pub(crate) run_after: Vec<TypeId>,
     pub(crate) run_before: Vec<TypeId>,
