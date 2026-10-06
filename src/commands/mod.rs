@@ -2,7 +2,7 @@ pub mod bundle;
 mod command_queue;
 mod command_types;
 mod parallel_commands;
-pub use command_types::DespawnCommand;
+pub(crate) use command_types::DespawnCommand;
 pub use parallel_commands::ParallelCommands;
 
 use std::{marker::PhantomData, sync::Arc};
@@ -84,21 +84,20 @@ impl<'a> Commands<'a> {
         }
     }
 
-    /// Returns an iterator over all currently queued despawn commands.
+    /// Executes a closure over all currently queued despawn commands.
     ///
-    /// This allows you to inspect which entities are scheduled for removal. You can pass
-    /// the entity retrieved from [`despawn_target()`] into your query lookup functions to safely
+    /// This allows you to inspect which entities are scheduled for removal. You can
+    /// use the yielded [`Entity`] reference in your query lookup functions to safely
     /// access and drop any active cloned handles.
     ///
-    /// See [`CleanupHandles`] to understand how its structured to help you use this.
-    ///
-    /// [`despawn_target()`]: crate::commands::command_types::DespawnCommand::despawn_target
+    /// See [`CleanupHandles`] to understand how it's structured to help you use this.
     ///
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    pub fn despawn_iter(&self) -> impl Iterator<Item = &DespawnCommand> {
-        self.despawns.iter().map(|entity_ref| unsafe {
-            &*(&(*entity_ref) as *const Entity as *const DespawnCommand)
-        })
+    pub fn for_each_despawn<F>(&self, mut f: F)
+    where
+        F: for<'b> FnMut(&'b Entity),
+    {
+        self.despawns.iter().for_each(|entity| f(&entity));
     }
 
     /// Returns whether the specified entity is currently scheduled for removal.
@@ -211,17 +210,17 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// identify which entity type caused the violation.
     ///
     /// look into the documentation of [`CleanupHandles`] to understand how its structured
-    /// to help you on using [`despawn_iter`] and [`will_despawn`] to satisfy this requirement.
+    /// to help you on using [`for_each_despawn`] and [`will_despawn`] to satisfy this requirement.
     ///
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    /// [`despawn_iter`]: Commands::despawn_iter
+    /// [`for_each_despawn`]: Commands::for_each_despawn
     /// [`will_despawn`]: Commands::will_despawn
     pub fn despawn(&mut self) -> &mut Self {
         self.commands.despawns.insert(self.entity_id.clone());
         self
     }
 
-    pub fn id(&self) -> &Entity {
+    pub fn entity_id(&self) -> &Entity {
         &self.entity_id
     }
 }

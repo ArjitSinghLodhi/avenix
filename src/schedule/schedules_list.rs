@@ -1,6 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use crate::{
+    app::schedule::MultiThreadedExecutor,
     entity::Entity,
     extensions::SystemExt,
     schedule::{RunConditionsList, ScheduleLabel, SystemExecutor, SystemsSchedule},
@@ -58,7 +59,7 @@ pub struct PostUpdate;
 impl ScheduleLabel for PostUpdate {}
 
 /// A special schedule where queued commands are applied immediately before
-/// and after its registered systems execute.
+/// and after its registered systems execute every re-run.
 ///
 /// If any system within this schedule issues a new despawn command, the entire schedule
 /// re-runs. To prevent redundant processing, the engine takes out all previously handled
@@ -80,6 +81,7 @@ impl ScheduleLabel for CleanupHandles {
             historical_seen: FxHashSet::default(),
             iteration_batch: Vec::new(),
             duplicate_batch: Vec::new(),
+            multi_threaded_executor: MultiThreadedExecutor::new(),
         })
     }
 }
@@ -89,10 +91,13 @@ pub(crate) struct CleanupHandlesExecutor {
     historical_seen: FxHashSet<u32>,
     iteration_batch: Vec<Entity>,
     duplicate_batch: Vec<Entity>,
+    multi_threaded_executor: MultiThreadedExecutor,
 }
 
 impl SystemExecutor for CleanupHandlesExecutor {
-    fn init(&mut self, _schedule: &mut SystemsSchedule) {}
+    fn init(&mut self, schedule: &mut SystemsSchedule) {
+        self.multi_threaded_executor.init(schedule);
+    }
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         world.apply_queue_commands();
 
@@ -123,17 +128,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
                 }
             }
 
-            for system in schedule.systems_mut() {
-                let should_run = system
-                    .system
-                    .get_or_init(RunConditionsList::default)
-                    .conditions()
-                    .iter()
-                    .all(|cond| cond());
-                if should_run {
-                    system.run(world);
-                }
-            }
+            self.multi_threaded_executor.run(schedule, world);
 
             world.apply_queue_commands();
 

@@ -2,7 +2,7 @@
 
 mod parallel_events;
 
-use orx_parallel::{IterIntoParIter, Par};
+use orx_parallel::IterIntoParIter;
 pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
 
 use std::{
@@ -17,6 +17,8 @@ use crate::{
     extensions::{SystemMeta, SystemParam, World},
     resources::Resource,
 };
+
+pub use orx_parallel::{EnumeratePar, Par};
 
 #[doc(hidden)]
 pub trait Event: Send + Sync + 'static {}

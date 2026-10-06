@@ -203,7 +203,6 @@ impl SystemExecutor for MultiThreadedExecutor {
 
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         let systems = schedule.systems_mut();
-
         for batch in &self.parallel_batches {
             let slice = &mut systems[batch.start..batch.end];
 

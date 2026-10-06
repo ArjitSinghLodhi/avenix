@@ -38,7 +38,6 @@ pub mod derive {
 }
 
 pub use indexmap;
-pub use orx_parallel;
 pub use rayon;
 pub use rustc_hash;
 
@@ -66,7 +65,8 @@ pub mod prelude {
     };
     #[cfg(feature = "events")]
     pub use crate::ecs::events::{
-        Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter,
+        EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
+        ParallelEventWriter,
     };
     #[cfg(feature = "reactivity")]
     pub use crate::ecs::reactivity::{
@@ -76,9 +76,7 @@ pub mod prelude {
     };
     pub use crate::ecs::{
         Component,
-        commands::{
-            Commands, DespawnCommand, EntityCommands, ParallelCommands, bundle::ComponentBundle,
-        },
+        commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
         entity::Entity,
         query::{
             Has, Query, QueryArchetypeView, QueryData, QuerySubChunk,
@@ -106,7 +104,8 @@ pub mod ecs {
     #[cfg(feature = "events")]
     pub mod events {
         pub use crate::events::{
-            Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter,
+            EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
+            ParallelEventWriter,
         };
     }
     pub mod resources {
@@ -136,7 +135,7 @@ pub mod ecs {
         }
     }
     pub mod commands {
-        pub use crate::commands::{Commands, DespawnCommand, EntityCommands, ParallelCommands};
+        pub use crate::commands::{Commands, EntityCommands, ParallelCommands};
         pub mod bundle {
             pub use crate::commands::bundle::ComponentBundle;
         }

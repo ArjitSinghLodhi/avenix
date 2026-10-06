@@ -84,7 +84,6 @@ impl<T> AccessVec<T> {
     }
 }
 
-#[derive(Default)]
 pub struct SystemMeta {
     name: String,
     component_reads: AccessHashSet<TypeId>,
@@ -94,6 +93,12 @@ pub struct SystemMeta {
     with_filters: AccessHashSet<TypeId>,
     without_filters: AccessHashSet<TypeId>,
     is_send: bool,
+}
+
+impl Default for SystemMeta {
+    fn default() -> Self {
+        Self::new("DefaultSystemMeta".to_string())
+    }
 }
 
 impl SystemMeta {
@@ -217,6 +222,9 @@ impl SystemMeta {
         self.resource_writes
             .set
             .append(&mut param_access_other.resource_writes.set);
+        if !param_access_other.is_send {
+            self.is_send = false;
+        }
     }
 }
 

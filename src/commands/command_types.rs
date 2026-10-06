@@ -95,8 +95,7 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
     }
 }
 
-#[repr(transparent)]
-pub struct DespawnCommand {
+pub(crate) struct DespawnCommand {
     pub(crate) entity: Entity,
 }
 
@@ -115,7 +114,7 @@ impl DespawnCommand {
                     "\n\
                     Avenix Handle Violation: Cloned handles for an entity were not dropped before despawn execution!\n\
                     Entity Archetype Component Names: {:?}\n\
-                    Refer to the `CleanupHandles` and `Commands::despawn` documentation to understand how to coordinate handle cleanup.\n\
+                    Refer to the `CleanupHandles` schedule and `Commands::despawn` documentation to understand how to coordinate handle cleanup.\n\
                     ",
                     types_names
                 );
@@ -148,10 +147,6 @@ impl DespawnCommand {
 
         arch.entities.swap_remove(target_idx as usize);
         world.free_indices_list.push(target_registry_idx as u32);
-    }
-
-    pub fn despawn_target(&self) -> &Entity {
-        &self.entity
     }
 }
 

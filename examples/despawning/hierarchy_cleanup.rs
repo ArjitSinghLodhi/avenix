@@ -82,8 +82,7 @@ fn hirearchy_cleanup(
     unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
     child_query: Query<(Entity, &ChildOf)>,
 ) {
-    for despawn_cmd in commands.despawn_iter() {
-        let dead_entity = despawn_cmd.despawn_target();
+    commands.for_each_despawn(|dead_entity| {
         #[allow(unused_mut)]
         if let Some(mut parent_comp) = parent_query.get_mut(dead_entity) {
             println!("Hierarchy Plugin: Parent is despawning. Queueing recursive child deletion!");
@@ -103,7 +102,7 @@ fn hirearchy_cleanup(
                 parent_comp.children.retain(|entity| entity != child_entity);
             }
         }
-    }
+    });
 
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {

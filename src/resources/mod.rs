@@ -1,5 +1,5 @@
 use crate::{extensions::SystemParam, system::SystemMeta, world::storage::World};
-use dashmap::DashMap;
+use dashmap::{DashMap, mapref::one::Ref};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 use std::{
@@ -63,6 +63,10 @@ impl ConcurrentResourceRegistry {
         });
 
         unsafe {
+            let entry = std::mem::transmute::<
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+            >(entry);
             let raw_guard = entry.value().read();
             let guard = std::mem::transmute::<
                 RwLockReadGuard<'_, Box<dyn Any>>,
@@ -71,6 +75,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_ref::<T>().expect("Resource type mismatch!") as *const T;
             Res {
                 _guard: guard,
+                _ref_gaurd: entry,
                 res_ptr,
             }
         }
@@ -86,6 +91,10 @@ impl ConcurrentResourceRegistry {
         });
 
         unsafe {
+            let entry = std::mem::transmute::<
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+            >(entry);
             let raw_guard = entry.value().write();
             let mut guard = std::mem::transmute::<
                 RwLockWriteGuard<'_, Box<dyn Any>>,
@@ -94,6 +103,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_mut::<T>().expect("Resource type mismatch!") as *mut T;
             ResMut {
                 _guard: guard,
+                _ref_gaurd: entry,
                 res_ptr,
             }
         }
@@ -102,8 +112,11 @@ impl ConcurrentResourceRegistry {
     pub(crate) fn get_resource_opt<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
         let type_id = TypeId::of::<T>();
         let entry = self.resources.get(&type_id)?;
-
         unsafe {
+            let entry = std::mem::transmute::<
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+            >(entry);
             let raw_guard = entry.value().read();
             let guard = std::mem::transmute::<
                 RwLockReadGuard<'_, Box<dyn Any>>,
@@ -112,6 +125,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_ref::<T>()? as *const T;
             Some(Res {
                 _guard: guard,
+                _ref_gaurd: entry,
                 res_ptr,
             })
         }
@@ -124,6 +138,10 @@ impl ConcurrentResourceRegistry {
         let entry = self.resources.get(&type_id)?;
 
         unsafe {
+            let entry = std::mem::transmute::<
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
+            >(entry);
             let raw_guard = entry.value().write();
             let mut guard = std::mem::transmute::<
                 RwLockWriteGuard<'_, Box<dyn Any>>,
@@ -132,6 +150,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_mut::<T>()? as *mut T;
             Some(ResMut {
                 _guard: guard,
+                _ref_gaurd: entry,
                 res_ptr,
             })
         }
@@ -141,8 +160,9 @@ impl ConcurrentResourceRegistry {
 pub trait Resource: 'static {}
 
 pub struct Res<'w, T: Resource + Send + Sync> {
-    pub(crate) _guard: RwLockReadGuard<'w, Box<dyn Any>>,
-    pub(crate) res_ptr: *const T,
+    _guard: RwLockReadGuard<'w, Box<dyn Any>>,
+    _ref_gaurd: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
+    res_ptr: *const T,
 }
 
 impl<'w, T: Resource + Send + Sync> Res<'w, T> {
@@ -179,8 +199,9 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Res<'w, T> {
 }
 
 pub struct ResMut<'w, T: Resource + Send + Sync> {
-    pub(crate) _guard: RwLockWriteGuard<'w, Box<dyn Any>>,
-    pub(crate) res_ptr: *mut T,
+    _guard: RwLockWriteGuard<'w, Box<dyn Any>>,
+    _ref_gaurd: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
+    res_ptr: *mut T,
 }
 
 impl<'w, T: Resource + Send + Sync> ResMut<'w, T> {

@@ -37,8 +37,8 @@ pub(crate) static APP_BUILT: RwLock<bool> = RwLock::new(false);
 
 struct ConfigurationContext {
     building_plugins: bool,
-    schedules_added: bool,
-    systems_added: bool,
+    schedules_processed: bool,
+    systems_processed: bool,
     built: bool,
     ran_startup: bool,
 }
@@ -46,8 +46,8 @@ impl ConfigurationContext {
     fn new() -> Self {
         Self {
             building_plugins: false,
-            schedules_added: false,
-            systems_added: false,
+            schedules_processed: false,
+            systems_processed: false,
             built: false,
             ran_startup: false,
         }
@@ -56,21 +56,21 @@ impl ConfigurationContext {
         self.building_plugins
     }
 
-    fn schedules_added(&self) {
-        if !self.schedules_added {
+    fn schedules_processed(&self) {
+        if !self.schedules_processed {
             panic!("Schedules not added and processed when expected");
         }
     }
 
-    fn systems_added(&self) {
-        if !self.systems_added {
+    fn systems_processed(&self) {
+        if !self.systems_processed {
             panic!("Systems not Added and Configured when expected");
         }
     }
 
     fn built(&self) {
-        self.schedules_added();
-        self.systems_added();
+        self.schedules_processed();
+        self.systems_processed();
         if !self.built {
             panic!("Configuration Somehow Not Built even After All Check: Engine problem Likely!");
         }
@@ -120,7 +120,8 @@ impl App {
         app
     }
 
-    /// Initializes App with no default schedules except `Startup` and `CleanupHandles` schedules.
+    /// Initializes App with no default schedules except [`Startup`] and [`CleanupHandles`] schedules.
+    ///
     pub fn empty() -> Self {
         if APP_INITIALIZED.swap(true, Ordering::Relaxed) {
             panic!(
@@ -332,12 +333,14 @@ impl App {
         self.schedules.iter_mut().for_each(|schedule| {
             schedule.init_executor();
         });
-        self.configuration.schedules_added = true;
+        self.startup_schedule.init_executor();
+        self.cleanup_schedule.init_executor();
+        self.configuration.schedules_processed = true;
         #[cfg(feature = "reactivity")]
         register_removal_tracking_buffers(self);
     }
 
-    pub fn configure_systems(&mut self) {
+    fn configure_systems(&mut self) {
         dispatch_system_blocks(
             &mut self.systems_blocks,
             &mut self.startup_schedule,
@@ -364,7 +367,7 @@ impl App {
             }
         }
 
-        self.configuration.systems_added = true;
+        self.configuration.systems_processed = true;
     }
 
     fn configure_schedules(&mut self) {
@@ -372,6 +375,7 @@ impl App {
             std::mem::take(&mut self.schedules),
             &self.schedule_order_constraints,
         );
+        self.schedule_order_constraints.clear();
     }
 }
 

@@ -104,8 +104,8 @@ impl<T: Component> Resource for RemovedComponentsBuffer<T> {}
 /// This prevents downstream systems from accidentally iterating over dead or recycled entity IDs.
 ///
 /// To iterate over entities that are scheduled for despawning before they are actually despawned automatically,
-/// check if a specific target is doomed via [`crate::commands::Commands::will_despawn`] or list all pending deaths
-/// ahead of time using [`crate::commands::Commands::despawn_iter`].
+/// check if a specific target will despawn via [`crate::commands::Commands::will_despawn`] or process all pending deaths
+/// ahead of time using [`crate::commands::Commands::for_each_despawn`].
 pub struct RemovedComponents<'w, T: Component> {
     read_buffer: RwLockReadGuard<'w, Vec<Entity>>,
     _marker: PhantomData<(&'w (), T)>,

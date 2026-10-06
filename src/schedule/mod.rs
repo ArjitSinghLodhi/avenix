@@ -47,7 +47,12 @@ unsafe impl Send for SystemNode {}
 unsafe impl Sync for SystemNode {}
 
 impl SystemNode {
-    pub fn new(system: Box<dyn System>) -> Self {
+    pub fn new(system: impl System) -> Self {
+        Self {
+            system: Box::new(system),
+        }
+    }
+    pub fn new_boxed(system: Box<dyn System>) -> Self {
         Self { system }
     }
 
@@ -109,13 +114,13 @@ impl Schedule {
     }
 
     pub fn add_system(&mut self, system: impl System + 'static) {
-        self.systems_schedule
-            .systems
-            .push(SystemNode::new(Box::new(system)));
+        self.systems_schedule.systems.push(SystemNode::new(system));
     }
 
     pub fn add_system_boxed(&mut self, system: Box<dyn System>) {
-        self.systems_schedule.systems.push(SystemNode::new(system));
+        self.systems_schedule
+            .systems
+            .push(SystemNode::new_boxed(system));
     }
 
     pub fn systems_schedule(&self) -> &SystemsSchedule {
