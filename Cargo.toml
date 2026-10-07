@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.16.1"
+version = "0.17.0"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["ecs", "archetype", "simulation", "parallel"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = "0.5.0"
+avenix_macros = "0.5.1"
 indexmap = "2.14.1"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"
@@ -68,6 +68,10 @@ required-features = ["reactivity"]
 name = "parallel_query_tests"
 path = "tests/parallel_query_tests.rs"
 required-features = ["reactivity"]
+
+[[test]]
+name = "system_set_tests"
+path = "tests/system_set_tests.rs"
 
 [[example]]
 name = "hello_world"
@@ -132,6 +136,10 @@ path = "examples/13_system_ordering_conditions.rs"
 [[example]]
 name = "states"
 path = "examples/14_states.rs"
+
+[[example]]
+name = "system_sets"
+path = "examples/15_system_sets.rs"
 
 [[bench]]
 name = "query_lookups_fragmented"

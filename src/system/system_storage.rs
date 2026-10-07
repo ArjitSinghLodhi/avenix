@@ -64,12 +64,19 @@ pub struct FunctionData {
     data: FxHashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }
 
+impl Default for FunctionData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FunctionData {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             data: FxHashMap::default(),
         }
     }
+
     pub fn get_data<T: 'static>(&self) -> Option<&T> {
         self.data
             .get(&TypeId::of::<T>())

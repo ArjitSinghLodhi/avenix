@@ -24,12 +24,14 @@ impl MultiThreadedExecutor {
     }
 }
 
+#[derive(Clone, Copy)]
 struct ParallelSystemsBatchRange {
     start: usize,
     end: usize,
     executio_mode: ExecutionMode,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ExecutionMode {
     Sequential,
     Parallel,
@@ -67,8 +69,8 @@ impl SystemExecutor for MultiThreadedExecutor {
             cached_meta_list.push(CachedMeta {
                 is_send: meta.is_send(),
                 type_id: func_id,
-                run_after: orderings.run_after.clone(),
-                run_before: orderings.run_before.clone(),
+                run_after: orderings.run_after_systems.clone(),
+                run_before: orderings.run_before_systems.clone(),
                 component_reads: meta.component_reads().copied().collect(),
                 component_writes: meta.component_writes().copied().collect(),
                 resource_reads: meta.resource_reads().copied().collect(),
@@ -224,6 +226,26 @@ impl SystemExecutor for MultiThreadedExecutor {
                     ExecutionMode::Sequential
                 },
             });
+        }
+
+        if self.parallel_batches.len() > 1 {
+            let mut merged_batches = Vec::with_capacity(self.parallel_batches.len());
+            let mut current = self.parallel_batches[0];
+
+            for next_idx in 1..self.parallel_batches.len() {
+                let next = self.parallel_batches[next_idx];
+                match (current.executio_mode, next.executio_mode) {
+                    (ExecutionMode::Sequential, ExecutionMode::Sequential) => {
+                        current.end = next.end;
+                    }
+                    _ => {
+                        merged_batches.push(current);
+                        current = next;
+                    }
+                }
+            }
+            merged_batches.push(current);
+            self.parallel_batches = merged_batches;
         }
     }
 

@@ -9,6 +9,51 @@ use crate::{
     system::{SystemMeta, system_traits::SystemOrderings},
 };
 
+pub struct SystemAccessView<'a> {
+    pub component_reads: &'a [TypeId],
+    pub component_writes: &'a [TypeId],
+    pub resource_reads: &'a [TypeId],
+    pub resource_writes: &'a [TypeId],
+    pub with_filters: &'a [TypeId],
+    pub without_filters: &'a [TypeId],
+}
+
+pub fn check_access_conflicts(a: &SystemAccessView, b: &SystemAccessView) -> bool {
+    for r in a.resource_reads {
+        if b.resource_writes.contains(r) {
+            return true;
+        }
+    }
+
+    for w in a.resource_writes {
+        if b.resource_writes.contains(w) || b.resource_reads.contains(w) {
+            return true;
+        }
+    }
+
+    for r in a.component_reads {
+        if b.component_writes.contains(r) {
+            let is_disjoint = a.with_filters.iter().any(|f| b.without_filters.contains(f))
+                || a.without_filters.iter().any(|f| b.with_filters.contains(f));
+            if !is_disjoint {
+                return true;
+            }
+        }
+    }
+
+    for w in a.component_writes {
+        if b.component_writes.contains(w) || b.component_reads.contains(w) {
+            let is_disjoint = a.with_filters.iter().any(|f| b.without_filters.contains(f))
+                || a.without_filters.iter().any(|f| b.with_filters.contains(f));
+            if !is_disjoint {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub(crate) fn dispatch_system_blocks(
     systems_blocks: &mut Vec<SystemsBlock>,
     startup_schedule: &mut Schedule,
@@ -49,16 +94,11 @@ pub(crate) fn dispatch_system_blocks(
 }
 
 pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
-    let n = schedule_systems.len();
-    if n <= 1 {
-        return;
-    }
-
     struct SortingMeta {
         type_id: TypeId,
         name: &'static str,
-        run_after: Vec<TypeId>,
-        run_before: Vec<TypeId>,
+        run_after_systems: Vec<TypeId>,
+        run_before_systems: Vec<TypeId>,
         is_send: bool,
         component_reads: Vec<TypeId>,
         component_writes: Vec<TypeId>,
@@ -68,20 +108,12 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         without_filters: Vec<TypeId>,
     }
 
+    let n = schedule_systems.len();
     let mut meta_list = Vec::with_capacity(n);
     for node in schedule_systems.iter_mut() {
         let system_mut_ref = node.system_mut();
         let tid = system_mut_ref.func_type_id();
         let sys_name = system_mut_ref.name();
-
-        let run_after = system_mut_ref
-            .get_or_init(SystemOrderings::default)
-            .run_after
-            .clone();
-        let run_before = system_mut_ref
-            .get_or_init(SystemOrderings::default)
-            .run_before
-            .clone();
 
         let meta = system_mut_ref.get_or_init(SystemMeta::default);
         let is_send = meta.is_send();
@@ -92,11 +124,15 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         let with_filters = meta.with_filters().copied().collect();
         let without_filters = meta.without_filters().copied().collect();
 
+        let orderings = system_mut_ref.get_or_init(SystemOrderings::default);
+        let run_after_systems = orderings.run_after_systems.clone();
+        let run_before_systems = orderings.run_before_systems.clone();
+
         meta_list.push(SortingMeta {
             type_id: tid,
             name: sys_name,
-            run_after,
-            run_before,
+            run_after_systems,
+            run_before_systems,
             is_send,
             component_reads,
             component_writes,
@@ -117,7 +153,7 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
     let mut in_degree = vec![0; n];
 
     for (idx, meta) in meta_list.iter().enumerate() {
-        for target_type in &meta.run_after {
+        for target_type in &meta.run_after_systems {
             if *target_type == meta.type_id {
                 panic!(
                     "❌ SCHEDULING ERROR: System '{}' cannot be configured to run after itself!",
@@ -137,7 +173,7 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
                 }
             }
         }
-        for target_type in &meta.run_before {
+        for target_type in &meta.run_before_systems {
             if *target_type == meta.type_id {
                 panic!(
                     "❌ SCHEDULING ERROR: System '{}' cannot be configured to run before itself!",
@@ -205,72 +241,31 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
                 continue;
             }
 
+            let view_a = SystemAccessView {
+                component_reads: &meta.component_reads,
+                component_writes: &meta.component_writes,
+                resource_reads: &meta.resource_reads,
+                resource_writes: &meta.resource_writes,
+                with_filters: &meta.with_filters,
+                without_filters: &meta.without_filters,
+            };
+
             let mut conflict = false;
 
             for &active_idx in &active_batch_systems {
                 let active_meta = &meta_list[active_idx];
 
-                for r in &meta.resource_reads {
-                    if active_meta.resource_writes.contains(r) {
-                        conflict = true;
-                        break;
-                    }
-                }
-                if conflict {
-                    break;
-                }
+                let view_b = SystemAccessView {
+                    component_reads: &active_meta.component_reads,
+                    component_writes: &active_meta.component_writes,
+                    resource_reads: &active_meta.resource_reads,
+                    resource_writes: &active_meta.resource_writes,
+                    with_filters: &active_meta.with_filters,
+                    without_filters: &active_meta.without_filters,
+                };
 
-                for w in &meta.resource_writes {
-                    if active_meta.resource_writes.contains(w)
-                        || active_meta.resource_reads.contains(w)
-                    {
-                        conflict = true;
-                        break;
-                    }
-                }
-                if conflict {
-                    break;
-                }
-
-                for r in &meta.component_reads {
-                    if active_meta.component_writes.contains(r) {
-                        let is_disjoint = meta
-                            .with_filters
-                            .iter()
-                            .any(|f| active_meta.without_filters.contains(f))
-                            || meta
-                                .without_filters
-                                .iter()
-                                .any(|f| active_meta.with_filters.contains(f));
-                        if !is_disjoint {
-                            conflict = true;
-                            break;
-                        }
-                    }
-                }
-                if conflict {
-                    break;
-                }
-
-                for w in &meta.component_writes {
-                    if active_meta.component_writes.contains(w)
-                        || active_meta.component_reads.contains(w)
-                    {
-                        let is_disjoint = meta
-                            .with_filters
-                            .iter()
-                            .any(|f| active_meta.without_filters.contains(f))
-                            || meta
-                                .without_filters
-                                .iter()
-                                .any(|f| active_meta.with_filters.contains(f));
-                        if !is_disjoint {
-                            conflict = true;
-                            break;
-                        }
-                    }
-                }
-                if conflict {
+                if check_access_conflicts(&view_a, &view_b) {
+                    conflict = true;
                     break;
                 }
             }

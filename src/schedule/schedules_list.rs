@@ -9,12 +9,16 @@ use crate::{
 };
 
 /// A schedule where queue commands are applied between each system that runs registered in this schedule.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Startup;
 
 impl ScheduleLabel for Startup {
     fn default_executor(&mut self) -> Box<dyn SystemExecutor> {
         Box::new(StartupExecutor)
+    }
+
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
     }
 }
 
@@ -38,25 +42,41 @@ impl SystemExecutor for StartupExecutor {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct First;
 
-impl ScheduleLabel for First {}
+impl ScheduleLabel for First {
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
+    }
+}
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PreUpdate;
 
-impl ScheduleLabel for PreUpdate {}
+impl ScheduleLabel for PreUpdate {
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
+    }
+}
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Update;
 
-impl ScheduleLabel for Update {}
+impl ScheduleLabel for Update {
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
+    }
+}
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct PostUpdate;
 
-impl ScheduleLabel for PostUpdate {}
+impl ScheduleLabel for PostUpdate {
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
+    }
+}
 
 /// A special schedule where queued commands are applied immediately before
 /// and after its registered systems execute every re-run.
@@ -71,7 +91,7 @@ impl ScheduleLabel for PostUpdate {}
 /// despawns before they are finalized and applied.
 ///
 /// See the `hierarchy_cleanup` example for guidance on how to effectively use it.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct CleanupHandles;
 
 impl ScheduleLabel for CleanupHandles {
@@ -83,6 +103,10 @@ impl ScheduleLabel for CleanupHandles {
             duplicate_batch: Vec::new(),
             multi_threaded_executor: MultiThreadedExecutor::new(),
         })
+    }
+
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
     }
 }
 
@@ -166,7 +190,11 @@ impl SystemExecutor for CleanupHandlesExecutor {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Last;
 
-impl ScheduleLabel for Last {}
+impl ScheduleLabel for Last {
+    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(self.clone())
+    }
+}

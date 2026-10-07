@@ -2,11 +2,6 @@ mod plugin;
 use parking_lot::RwLock;
 pub use plugin::{Plugin, PluginsBuildAll};
 
-use std::{
-    marker::PhantomData,
-    sync::atomic::{AtomicBool, Ordering},
-};
-
 use crate::{
     app::system::condition::RunConditionsList,
     extensions::SystemExt,
@@ -19,8 +14,13 @@ use crate::{
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
-    system::{AccessVec, IntoSystemConfigs, System},
+    system::{AccessVec, IntoSystemConfigs, System, system_set_traits::IntoSystemSetConfigConfigs},
     world::storage::World,
+};
+use crate::{schedule::SystemNode, system::system_set::SetRegistration};
+use std::{
+    marker::PhantomData,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 #[cfg(feature = "events")]
@@ -109,6 +109,7 @@ pub struct App {
     schedules: Vec<Schedule>,
     systems_blocks: Vec<SystemsBlock>,
     pub(crate) schedule_order_constraints: Vec<ScheduleConstraint>,
+    pub(crate) set_registrations: Vec<SetRegistration>,
     runner_fn: RunnerFn,
     configuration: ConfigurationContext,
 }
@@ -136,6 +137,7 @@ impl App {
             schedules: Vec::new(),
             systems_blocks: Vec::new(),
             schedule_order_constraints: Vec::new(),
+            set_registrations: Vec::new(),
             runner_fn: Box::new(runner_once),
             configuration: ConfigurationContext::new(),
         }
@@ -160,6 +162,32 @@ impl App {
         } else {
             self.schedules.push(schedule);
         }
+        self
+    }
+
+    pub fn configure_sets(
+        &mut self,
+        schedule: impl crate::schedule::ScheduleLabel,
+        set_configs: impl IntoSystemSetConfigConfigs,
+    ) -> &mut Self {
+        self.configuration.not_ready();
+
+        let schedule_box: Box<dyn crate::schedule::ScheduleLabel> = Box::new(schedule);
+
+        for config in set_configs.into_configs() {
+            let registration = SetRegistration {
+                schedule: schedule_box.clone_box(),
+                set: config.set,
+                run_after_sets: config.run_after_sets,
+                run_before_sets: config.run_before_sets,
+                run_after_systems: config.run_after_systems,
+                run_before_systems: config.run_before_systems,
+                member_of: config.member_of,
+                condition_builders: config.condition_builders,
+            };
+            self.set_registrations.push(registration);
+        }
+
         self
     }
 
@@ -341,6 +369,8 @@ impl App {
     }
 
     fn configure_systems(&mut self) {
+        let global_registrations = std::mem::take(&mut self.set_registrations);
+
         dispatch_system_blocks(
             &mut self.systems_blocks,
             &mut self.startup_schedule,
@@ -348,19 +378,109 @@ impl App {
             &mut self.schedules,
         );
 
-        let mut schedules_to_sort = Vec::new();
-        schedules_to_sort.push(self.startup_schedule.systems_schedule_mut().systems_mut());
-        schedules_to_sort.push(self.cleanup_schedule.systems_schedule_mut().systems_mut());
+        let mut remaining_registrations = global_registrations;
+        {
+            let label = self.startup_schedule.schedule();
+            let mut schedule_registrations = Vec::new();
+            let mut next_remaining = Vec::new();
+            for reg in remaining_registrations.drain(..) {
+                if reg.schedule.dyn_eq(label) {
+                    schedule_registrations.push(reg);
+                } else {
+                    next_remaining.push(reg);
+                }
+            }
+            remaining_registrations = next_remaining;
+
+            let systems = self.startup_schedule.systems_schedule_mut().systems_mut();
+            let mut borrowed_systems: Vec<&mut SystemNode> = systems.iter_mut().collect();
+            let mut generated_guards = Vec::new();
+            crate::system::system_set::preprocess_system_sets(
+                &mut borrowed_systems,
+                &mut schedule_registrations,
+                &mut self.world,
+                &mut generated_guards,
+            );
+            systems.extend(generated_guards);
+        }
+        {
+            let label = self.cleanup_schedule.schedule();
+            let mut schedule_registrations = Vec::new();
+            let mut next_remaining = Vec::new();
+            for reg in remaining_registrations.drain(..) {
+                if reg.schedule.dyn_eq(label) {
+                    schedule_registrations.push(reg);
+                } else {
+                    next_remaining.push(reg);
+                }
+            }
+            remaining_registrations = next_remaining;
+
+            let systems = self.cleanup_schedule.systems_schedule_mut().systems_mut();
+            let mut borrowed_systems: Vec<&mut SystemNode> = systems.iter_mut().collect();
+            let mut generated_guards = Vec::new();
+            crate::system::system_set::preprocess_system_sets(
+                &mut borrowed_systems,
+                &mut schedule_registrations,
+                &mut self.world,
+                &mut generated_guards,
+            );
+            systems.extend(generated_guards);
+        }
+
         for schedule in &mut self.schedules {
-            schedules_to_sort.push(schedule.systems_schedule_mut().systems_mut());
+            let label = schedule.schedule();
+            let mut schedule_registrations = Vec::new();
+            let mut next_remaining = Vec::new();
+            for reg in remaining_registrations.drain(..) {
+                if reg.schedule.dyn_eq(label) {
+                    schedule_registrations.push(reg);
+                } else {
+                    next_remaining.push(reg);
+                }
+            }
+            remaining_registrations = next_remaining;
+
+            let systems = schedule.systems_schedule_mut().systems_mut();
+            let mut borrowed_systems: Vec<&mut SystemNode> = systems.iter_mut().collect();
+            let mut generated_guards = Vec::new();
+            crate::system::system_set::preprocess_system_sets(
+                &mut borrowed_systems,
+                &mut schedule_registrations,
+                &mut self.world,
+                &mut generated_guards,
+            );
+            systems.extend(generated_guards);
         }
 
-        for schedule_systems in schedules_to_sort.iter_mut() {
-            sort_schedule_systems(schedule_systems);
+        sort_schedule_systems(self.startup_schedule.systems_schedule_mut().systems_mut());
+        for node in self
+            .startup_schedule
+            .systems_schedule_mut()
+            .systems_mut()
+            .iter_mut()
+        {
+            node.system_mut()
+                .get_or_init_mut(RunConditionsList::default)
+                .build_conditions(&mut self.world);
         }
 
-        for schedule_systems in schedules_to_sort.iter_mut() {
-            for node in schedule_systems.iter_mut() {
+        sort_schedule_systems(self.cleanup_schedule.systems_schedule_mut().systems_mut());
+        for node in self
+            .cleanup_schedule
+            .systems_schedule_mut()
+            .systems_mut()
+            .iter_mut()
+        {
+            node.system_mut()
+                .get_or_init_mut(RunConditionsList::default)
+                .build_conditions(&mut self.world);
+        }
+
+        for schedule in &mut self.schedules {
+            let systems = schedule.systems_schedule_mut().systems_mut();
+            sort_schedule_systems(systems);
+            for node in systems.iter_mut() {
                 node.system_mut()
                     .get_or_init_mut(RunConditionsList::default)
                     .build_conditions(&mut self.world);

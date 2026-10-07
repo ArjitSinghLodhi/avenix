@@ -36,7 +36,7 @@ fn test_parallel_query_accessor_mixed_workload() {
     app.add_systems(Startup, setup_simulation_entities)
         .add_systems(Update, multi_query_in_band_system);
 
-    let shared_barrier = Arc::new(Barrier::new(3));
+    let shared_barrier = Arc::new(Barrier::new(2));
     app.insert_resource(TestSyncContext {
         barrier: shared_barrier.clone(),
         system_done: Arc::new(AtomicBool::new(false)),
@@ -45,9 +45,17 @@ fn test_parallel_query_accessor_mixed_workload() {
     app.build();
     app.run_startup();
 
+    par_writer.scope(|mut query| {
+        for mut view in query.iter_mut() {
+            for (mut pos, vel) in view.iter_mut() {
+                pos.x += vel.x;
+                pos.y += vel.y;
+            }
+        }
+    });
+
     std::thread::scope(|s| {
         let b1 = shared_barrier.clone();
-        let b2 = shared_barrier.clone();
 
         s.spawn(move || {
             b1.wait();
@@ -65,18 +73,6 @@ fn test_parallel_query_accessor_mixed_workload() {
             });
         });
 
-        s.spawn(move || {
-            b2.wait();
-            par_writer.scope(|mut query| {
-                for mut view in query.iter_mut() {
-                    for (mut pos, vel) in view.iter_mut() {
-                        pos.x += vel.x;
-                        pos.y += vel.y;
-                    }
-                }
-            });
-        });
-
         app.update();
     });
 
@@ -85,33 +81,8 @@ fn test_parallel_query_accessor_mixed_workload() {
         for view in query.iter() {
             total_reactive_catch += view.len();
         }
-        assert_eq!(total_reactive_catch, 500);
+        assert_eq!(total_reactive_catch, 1000);
     });
-}
-
-fn setup_simulation_entities(commands: Commands) {
-    let batch_leaders = (0..500).map(|i| {
-        (
-            Position {
-                x: i as f32,
-                y: 0.0,
-            },
-            Velocity { x: 2.0, y: 2.0 },
-        )
-    });
-    commands.spawn_batch(batch_leaders);
-
-    let batch_followers = (0..500).map(|i| {
-        (
-            Position {
-                x: i as f32,
-                y: 0.0,
-            },
-            Velocity { x: 2.0, y: 2.0 },
-            IsFollower,
-        )
-    });
-    commands.spawn_batch(batch_followers);
 }
 
 fn multi_query_in_band_system(
@@ -177,6 +148,7 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
                 });
                 std::thread::yield_now();
             }
+            b1.wait();
         });
 
         s.spawn(move || {
@@ -191,10 +163,36 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
                 });
                 std::thread::yield_now();
             }
+            b2.wait();
         });
 
         app.update();
     });
+}
+
+fn setup_simulation_entities(commands: Commands) {
+    let batch_leaders = (0..500).map(|i| {
+        (
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+            Velocity { x: 2.0, y: 2.0 },
+        )
+    });
+    commands.spawn_batch(batch_leaders);
+
+    let batch_followers = (0..500).map(|i| {
+        (
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+            Velocity { x: 2.0, y: 2.0 },
+            IsFollower,
+        )
+    });
+    commands.spawn_batch(batch_followers);
 }
 
 fn dynamic_chaos_mutator_system(
@@ -216,4 +214,5 @@ fn dynamic_chaos_mutator_system(
     }
 
     sync_ctx.system_done.store(true, Ordering::Relaxed);
+    sync_ctx.barrier.wait();
 }

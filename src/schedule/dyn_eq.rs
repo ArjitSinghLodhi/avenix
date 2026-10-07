@@ -1,10 +1,9 @@
 use std::any::Any;
-
-use crate::schedule::ScheduleLabel;
-
 #[doc(hidden)]
 pub trait DynEq: Any {
+    #[doc(hidden)]
     fn as_any(&self) -> &dyn Any;
+    #[doc(hidden)]
     fn dyn_eq(&self, other: &dyn DynEq) -> bool;
 }
 
@@ -21,10 +20,3 @@ impl<T: Any + PartialEq> DynEq for T {
         }
     }
 }
-
-impl PartialEq for dyn ScheduleLabel + '_ {
-    fn eq(&self, other: &Self) -> bool {
-        self.dyn_eq(other)
-    }
-}
-impl Eq for dyn ScheduleLabel + '_ {}

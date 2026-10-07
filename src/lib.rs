@@ -33,7 +33,7 @@ mod world;
 pub mod derive {
     pub use avenix_macros::{
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
-        ScheduleLabel, States, SystemParam,
+        ScheduleLabel, States, SystemParam, SystemSet,
     };
 }
 
@@ -53,6 +53,9 @@ pub mod prelude {
         system::{
             IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
             condition::{Condition, ConditionBuilder, ConditionFn, RunConditionsList, not},
+            system_set::{
+                IntoSystemSetConfigConfigs, SystemSet, SystemSetConfigsExt, SystemSetExt,
+            },
             system_traits::{
                 SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
                 SystemsChain,
@@ -61,7 +64,7 @@ pub mod prelude {
     };
     pub use crate::derive::{
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
-        ScheduleLabel, States, SystemParam,
+        ScheduleLabel, States, SystemParam, SystemSet,
     };
     #[cfg(feature = "events")]
     pub use crate::ecs::events::{
@@ -162,8 +165,18 @@ pub mod app {
         }
         pub mod system_traits {
             pub use crate::system::system_traits::{
-                SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
-                SystemsChain,
+                AsSchedulingTarget, SystemCondition, SystemConfigsCondition, SystemConfigsOrder,
+                SystemOrder, SystemsChain,
+            };
+        }
+
+        pub mod system_set {
+            pub use crate::system::{
+                system_set::{GuardNode, SetConditionBuilder, SystemSet},
+                system_set_traits::{
+                    IntoSystemSetConfig, IntoSystemSetConfigConfigs, SetConfig,
+                    SystemSetConfigsExt, SystemSetExt,
+                },
             };
         }
     }

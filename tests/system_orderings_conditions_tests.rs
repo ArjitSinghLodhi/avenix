@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use avenix_macros::ParallelSystemParam;
 
 #[derive(Resource, Default)]
 struct RunTracker {
