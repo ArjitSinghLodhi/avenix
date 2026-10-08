@@ -1,17 +1,3 @@
-//! # Avenix Engine
-//!
-//! ## Core Architecture Invariants
-//!
-//! To maintain absolute safety and high performance, Avenix enforces strict operational rules:
-//!
-//! * **Entity Despawn Invariant:** All cloned handles referencing an entity must be completely dropped
-//!   before that entity's scheduled despawn command is executed. Violating this triggers an explicit runtime
-//!   panic displaying the archetype's components. See the [`CleanupHandles`] schedule to learn how its designed to
-//!   help you with this, and read [`EntityCommands::despawn()`] for more information.
-//!
-//! [`CleanupHandles`]: crate::schedule::CleanupHandles
-//! [`EntityCommands::despawn()`]: crate::commands::EntityCommands::despawn
-
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[path = "app/mod.rs"]
@@ -51,14 +37,15 @@ pub mod prelude {
         },
         states::{NextState, State, States, entered_state, exited_state, in_state},
         system::{
-            IntoSystem, IntoSystemConfigs, System, SystemConfigs, SystemMeta, SystemParam,
-            condition::{Condition, ConditionBuilder, ConditionFn, RunConditionsList, not},
+            IntoSystem, System, SystemMeta, SystemParam,
+            condition::{
+                Condition, ConditionBuilder, ConditionFn, RunConditionsList, not, resource_exists,
+            },
             system_set::{
                 IntoSystemSetConfigConfigs, SystemSet, SystemSetConfigsExt, SystemSetExt,
             },
             system_traits::{
-                SystemCondition, SystemConfigsCondition, SystemConfigsOrder, SystemOrder,
-                SystemsChain,
+                ConfigureSystem, ConfigureSystemConfigs, IntoSystemConfigs, SystemConfigs,
             },
         },
     };
@@ -94,8 +81,7 @@ pub mod prelude {
 pub mod extensions {
     pub use crate::system::system_storage::{FunctionData, SystemData, SystemExt};
     pub use crate::system::{
-        AccessHashSet, AccessVec, FunctionSystem, IntoSystem, IntoSystemConfigs, System,
-        SystemMeta, SystemParam,
+        AccessHashSet, AccessVec, FunctionSystem, IntoSystem, System, SystemMeta, SystemParam,
     };
     pub use crate::world::archetypes::{Archetype, ComponentColumn};
     pub use crate::world::archetypes::{ComponentColumnRead, ComponentColumnWrite};
@@ -154,19 +140,16 @@ pub mod ecs {
 pub mod app {
     pub use crate::app_impl::App;
     pub mod system {
-        pub use crate::system::{
-            IntoSystem, IntoSystemConfigs, ParallelSystemParam, System, SystemConfigs, SystemMeta,
-            SystemParam,
-        };
+        pub use crate::system::{IntoSystem, ParallelSystemParam, System, SystemMeta, SystemParam};
         pub mod condition {
             pub use crate::system::condition::{
-                Condition, ConditionBuilder, ConditionFn, RunConditionsList, not,
+                Condition, ConditionBuilder, ConditionFn, RunConditionsList, not, resource_exists,
             };
         }
         pub mod system_traits {
             pub use crate::system::system_traits::{
-                AsSchedulingTarget, SystemCondition, SystemConfigsCondition, SystemConfigsOrder,
-                SystemOrder, SystemsChain,
+                AsSchedulingTarget, ConfigureSystem, ConfigureSystemConfigs, FunctionTargetMarker,
+                IntoSystemConfigs, SystemConfigs,
             };
         }
 

@@ -1,5 +1,4 @@
 pub(crate) mod condition;
-mod functions;
 pub(crate) mod system_set;
 pub(crate) mod system_set_traits;
 pub(crate) mod system_storage;
@@ -7,7 +6,6 @@ pub(crate) mod system_traits;
 use std::{
     any::{Any, TypeId},
     hash::Hash,
-    marker::PhantomData,
 };
 
 use indexmap::IndexSet;
@@ -283,72 +281,4 @@ pub trait IntoSystem<Marker> {
     type SystemType: System + 'static;
     #[doc(hidden)]
     fn into_system(self) -> Self::SystemType;
-}
-
-#[doc(hidden)]
-pub struct SystemConfigs<Marker> {
-    pub(crate) systems: Vec<Box<dyn System>>,
-    pub(crate) _marker: PhantomData<Marker>,
-}
-
-#[doc(hidden)]
-pub trait IntoSystemConfigs<MarkerGroup> {
-    #[doc(hidden)]
-    fn into_configs(self) -> SystemConfigs<MarkerGroup>;
-}
-
-macro_rules! impl_system_configs_tuple {
-    ($($sys:ident),* ; $($marker:ident),*) => {
-        impl<$($sys,)* $($marker,)*> IntoSystemConfigs<($($marker,)*)> for ($($sys,)*)
-        where
-            $( $sys: IntoSystem<$marker> + 'static ),*
-        {
-            fn into_configs(self) -> SystemConfigs<($($marker,)*)> {
-                #[allow(non_snake_case)]
-                let ($($sys,)*) = self;
-                SystemConfigs {
-                    systems: vec![
-                        $( Box::new($sys.into_system()) ),*
-                    ],
-                    _marker: PhantomData,
-                }
-            }
-        }
-
-        impl<$($marker,)*> IntoSystemConfigs<($($marker,)*)> for SystemConfigs<($($marker,)*)>
-        {
-            fn into_configs(self) -> SystemConfigs<($($marker,)*)> {
-                self
-            }
-        }
-    };
-}
-
-impl_system_configs_tuple!(S1 ; M1);
-impl_system_configs_tuple!(S1, S2 ; M1, M2);
-impl_system_configs_tuple!(S1, S2, S3 ; M1, M2, M3);
-impl_system_configs_tuple!(S1, S2, S3, S4; M1, M2, M3, M4);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5; M1, M2, M3, M4, M5);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6; M1, M2, M3, M4, M5, M6);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7; M1, M2, M3, M4, M5, M6, M7);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8; M1, M2, M3, M4, M5, M6, M7, M8);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9; M1, M2, M3, M4, M5, M6, M7, M8, M9);
-impl_system_configs_tuple!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10; M1, M2, M3, M4, M5, M6, M7, M8, M9, M10);
-
-impl<S, Marker> IntoSystemConfigs<Marker> for S
-where
-    S: IntoSystem<Marker> + 'static,
-{
-    fn into_configs(self) -> SystemConfigs<Marker> {
-        SystemConfigs {
-            systems: vec![Box::new(self.into_system())],
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl IntoSystemConfigs<()> for SystemConfigs<()> {
-    fn into_configs(self) -> SystemConfigs<()> {
-        self
-    }
 }

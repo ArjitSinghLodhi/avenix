@@ -10,7 +10,9 @@ use crate::system::system_traits::SystemOrderings;
 use crate::world::storage::World;
 
 pub trait SystemSet: DynEq + Send + Sync + 'static {
+    #[doc(hidden)]
     fn clone_box(&self) -> Box<dyn SystemSet>;
+    #[doc(hidden)]
     fn create_guard_node(
         &self,
         gates: Vec<ConditionFn>,
@@ -91,6 +93,7 @@ pub(crate) struct SetRegistration {
     pub(crate) member_of: Vec<Box<dyn SystemSet>>,
     pub(crate) condition_builders: Vec<SetConditionBuilder>,
 }
+
 pub(crate) fn preprocess_system_sets(
     schedule_systems: &mut [&mut SystemNode],
     registrations: &mut [SetRegistration],
@@ -122,8 +125,31 @@ pub(crate) fn preprocess_system_sets(
     for i in 0..n_reg {
         if nesting_matrix[i][i] {
             panic!(
-                "❌ SCHEDULING ERROR: A cyclic nesting deadlock was detected! A SystemSet cannot be configured to contain itself hierarchically."
+                "❌ SystemSet Error: A cyclic nesting deadlock was detected! A SystemSet cannot be configured to contain itself hierarchically."
             );
+        }
+    }
+
+    for reg in registrations.iter() {
+        for target_set in &reg.run_before_sets {
+            if !registrations
+                .iter()
+                .any(|r| r.set.dyn_eq(target_set.as_ref()))
+            {
+                panic!(
+                    "❌ SystemSet Error: A SystemSet was configured to run before a set that was never registered via app.configure_set()!"
+                );
+            }
+        }
+        for target_set in &reg.run_after_sets {
+            if !registrations
+                .iter()
+                .any(|r| r.set.dyn_eq(target_set.as_ref()))
+            {
+                panic!(
+                    "❌ SystemSet Error: A SystemSet was configured to run after a set that was never registered via app.configure_set()!"
+                );
+            }
         }
     }
 
@@ -171,7 +197,7 @@ pub(crate) fn preprocess_system_sets(
 
             if !is_registered {
                 panic!(
-                    "❌ SCHEDULING ERROR: System '{}' is configured to run inside a SystemSet which was never registered via app.configure_set()!",
+                    "❌ SystemSet Error: System '{}' is configured to run inside a SystemSet which was never registered via app.configure_set()!",
                     sys.name()
                 );
             }
@@ -297,6 +323,16 @@ pub(crate) fn preprocess_system_sets(
 
         let local_before_sets = std::mem::take(&mut orderings.run_before_sets);
         for target_set in local_before_sets {
+            if !registrations
+                .iter()
+                .any(|reg| reg.set.dyn_eq(target_set.as_ref()))
+            {
+                panic!(
+                    "❌ SystemSet Error: System '{}' is configured to run before a SystemSet which was never registered!",
+                    sys.name()
+                );
+            }
+
             for cache_item in &member_cache {
                 if cache_item
                     .member_of
@@ -310,6 +346,15 @@ pub(crate) fn preprocess_system_sets(
 
         let local_after_sets = std::mem::take(&mut orderings.run_after_sets);
         for target_set in local_after_sets {
+            if !registrations
+                .iter()
+                .any(|reg| reg.set.dyn_eq(target_set.as_ref()))
+            {
+                panic!(
+                    "❌ SystemSet Error: System '{}' is configured to run after a SystemSet which was never registered!",
+                    sys.name()
+                );
+            }
             for cache_item in &member_cache {
                 if cache_item
                     .member_of

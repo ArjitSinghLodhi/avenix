@@ -1,6 +1,4 @@
 use avenix::prelude::*;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Resource, Default)]
 struct ExecutionHistory {
@@ -23,7 +21,7 @@ enum ExecutionStep {
 
 #[derive(Resource, Clone)]
 struct SetConditionFlag {
-    counter: Arc<AtomicU32>,
+    counter: u32,
 }
 
 #[derive(PartialEq, Clone, Debug, SystemSet)]
@@ -91,25 +89,30 @@ fn test_system_sets() {
 
     let mut app = App::new();
 
-    let shared_counter = Arc::new(AtomicU32::new(0));
-    let condition_counter = shared_counter.clone();
-
+    let flat_accessor = app
+        .world_mut()
+        .get_par_resource_accessor::<SetConditionFlag>();
     app.insert_resource(ExecutionHistory::default())
-        .insert_resource(SetConditionFlag {
-            counter: shared_counter.clone(),
-        })
+        .insert_resource(SetConditionFlag { counter: 0 })
         .configure_sets(
             Update,
             (
-                GameplayStage::Input,
-                GameplayStage::Simulation
-                    .after(GameplayStage::Input)
-                    .run_if(move |flag: &ParallelResourceAccessor<SetConditionFlag>| {
-                        flag.scope(|f| f.counter.load(Ordering::Relaxed) == 0)
+                (
+                    GameplayStage::Input,
+                    GameplayStage::Simulation.run_if(
+                        |flag: &ParallelResourceAccessor<SetConditionFlag>| {
+                            flag.scope(|f| f.counter == 0)
+                        },
+                    ),
+                    GameplayStage::PostSim,
+                )
+                    .chain(),
+                (NetworkingSet, PhysicsSet).chain(),
+                (PhysicsSet, NetworkingSet)
+                    .in_set(GameplayStage::Simulation)
+                    .run_if(|flat: &ParallelResourceAccessor<SetConditionFlag>| {
+                        flat.scope(|f| f.counter != 999)
                     }),
-                GameplayStage::PostSim.after(GameplayStage::Simulation),
-                (PhysicsSet, NetworkingSet).in_set(GameplayStage::Simulation),
-                NetworkingSet.before(PhysicsSet),
                 AudioSet.after(resolve_colliders),
                 ParticleSet.after(PhysicsSet),
                 (AudioSet, ParticleSet).after(gather_input),
@@ -121,11 +124,10 @@ fn test_system_sets() {
             (
                 gather_input.in_set(GameplayStage::Input),
                 sync_network.in_set(NetworkingSet),
-                integrate_forces.in_set(PhysicsSet),
-                resolve_colliders.in_set(PhysicsSet).after(integrate_forces),
+                (integrate_forces, resolve_colliders.after(integrate_forces)).in_set(PhysicsSet),
                 post_physics_cleanup.in_set(GameplayStage::PostSim),
-                play_spatial_audio.in_set(AudioSet),
                 spawn_sparks.in_set(ParticleSet),
+                play_spatial_audio.in_set(AudioSet),
                 secondary_verification.after(AudioSet),
             ),
         );
@@ -189,7 +191,9 @@ fn test_system_sets() {
     }
 
     println!("Modifying condition flag to turn off the Simulation group...");
-    condition_counter.store(1, Ordering::Relaxed);
+    flat_accessor.scope_mut(|mut f| {
+        f.counter = 1;
+    });
 
     println!("Executing second evaluation frame (Condition Fails)...");
     app.update();

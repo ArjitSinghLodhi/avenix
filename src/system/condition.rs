@@ -1,4 +1,8 @@
-use crate::{extensions::World, system::ParallelSystemParam};
+use crate::{
+    extensions::World,
+    resources::{ParallelResourceAccessor, Resource},
+    system::ParallelSystemParam,
+};
 
 pub type ConditionBuilder = Box<dyn FnOnce(&mut World) -> ConditionFn + Send + Sync>;
 pub type ConditionFn = Box<dyn Fn() -> bool + Send + Sync>;
@@ -60,11 +64,17 @@ where
     }
 }
 
-pub fn not<P, C>(condition: C) -> impl Condition<P, ConditionData = P>
+pub fn not<P, C>(condition: C) -> impl Fn(&P) -> bool + Clone
 where
     P: 'static + ParallelSystemParam,
-    C: Condition<P, ConditionData = P> + 'static,
+    C: Condition<P, ConditionData = P> + 'static + Clone,
 {
-    let condition = condition;
     move |param: &P| !condition.run(param)
+}
+
+pub fn resource_exists<R>() -> impl Fn(&ParallelResourceAccessor<R>) -> bool + Clone
+where
+    R: Resource + Send + Sync,
+{
+    move |resource_accessor: &ParallelResourceAccessor<R>| resource_accessor.is_present()
 }

@@ -1,54 +1,27 @@
 # Avenix ECS Engine
 
-A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring parallel workloads, and out-of-band coordination.
+A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring high-performance parallel workloads, out-of-band remote coordination, native **States**, and advanced **SystemSets** grouping.
 
 ---
-## Performance & Safety Architecture
 
-* **Zero-UB Columnar Memory**  
-  Engineered around low-level pointer layout optimization and contiguous memory lanes. Every core pathway fully passes strict Miri verification to guarantee complete runtime safety without sacrificing raw pointer performance.
-* **Cache-Aligned Data Density**  
-  Implements a strict Archetype structural layout. Components are packed into dense, flat tables to maximize CPU cache-line saturation and leverage hardware prefetching during heavy iteration loops.
-* **Lock-Free Pipeline Concurrency**  
-  Employs a native Rayon worker pool to automatically chunk, partition, and stream archetype tables across all available CPU cores, delivering seamless multi-threaded system execution.
+## Performance & Core Architecture
+
+* **Archetype-Based Storage**  
+  Built entirely around a strict structural Archetype architecture. Components are packed into flat, dense tables to maximize CPU cache-line saturation and optimize hardware prefetching loops.
+* **Zero-UB Layout Execution**  
+  Engineered with memory safety layout guarantees. Core pathways protect against undefined behavior without introducing overhead or sacrificing raw pointer iteration performance.
+* **Multi-Threading**  
+  Integrates a native Rayon worker pool to automatically chunk, partition, and process archetype arrays concurrently across all available CPU cores.
 * **Race-Free Structural Isolation**  
-  Eliminates iterator invalidation and scheduling bottlenecks by deferring all entity mutations (spawning, component insertion, and despawning) into synchronized command buffers flushed strictly at frame boundaries.
-* **Decoupled Out-of-Band Remotes**  
-  Treats background tasks as first-class systems via thread-clonable parallel handles. External workers and network loops can safely manipulate resources and query entity matrix states asynchronously outside the main scheduling loop.
+  Prevents iterator invalidation by deferring entity mutations (spawning, component insertions, and despawning) into synchronized command buffers flushed exclusively at frame boundaries.
+* **Advanced SystemSets Execution**  
+  Groups systems into functional blocks that share operational bounds. Attaching a run condition to a SystemSet evaluates that condition **exactly once** for the entire group, removing the overhead of individual system evaluations.
+* **Integrated States Pipeline**  
+  Features a built-in Finite State Machine supporting edge-triggered transitions (`entered_state`, `exited_state`) and ongoing execution filters (`in_state`).
+
 ---
 
-## Parallel Handles
-
-Avenix provides a suite of thread-safe, thread-clonable handles extracted directly from the `World` layer (except for ParallelQueryAccessor). When extracting these handles from the application layer, pass through using `app.world_mut()`. Once obtained, these handles act as detached remotes that can be sent into background worker threads or external tasks to safely perform operations outside the main system scheduling loop.
-
-### The Handles
-
-* **`ParallelCommands`**
-  * **How to get:** Call `world.get_par_commands()`.
-  * **Usage:** Invoking `.scope(|cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
-
-* **`ParallelEventWriter<T>`**
-  * **How to get:** Call `world.get_par_event_writer::<T>()`.
-  * **Usage:** Invoking `.scope(|writer| ...)` allows out-of-band threads or network workers to push events into the shared event pipelines.
-  * **Critical Constraints:** Subject to the engine's internal 3-frame buffering rule. Refer to the event system API docs for more information.
-
-* **`ParallelEventReader<T>`**
-  * **How to get:** Call `world.get_par_event_reader::<T>()`.
-  * **Usage:** Invoking `.scope(|reader| ...)` lets concurrent background workers read and iterate over live event buffers synchronously.
-  * **Critical Constraints:** Subject to the engine's internal 3-frame buffering rule. Refer to the event system API docs for more information.
-
-* **`ParallelResourceAccessor<T>`**
-  * **How to get:** Call `world.get_par_resource_accessor::<T>()`.
-  * **Usage:** Invoking `.scope()`, `.scope_mut()`, `.scope_opt()`, or `.scope_mut_opt()` opens targeted closure windows into the resource registry. Features `.is_present()` for boolean presence checks, and allows instant registry adjustments using `.insert_resource()` and `.remove_resource()`.
-  * **Critical Deadlock Warning:** Because this handle operates on fast, synchronous locks to maximize runtime throughput, invoking another scope with a mutable scope open on the exact same resource within the *same thread* will cause a deadlock. The framework bypasses runtime re-entrancy checks to preserve processing speed.
-
-* **`ParallelQueryAccessor<Q, F>`**
-  * **How to get:** Call `app.get_par_query_accessor::<Q, F>()` on the application layer *before* calling `app.build()`. 
-  * **Usage:** Invoking `.scope(|query| ...)` spins up a localized `Query` matrix matching the requested component data structures (`Q: QueryData`) and criteria filters (`F: QueryFilter`). This gives background tasks raw, out-of-band iteration access over matching entity rows. It automatically configures and manages double-buffered component tracking columns based on your query filter signatures without any manual registration boilerplate.
-  * **Critical Deadlock Warning:** Because this handle utilizes granular, column-level `RwLocks` to enable simultaneous multi-threaded table reading, nesting parallel query scopes incorrectly on the *same thread* will cause a deadlock. Specifically, opening a mutable query scope while an immutable or mutable query scope targeting overlapping components is already active within that thread will freeze execution.
----
-
-## Example Usage
+## Basic Example Usage
 
 ```rust
 use avenix::prelude::*;
@@ -66,61 +39,92 @@ fn hello_world_system() {
 
 ---
 
-## Lifecycle Constraints
+## Parallel Handles
 
-### The 1-Frame Visibility Rule
-Avenix tracks data modifications through a double-buffered structural tracking network. 
+Avenix isolates out-of-band coordination into thread-safe, thread-clonable handles extracted directly from the application layer. Sourced via `app.world_mut()` (or pre-registered on `App` for queries), these handles act as detached remotes sent into background tasks, network loops, or worker threads to execute safely outside the main schedule thread.
 
-> [!IMPORTANT]
-> Any data adjustment evaluated via the `Changed<T>` or `Added<T>` filters remains visible to matching queries for a window of **exactly 1 execution frame**.
-
-```text
- [ Frame N ]         ➔            [ Frame N+1 ]            ➔      [ Frame N+2 ]
-Values Changed                    Double Buffers Swapped          Buffers Cleared
-Trackers Update Interally         Visible to Queries              Tokens Overwritten
+```
+                  ┌─────────────────────────────────────┐
+                  │          Main App Thread            │
+                  └──────────────────┬──────────────────┘
+                                     │
+                 Extract / Inject Parallel Handles
+                                     │
+          ┌──────────────────────────┼──────────────────────────┐
+          ▼                          ▼                          ▼
+┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
+│  Worker Thread   │       │  Network Thread  │       │  Async Task Pool │
+│ ParallelCommands │       │ ParallelEvents   │       │ ParallelQueries  │
+└──────────────────┘       └──────────────────┘       └──────────────────┘
 ```
 
-* **Frame N:** Values are changed. Internal trackers update but are hidden from active reads until the frame ends.
-* **Frame N+1:** Structural buffers swap. Filtered queries intercept and read the changes.
-* **Frame N+2:** Mutation tokens overwrite automatically. Visibility drops, and query states reset to normal.
+### Configuration & Capabilities
 
-*Note: All reactive logic using filters must run within this 1-frame boundary. Delaying system ticks past this window causes immediate mutation visibility decay.*
+* **`ParallelCommands`**
+  - **Extraction:** Sourced using `world.get_par_commands()`.
+  - **Capabilities:** Invoking `.scope(|cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
+* **`ParallelEventWriter<T>` & `ParallelEventReader<T>`**
+  - **Extraction:** Sourced using `world.get_par_event_writer::<T>()` and `world.get_par_event_reader::<T>()`.
+  - **Capabilities:** Invoking `.scope(|writer| ...)` or `.scope(|reader| ...)` lets concurrent background workers read, iterate, or push events synchronously across parallel tasks.
+* **`ParallelResourceAccessor<T>`**
+  - **Extraction:** Sourced using `world.get_par_resource_accessor::<T>()`.
+  - **Capabilities:** Provides `.scope()`, `.scope_mut()`, `.scope_opt()`, and `.scope_mut_opt()` windows into global values. Supports direct structural management via `.insert_resource()` and `.remove_resource()`, and presence checks via `.is_present()`. Clone-safe.
+* **`ParallelQueryAccessor<Q, F>`**
+  - **Extraction:** Registered on the `App` layer using `app.get_par_query_accessor::<Q, F>()` **before** calling `app.build()`.
+  - **Capabilities:** Opens read/write component data matrix structures (`Q: QueryData`) matching criteria filters (`F: QueryFilter`) for detached processing workers.
+  
+---
 
-### The Entity Despawn Invariant
-Avenix enforces a strict handle count invariant to maintain safety with recycled entity handles.
+## Examples
 
-> [!IMPORTANT]
-> All cloned handles referencing an entity must be completely dropped before that entity's queued despawn command is processed.
-
-* **Deferred Execution:** Despawning an entity through commands buffers the operation to be processed later during the command flush phase.
-* **The Panic:** The engine will panic during command execution if any cloned handles for that target entity are still alive in memory.
-* **The Diagnostic:** The panic message prints a `HashSet` containing the exact `std::any::type_name` of every component within that entity's archetype to help track down where the handle leak occurred.
-* **The Resolution:** Review the `CleanupHandles` schedule documentation to see how to use `for_each_despawn` and `will_despawn` to clear handles before execution flushes.
+Please refer to the `examples/` directory for full usage blueprints covering core commands, event streams, systems coordination, custom macro derives, and parallel processing layouts.
 
 ---
 
-## Feature & Module
+## Feature Flag Architecture
 
-### Procedural Macro Derives
-Avenix requires explicit macro derives to enforce static bounds checks and clean memory layouts. The primary user-facing options include, but are not limited to, key derives such as `Component`, `Resource`, `Event`, `ComponentBundle`, `QueryData`, `QueryFilter`, `SystemParam`, and `States`.
+Avenix isolates core systems into optional build targets to keep untracked execution paths unburdened by default:
 
-### Cargo Features
-Avenix keeps components, resources, and basic derives enabled by default. You could opt into optional compilation flags:
+* `reactivity` — Activates double-buffered change tracking infrastructure (`Added<T>`, `Changed<T>`, `ChangedTracker<T>`). Uses demand-driven tracking queues allocated exclusively when systems invoke them.
+* `events` — Initializes the global broadcasting event pipeline architectures (`EventWriter`, `EventReader`, and parallel variants).
 
-* `reactivity` – Activates double-buffered change tracking (`Added`, `Changed`, `RemovedComponents`).
-* `events` – Activates the event broadcasting pipelines (`EventWriter`, `EventReader`, etc.).
+---
+
+## Lifecycle Constraints & Safety Invariants
+
+### System Timing & The 3-Frame Buffer Rule
+Avenix implements a deterministic, double-buffered tracking infrastructure for all component reactivity (`Added<T>`, `Changed<T>`) and system event broadcast layers. This mechanics operates on a strict, predictable **3-Frame Buffer Timeline** that ensures the system can run infinitely without memory spikes or drifting track footprints.
+
+```
+ [ Frame N: Staging ]      ➔    [ Frame N+1: Visible ]    ➔     [ Frame N+2: Reset ]
+Mutations / Sends Occur          Buffers Swapped Globally        Mutation State Cleared
+Hidden From Active Queries       Caught Natively By Readers      Space Reclaimed
+```
+
+* **Frame N (Staging Phase):** Component changes occur or events are broadcast. The internal trackers capture modifications but hide them from active loops to ensure intra-frame isolation and prevent cascading logic loops.
+* **Frame N+1 (Visible Phase):** Double-buffered layouts swap automatically at the frame boundary. In-band systems, dynamic filters (`Changed<T>`, `Added<T>`, `RemovedComponents<T>`), and out-of-band parallel reader handles capture the aggregated dataset cleanly.
+* **Frame N+2 (Reset Phase):** Generation metrics overwrite automatically. Track tokens and event spaces are instantly reclaimed by the engine, keeping structural allocation metrics perfectly flat across infinite execution loops.
+
+---
+
+### 32-Bit Generationless Entity Recyclability
+Avenix enforces an explicit design invariant: **All cloned handles referencing a specific entity must be completely dropped before that entity's queued despawn command is processed.**
+
+* **The Benefit:** By requiring clear lifecycle termination boundaries, Avenix completely eliminates the need for integer generation numbers or tracking ticks inside entity keys. The engine safely packs full entity addresses into a compact **32-bit slot**, minimizing memory consumption and eliminating integer overflow errors during long uptime operations.
+* **Handling Cleanup:** The engine will invoke a diagnostic panic during the structural flush phase if a handle leak occurs, printing a detailed map of the component layout archetypes involved to help you isolate where the handle leak occurred. To satisfy this requirement cleanly, the engine provides dedicated stage lifecycles (`CleanupHandles`) and state-interception tools within the `Commands` to inspect scheduled despawns before the memory flush executes. Complete verification layouts can be observed directly within the `hierarchy_cleanup` example blueprint.
+
+---
 
 ### Component Reactivity Architecture
 When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
 
 * **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`).
-* **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened.
+* **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened by default.
 
 ---
 
 ## 📜 License
 
 Avenix is dual-licensed under either:
-
 * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 * MIT license ([LICENSE-MIT](LICENSE-MIT))

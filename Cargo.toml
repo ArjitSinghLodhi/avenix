@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.17.1"
+version = "0.18.0"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -11,7 +11,7 @@ categories = ["development-tools"]
 
 [dependencies]
 avenix_macros = "0.5.2"
-indexmap = "2.14.1"
+indexmap = "2.14.2"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"
 parking_lot = "0.12.5"
@@ -72,6 +72,10 @@ required-features = ["reactivity"]
 [[test]]
 name = "system_set_tests"
 path = "tests/system_set_tests.rs"
+
+[[test]]
+name = "schedule_tests"
+path = "tests/schedule_tests.rs"
 
 [[example]]
 name = "hello_world"

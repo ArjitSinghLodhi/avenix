@@ -14,7 +14,10 @@ use crate::{
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
-    system::{AccessVec, IntoSystemConfigs, System, system_set_traits::IntoSystemSetConfigConfigs},
+    system::{
+        AccessVec, System, system_set_traits::IntoSystemSetConfigConfigs,
+        system_traits::IntoSystemConfigs,
+    },
     world::storage::World,
 };
 use crate::{schedule::SystemNode, system::system_set::SetRegistration};
