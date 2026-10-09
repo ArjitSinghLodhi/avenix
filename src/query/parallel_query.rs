@@ -20,25 +20,23 @@ use crate::{
 /// Unlike other parallel handles, this handle must be initialized prior to app compilation. This ensures the
 /// engine can automatically register and configure the underlying demand-driven component tracking.
 ///
-/// # Safety and Undefined Behaviour
-/// To prevent **Undefined Behaviour (UB)** and memory unsafety within the engine's internal query mechanics,
-/// you must strictly adhere to the following rules while this parallel handle is active:
-/// * **No Handle Cloning:** Do not clone entity handles.
-/// * **No Random Query Lookups:** Do not perform random lookups using queries.
-///
-/// **Exception:** These actions are only permissible if you explicitly guarantee that absolutely no entity handle clones
-/// or query-based random lookups can occur while commands are being applied at the end of the frame.
-///
-/// But standard concurrent reads and writes for component columns is completely safe without any extra rules.
+/// # Thread Safety
+/// Standard concurrent reads and writes for component columns are completely safe without any extra rules.
+/// For specific rules regarding cloning `Entity` handles, lookups, or using [`query.get()`] / [`view.get()`] out-of-band,
+/// please refer to the [`Entity`] documentation.
 ///
 /// # Deadlock Safety Rules
-/// Because the underlying storage utilizes granular, column-level `RwLocks` to enable simultaneous
-/// multi-threaded table access, nesting parallel query scopes incorrectly on the *same thread* will freeze execution:
-/// * **Same-Thread Deadlocks:** Nesting parallel query scopes incorrectly on the *same thread* will freeze execution.
+/// Cross-thread parallel access is entirely safe. However, because the underlying storage utilizes granular,
+/// column-level `RwLocks` to enable simultaneous multi-threaded table access, nesting parallel query scopes
+/// incorrectly on the *same thread* will freeze execution:
+/// * **Same-Thread Deadlocks:** Nesting scopes on a single thread will cause a freeze if standard borrowing rules are broken.
 /// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
 ///   targets overlapping components on that same thread will trigger a deadlock.
 ///
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
+/// [`Entity`]: crate::entity::Entity
+/// [`query.get()`]: crate::query::Query::get
+/// [`view.get()`]: crate::query::QueryArchetypeView::get
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,

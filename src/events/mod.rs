@@ -112,8 +112,6 @@ impl<'a, T: Event> EventWriter<'a, T> {
     }
 
     /// Queues an iterator of multiple events to be dispatched efficiently in a single operation.
-    ///
-    /// This is significantly more efficient than calling `.send()` multiple times in a loop.
     #[inline]
     pub fn send_batch<I>(&self, event_iter: I)
     where

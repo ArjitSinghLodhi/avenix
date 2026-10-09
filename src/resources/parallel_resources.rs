@@ -5,19 +5,21 @@ use crate::{
 };
 use std::{marker::PhantomData, sync::Arc};
 
-/// A thread-safe, thread-clonable handle that acts as a detached remote to access the engine's resources registry.
+/// A thread-safe, clonable handle providing detached remote access to the engine's resources registry.
 ///
 /// `ParallelResourceAccessor` can be passed to external or background worker threads, allowing them to
-/// concurrently modify or read resources outside the main execution path. It can be obtained directly from
-/// the world layer via [`.get_par_resource_accessor()`].
+/// concurrently read or modify global resources outside the main execution path. It can be obtained
+/// directly from the world layer via [`.get_par_resource_accessor()`].
 ///
-/// # Rules
+/// This handle is also fully supported for use as a system parameter.
 ///
-/// Because the underlying storage uses synchronous locks, invoking another scope with a mutable scope open
-/// on the same resource within the *same thread* will trigger a deadlock.
-/// The engine does not protect against or check for this condition at runtime to maintain maximum throughput.
-///
-/// Also usable as a system param.
+/// # Deadlock Safety Rules
+/// Cross-thread parallel access is entirely safe. However, because the underlying storage utilizes synchronous
+/// locking primitives to manage concurrent access, nesting access scopes incorrectly on the *same thread*
+/// will freeze execution:
+/// * **Same-Thread Deadlocks:** Nesting scopes on a single thread will cause a freeze if standard borrowing and lock aliasing rules are broken.
+/// * **Overlapping Access:** Attempting to open a mutable scope while another active scope (mutable or immutable)
+///   targets that same resource on the same thread will trigger a deadlock.
 ///
 /// [`.get_par_resource_accessor()`]: crate::world::storage::World::get_par_resource_accessor
 pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {

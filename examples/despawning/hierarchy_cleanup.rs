@@ -20,18 +20,38 @@ pub struct UnlinkChild;
 
 pub struct HierarchyPlugin;
 
+#[derive(SystemSet, Clone, PartialEq)]
+enum HierarchySet {
+    UpdateSync,
+    Cleanup,
+}
+
 impl Plugin for HierarchyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, automatic_hierarchy_linker_system)
-            .add_systems(CleanupHandles, hirearchy_cleanup);
+        app.configure_sets(Update, HierarchySet::UpdateSync)
+            .configure_sets(CleanupHandles, HierarchySet::Cleanup)
+            .add_systems(
+                Update,
+                (hierarchy_linker_system, hierarchy_unlinker_system)
+                    .in_set(HierarchySet::UpdateSync),
+            )
+            .add_systems(
+                CleanupHandles,
+                (
+                    hirearchy_cleanup_despawns,
+                    hierarchy_cleanup_dead_link_entities,
+                    hierarchy_cleanup_dead_unlink_entities,
+                    hierarchy_cleanup_orphan_unlink_entities,
+                )
+                    .in_set(HierarchySet::Cleanup),
+            );
     }
 }
 
-fn automatic_hierarchy_linker_system(
+fn hierarchy_linker_system(
     commands: Commands,
     mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
-    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
 ) {
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {
@@ -52,6 +72,13 @@ fn automatic_hierarchy_linker_system(
                 .remove::<LinkTo>();
         }
     }
+}
+
+fn hierarchy_unlinker_system(
+    commands: Commands,
+    mut parent_query: Query<&mut Children>,
+    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
+) {
     for view in unlink_query.iter() {
         for (child_entity, child_of) in view.iter() {
             #[allow(unused_mut)]
@@ -74,12 +101,9 @@ fn automatic_hierarchy_linker_system(
     }
 }
 
-fn hirearchy_cleanup(
+fn hirearchy_cleanup_despawns(
     commands: Commands,
     mut parent_query: Query<&mut Children>,
-    link_query: Query<(Entity, &LinkTo)>,
-    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
-    unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
     child_query: Query<(Entity, &ChildOf)>,
 ) {
     commands.for_each_despawn(|dead_entity| {
@@ -103,7 +127,9 @@ fn hirearchy_cleanup(
             }
         }
     });
+}
 
+fn hierarchy_cleanup_dead_link_entities(commands: Commands, link_query: Query<(Entity, &LinkTo)>) {
     for view in link_query.iter() {
         for (child_entity, link_comp) in view.iter() {
             if commands.will_despawn(&link_comp.parent) {
@@ -114,7 +140,12 @@ fn hirearchy_cleanup(
             }
         }
     }
+}
 
+fn hierarchy_cleanup_dead_unlink_entities(
+    commands: Commands,
+    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
+) {
     for view in unlink_query.iter() {
         for (child_entity, childof) in view.iter() {
             if commands.will_despawn(&childof.parent) {
@@ -127,7 +158,12 @@ fn hirearchy_cleanup(
             }
         }
     }
+}
 
+fn hierarchy_cleanup_orphan_unlink_entities(
+    commands: Commands,
+    unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
+) {
     for view in unlink_orphan_query.iter() {
         for entity in view.iter() {
             println!("Entity was set for unlink without parent, removing UnlinkChild component");
@@ -136,7 +172,7 @@ fn hirearchy_cleanup(
     }
 }
 
-pub trait HierarchyEntityCommandsExt {
+trait HierarchyEntityCommandsExt {
     fn set_parent(&mut self, new_parent: Entity);
     fn unlink_parent(&mut self);
 }
@@ -317,7 +353,8 @@ fn main() {
                 trigger_runtime_lifecycle_stages,
                 test_unlink_edge_cases_system,
             )
-                .chain(),
+                .chain()
+                .after(HierarchySet::UpdateSync),
         )
         .set_runner(run_test_frames)
         .run();

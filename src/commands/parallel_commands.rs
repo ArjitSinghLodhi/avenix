@@ -16,17 +16,6 @@ use crate::system::ParallelSystemParam;
 /// concurrently queue up structural modifications and despawn targets outside the main execution
 /// path. It can be obtained directly from the world layer via [`.get_par_commands()`] using `app.world_mut().get_par_commands()`.
 ///
-/// # Deferred Actions & Invariants
-///
-/// Any commands or despawn intents pushed through this handle remain subject to the engine's
-/// core framework invariants:
-///
-/// * **Execution Timing:** Just like main-thread commands, actions queued here are entirely deferred
-///   and will only execute during the next command execution phase.
-/// * **Handle Violation Rule:** Any entity targets scheduled for destruction through this handle are
-///   bound by the strict *Entity Despawn Invariant*. All active cloned handles for those targets must
-///   be dropped across the frame layout before execution occurs.
-///
 /// [`.get_par_commands()`]: crate::world::storage::World::get_par_commands
 pub struct ParallelCommands {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,

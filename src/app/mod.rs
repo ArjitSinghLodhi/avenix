@@ -125,7 +125,6 @@ impl App {
     }
 
     /// Initializes App with no default schedules except [`Startup`] and [`CleanupHandles`] schedules.
-    ///
     pub fn empty() -> Self {
         if APP_INITIALIZED.swap(true, Ordering::Relaxed) {
             panic!(

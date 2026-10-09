@@ -19,24 +19,24 @@ struct ExecutionLogger {
     history: Vec<GameTickStep>,
 }
 
-#[derive(Resource, Clone)]
+#[derive(Resource)]
 struct MatchState {
     tick_paused: u32,
 }
 
-#[derive(PartialEq, Clone, Debug, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet)]
 struct PhysicsSet;
 
-#[derive(PartialEq, Clone, Debug, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet)]
 struct NetworkingSet;
 
-#[derive(PartialEq, Clone, Debug, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet)]
 struct AudioSet;
 
-#[derive(PartialEq, Clone, Debug, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet)]
 struct ParticleSet;
 
-#[derive(Clone, Debug, PartialEq, Eq, SystemSet)]
+#[derive(Clone, PartialEq, SystemSet)]
 enum GameLoopStage {
     Input,
     Simulation,
@@ -124,13 +124,10 @@ fn main() {
                 play_spatial_audio.in_set(AudioSet),
                 spawn_sparks.in_set(ParticleSet),
                 log_telemetry_metrics.after(AudioSet),
+                (extra_telemetry_alpha, extra_telemetry_beta)
+                    .after(AudioSet)
+                    .in_set(GameLoopStage::PostSim),
             ),
-        )
-        .add_systems(
-            Update,
-            (extra_telemetry_alpha, extra_telemetry_beta)
-                .after(AudioSet)
-                .in_set(GameLoopStage::PostSim),
         );
 
     app.build();

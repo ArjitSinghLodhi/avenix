@@ -232,13 +232,10 @@ fn test_system_sets_tuple_level_orderings() {
             play_spatial_audio.in_set(AudioSet),
             integrate_forces.in_set(PhysicsSet),
             post_physics_cleanup.in_set(GameplayStage::PostSim),
+            (tuple_sys_alpha, tuple_sys_beta)
+                .after(PhysicsSet)
+                .in_set(GameplayStage::Simulation),
         ),
-    )
-    .add_systems(
-        Update,
-        (tuple_sys_alpha, tuple_sys_beta)
-            .after(PhysicsSet)
-            .in_set(GameplayStage::Simulation),
     );
 
     app.build();

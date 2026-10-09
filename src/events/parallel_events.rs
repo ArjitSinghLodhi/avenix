@@ -14,12 +14,6 @@ use crate::{
 /// concurrently dispatch events outside the main execution path. It can be obtained directly from
 /// the world layer via [`.get_par_event_writer()`].
 ///
-/// # Deferred Actions & Invariants
-///
-/// Any events queued through this handle remain subject to the engine's strict double-buffered,
-/// frame-locked 3-frame lifecycle. Events pushed here are buffered in the current frame and
-/// become globally readable in the next frame.
-///
 /// Also usable as a system param.
 ///
 /// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer

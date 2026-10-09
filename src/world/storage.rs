@@ -292,9 +292,6 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote accessor into the engine's resource tables manageable by external or
     /// parallel background threads.
-    ///
-    /// Note: This is not lock-free and can cause deadlocks if not used carefully,
-    /// refer to its documentation for more info.
     pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
         &mut self,
     ) -> ParallelResourceAccessor<T> {

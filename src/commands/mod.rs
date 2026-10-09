@@ -4,6 +4,7 @@ mod command_types;
 mod parallel_commands;
 pub(crate) use command_types::DespawnCommand;
 pub use parallel_commands::ParallelCommands;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use std::{marker::PhantomData, sync::Arc};
 
@@ -98,6 +99,24 @@ impl<'a> Commands<'a> {
         F: for<'b> FnMut(&'b Entity),
     {
         self.despawns.iter().for_each(|entity| f(&entity));
+    }
+
+    /// Parallel version of [`for_each_despawn`]
+    ///
+    /// [`for_each_despawn`]: Commands::for_each_despawn
+    pub fn par_for_each_despawn<F>(&self, f: F)
+    where
+        F: for<'b> Fn(&'b Entity) + Send + Sync,
+    {
+        self.despawns
+            .iter()
+            .par_bridge()
+            .for_each(|entity| f(&entity));
+    }
+
+    /// Returns how many despawn commands are currently present.
+    pub fn len_despawns(&self) -> usize {
+        self.despawns.len()
     }
 
     /// Returns whether the specified entity is currently scheduled for removal.

@@ -28,7 +28,7 @@ impl MultiThreadedExecutor {
 struct ParallelSystemsBatchRange {
     start: usize,
     end: usize,
-    executio_mode: ExecutionMode,
+    execution_mode: ExecutionMode,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -92,7 +92,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                     self.parallel_batches.push(ParallelSystemsBatchRange {
                         start: current_start,
                         end: i,
-                        executio_mode: if len > 1 {
+                        execution_mode: if len > 1 {
                             ExecutionMode::Parallel
                         } else {
                             ExecutionMode::Sequential
@@ -102,7 +102,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                 self.parallel_batches.push(ParallelSystemsBatchRange {
                     start: i,
                     end: i + 1,
-                    executio_mode: ExecutionMode::Sequential,
+                    execution_mode: ExecutionMode::Sequential,
                 });
                 current_start = i + 1;
                 i += 1;
@@ -203,7 +203,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                 self.parallel_batches.push(ParallelSystemsBatchRange {
                     start: current_start,
                     end: i,
-                    executio_mode: if len > 1 {
+                    execution_mode: if len > 1 {
                         ExecutionMode::Parallel
                     } else {
                         ExecutionMode::Sequential
@@ -220,7 +220,7 @@ impl SystemExecutor for MultiThreadedExecutor {
             self.parallel_batches.push(ParallelSystemsBatchRange {
                 start: current_start,
                 end: n,
-                executio_mode: if len > 1 {
+                execution_mode: if len > 1 {
                     ExecutionMode::Parallel
                 } else {
                     ExecutionMode::Sequential
@@ -234,7 +234,7 @@ impl SystemExecutor for MultiThreadedExecutor {
 
             for next_idx in 1..self.parallel_batches.len() {
                 let next = self.parallel_batches[next_idx];
-                match (current.executio_mode, next.executio_mode) {
+                match (current.execution_mode, next.execution_mode) {
                     (ExecutionMode::Sequential, ExecutionMode::Sequential) => {
                         current.end = next.end;
                     }
@@ -254,7 +254,7 @@ impl SystemExecutor for MultiThreadedExecutor {
         for batch in &self.parallel_batches {
             let slice = &mut systems[batch.start..batch.end];
 
-            match batch.executio_mode {
+            match batch.execution_mode {
                 ExecutionMode::Parallel => {
                     use rayon::prelude::*;
                     slice.par_iter_mut().for_each(|node| {

@@ -1,10 +1,12 @@
+use std::any::type_name;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::app::schedule::DynEq;
-use crate::extensions::{FunctionData, SystemExt};
+use crate::extensions::{FunctionData, SystemData, SystemExt};
 use crate::schedule::{ScheduleLabel, SystemNode};
+use crate::system::System;
 use crate::system::condition::{ConditionFn, RunConditionsList};
 use crate::system::system_traits::SystemOrderings;
 use crate::world::storage::World;
@@ -38,7 +40,7 @@ pub struct GuardNode<S: SystemSet> {
     pub(crate) storage: FunctionData,
 }
 
-impl<S: SystemSet> crate::system::SystemData for GuardNode<S> {
+impl<S: SystemSet> SystemData for GuardNode<S> {
     fn get_raw(&self, id: std::any::TypeId) -> Option<&Box<dyn std::any::Any + Send + Sync>> {
         self.storage.get_raw_data(&id)
     }
@@ -55,11 +57,10 @@ impl<S: SystemSet> crate::system::SystemData for GuardNode<S> {
     }
 }
 
-impl<S: SystemSet> crate::system::System for GuardNode<S> {
+impl<S: SystemSet> System for GuardNode<S> {
     fn run(&mut self, _world: &World) {
         let result = self.gates.iter().all(|cond| cond());
-        self.shared_flag
-            .store(result, std::sync::atomic::Ordering::Release);
+        self.shared_flag.store(result, Ordering::Release);
     }
 
     fn func_type_id(&self) -> std::any::TypeId {
@@ -67,7 +68,7 @@ impl<S: SystemSet> crate::system::System for GuardNode<S> {
     }
 
     fn name(&self) -> &'static str {
-        "Avenix::GuardNode"
+        type_name::<Self>()
     }
 }
 
