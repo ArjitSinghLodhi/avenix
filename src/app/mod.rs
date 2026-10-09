@@ -253,7 +253,7 @@ impl App {
         }
         self.configuration.not_ready();
         self.build_everything();
-        *APP_BUILT.write() = false;
+        *APP_BUILT.write() = true;
         self.configuration.built = true;
         self
     }
