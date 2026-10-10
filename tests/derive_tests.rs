@@ -69,20 +69,16 @@ fn setup_macro_entities(commands: Commands) {
 }
 
 fn verify_and_mutate_macros(mut tools: CompositeSystemParam) {
-    let mut matched_entities = 0;
     tools.tracker.points += 500;
-
-    for mut view in tools.query.iter_mut() {
-        matched_entities += view.len();
-        #[allow(unused_mut)]
-        for mut entity in view.iter_mut() {
-            entity.vel.x += 10.0;
-            entity.vel.y += 10.0;
-            assert_eq!(entity.pos.x, 50.0);
-            assert_eq!(entity.pos.y, 50.0);
-            assert_eq!(entity.vel.x, 12.0);
-            assert_eq!(entity.vel.y, 12.0);
-        }
+    let matched_entities = tools.query.total_entities();
+    #[allow(unused_mut)]
+    for mut entity in tools.query.iter_mut() {
+        entity.vel.x += 10.0;
+        entity.vel.y += 10.0;
+        assert_eq!(entity.pos.x, 50.0);
+        assert_eq!(entity.pos.y, 50.0);
+        assert_eq!(entity.vel.x, 12.0);
+        assert_eq!(entity.vel.y, 12.0);
     }
     assert_eq!(matched_entities, 1);
 }

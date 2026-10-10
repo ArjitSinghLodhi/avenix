@@ -45,15 +45,13 @@ fn queue_spawn_commands_system(commands: Commands) {
 
 fn verify_spawned_entities_system(query: Query<(&Position, &Speed)>) {
     let mut count = 0;
-    for view in query.iter() {
-        for (pos, speed) in view.iter() {
-            count += 1;
-            if count == 1 || count == 1001 {
-                println!(
-                    "Inspecting Entity: Position({}, {}), Speed: {}",
-                    pos.x, pos.y, speed.0
-                );
-            }
+    for (pos, speed) in query.iter() {
+        count += 1;
+        if count == 1 || count == 1001 {
+            println!(
+                "Inspecting Entity: Position({}, {}), Speed: {}",
+                pos.x, pos.y, speed.0
+            );
         }
     }
     println!(

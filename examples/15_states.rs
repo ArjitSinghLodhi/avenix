@@ -7,9 +7,16 @@ enum GameState {
     InGame,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TransitionEvent {
+    ExitMenu,
+    EnterGame,
+    GameplayTick,
+}
+
 #[derive(Resource, Default)]
 struct TransitionTracker {
-    history: Vec<&'static str>,
+    history: Vec<TransitionEvent>,
 }
 
 fn main() {
@@ -22,9 +29,7 @@ fn main() {
             Update,
             (
                 cleanup_menu_assets.run_if(exited_state(GameState::MainMenu)),
-                setup_game_world
-                    .run_if(entered_state(GameState::InGame))
-                    .run_if(not(in_state(GameState::MainMenu))),
+                setup_game_world.run_if(entered_state(GameState::InGame)),
             )
                 .chain(),
         )
@@ -66,7 +71,11 @@ fn main() {
 
         assert_eq!(
             tracker.history,
-            vec!["exit_menu", "enter_game", "gameplay_tick"]
+            vec![
+                TransitionEvent::ExitMenu,
+                TransitionEvent::EnterGame,
+                TransitionEvent::GameplayTick
+            ]
         );
     }
 
@@ -81,7 +90,12 @@ fn main() {
 
         assert_eq!(
             tracker.history,
-            vec!["exit_menu", "enter_game", "gameplay_tick", "gameplay_tick"]
+            vec![
+                TransitionEvent::ExitMenu,
+                TransitionEvent::EnterGame,
+                TransitionEvent::GameplayTick,
+                TransitionEvent::GameplayTick
+            ]
         );
     }
 
@@ -90,15 +104,15 @@ fn main() {
 
 fn cleanup_menu_assets(mut tracker: ResMut<TransitionTracker>) {
     println!(" >> Executing exited_state(MainMenu) hook");
-    tracker.history.push("exit_menu");
+    tracker.history.push(TransitionEvent::ExitMenu);
 }
 
 fn setup_game_world(mut tracker: ResMut<TransitionTracker>) {
     println!(" >> Executing entered_state(InGame) hook");
-    tracker.history.push("enter_game");
+    tracker.history.push(TransitionEvent::EnterGame);
 }
 
 fn gameplay_system(mut tracker: ResMut<TransitionTracker>) {
     println!(" >> Executing Gameplay System Tick");
-    tracker.history.push("gameplay_tick");
+    tracker.history.push(TransitionEvent::GameplayTick);
 }

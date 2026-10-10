@@ -49,38 +49,22 @@ fn spawn_entities_system(commands: Commands) {
 fn sequential_read_system(query: Query<(&Position, &Velocity)>) {
     let mut total_entities = 0;
 
-    for view in query.iter() {
-        for (pos, _vel) in view.iter() {
-            total_entities += 1;
-            if total_entities == 1 {
-                println!(
-                    "[Sequential Read] First Entity Position: ({}, {})",
-                    pos.x, pos.y
-                );
-            }
+    for (pos, _vel) in query.iter() {
+        total_entities += 1;
+        if total_entities == 1 {
+            println!(
+                "[Sequential Read] First Entity Position: ({}, {})",
+                pos.x, pos.y
+            );
         }
     }
 }
 
 fn sequential_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    let start = std::time::Instant::now();
-    let mut count = 0;
-
-    for mut view in query.iter_mut() {
-        #[allow(unused_mut)]
-        for (mut pos, vel) in view.iter_mut() {
-            pos.x += vel.x;
-            pos.y += vel.y;
-            count += 1;
-        }
-    }
-
-    if count > 0 {
-        println!(
-            "[Sequential Write] Updated {} entities sequentially in {:?}",
-            count,
-            start.elapsed()
-        );
+    #[allow(unused_mut)]
+    for (mut pos, vel) in query.iter_mut() {
+        pos.x += vel.x;
+        pos.y += vel.y;
     }
 }
 

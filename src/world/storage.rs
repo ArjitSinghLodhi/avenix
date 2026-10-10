@@ -12,7 +12,6 @@ use std::{
     thread::{self, ThreadId},
 };
 
-#[cfg(feature = "events")]
 use crate::events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS};
 use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
@@ -225,7 +224,6 @@ impl World {
         CurrentBufferIdx::advance();
         #[cfg(feature = "reactivity")]
         self.clear_trackers();
-        #[cfg(feature = "events")]
         self.clear_events();
     }
 
@@ -258,7 +256,6 @@ impl World {
         }
     }
 
-    #[cfg(feature = "events")]
     fn clear_events(&mut self) {
         let tracked_events = TRACKED_EVENTS.read();
         if tracked_events.is_empty() {
@@ -271,7 +268,7 @@ impl World {
                 .get(&meta.event_id)
                 .expect("Registered event Not initialized somehow? maybe removed");
             let mut res = entry.value().write();
-            (meta.clear_events)(&mut *res);
+            (meta.clear_events)(&mut res);
         }
     }
 
@@ -306,7 +303,6 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
-    #[cfg(feature = "events")]
     pub fn get_par_event_writer<T: Event>(&mut self) -> ParallelEventWriter<T> {
         ParallelEventWriter {
             write_queue: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
@@ -318,7 +314,6 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
-    #[cfg(feature = "events")]
     pub fn get_par_event_reader<T: Event>(&mut self) -> ParallelEventReader<T> {
         ParallelEventReader {
             read_queue: self.get_resource::<EventBuffer<T>>().read_queue.clone(),

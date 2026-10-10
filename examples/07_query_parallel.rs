@@ -27,8 +27,7 @@ fn main() {
             (
                 parallel_read_system,
                 parallel_write_system,
-                parallel_view_read_system,
-                parallel_view_write_system,
+                parallel_read_fold_system,
                 parallel_chunk_read_system,
                 parallel_chunk_write_system,
             )
@@ -65,127 +64,66 @@ fn spawn_parallel_batch_system(commands: Commands) {
 }
 
 fn parallel_read_system(query: Query<(&Position, &WorkerId)>) {
-    query.par_iter().for_each(|view| {
-        let entity_count = view.len();
-        if entity_count > 0 {
-            println!("[par_iter] Thread scanning view of size: {}", entity_count);
-        }
-    });
+    query.par_iter().for_each(|(_pos, _id)| {});
 }
 
 fn parallel_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    let start = std::time::Instant::now();
-
-    query.par_iter_mut().for_each(|mut view| {
-        #[allow(unused_mut)]
-        for (mut pos, vel) in view.iter_mut() {
-            pos.x += vel.x;
-            pos.y += vel.y;
-        }
+    #[allow(unused_mut)]
+    query.par_iter_mut().for_each(|(mut pos, vel)| {
+        pos.x += vel.x;
+        pos.y += vel.y;
     });
-
-    println!(
-        "[par_iter_mut] Completed view execution pass in {:?}",
-        start.elapsed()
-    );
 }
 
-fn parallel_view_read_system(query: Query<(&Position, &Velocity)>) {
-    let start = std::time::Instant::now();
+fn parallel_read_fold_system(query: Query<(&Position, &Velocity)>) {
+    let (avg_x, avg_y, total_count) = query
+        .par_iter()
+        .fold(
+            || (0.0f32, 0.0f32, 0usize),
+            |(mut menu_x, mut menu_y, mut count), (_pos, vel)| {
+                count += 1;
+                let weight = 1.0 / count as f32;
+                menu_x += (vel.x - menu_x) * weight;
+                menu_y += (vel.y - menu_y) * weight;
+                (menu_x, menu_y, count)
+            },
+        )
+        .reduce(
+            || (0.0f32, 0.0f32, 0usize),
+            |(a_x, a_y, a_count), (b_x, b_y, b_count)| {
+                let total = a_count + b_count;
+                if total == 0 {
+                    return (0.0, 0.0, 0);
+                }
 
-    for view in query.iter() {
-        let (avg_x, avg_y, total_count) = view
-            .par_iter()
-            .fold(
-                || (0.0f32, 0.0f32, 0usize),
-                |(mut menu_x, mut menu_y, mut count), (_pos, vel)| {
-                    count += 1;
-                    let weight = 1.0 / count as f32;
-                    menu_x += (vel.x - menu_x) * weight;
-                    menu_y += (vel.y - menu_y) * weight;
-                    (menu_x, menu_y, count)
-                },
-            )
-            .reduce(
-                || (0.0f32, 0.0f32, 0usize),
-                |(a_x, a_y, a_count), (b_x, b_y, b_count)| {
-                    let total = a_count + b_count;
-                    if total == 0 {
-                        return (0.0, 0.0, 0);
-                    }
+                let weight_b = b_count as f32 / total as f32;
+                let combined_x = a_x + (b_x - a_x) * weight_b;
+                let combined_y = a_y + (b_y - a_y) * weight_b;
 
-                    let weight_b = b_count as f32 / total as f32;
-                    let combined_x = a_x + (b_x - a_x) * weight_b;
-                    let combined_y = a_y + (b_y - a_y) * weight_b;
-
-                    (combined_x, combined_y, total)
-                },
-            );
-
-        println!(
-            "[view.par_iter] Total rows processed: {} | Native Average Velocity: ({:.2}, {:.2})",
-            total_count, avg_x, avg_y
+                (combined_x, combined_y, total)
+            },
         );
-    }
 
     println!(
-        "[view.par_iter] Completed true parallel reduction pass in {:?}",
-        start.elapsed()
-    );
-}
-
-fn parallel_view_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    let start = std::time::Instant::now();
-
-    for mut view in query.iter_mut() {
-        #[allow(unused_mut)]
-        view.par_iter_mut().for_each(|(mut pos, vel)| {
-            pos.x += vel.x * 0.5;
-            pos.y += vel.y * 0.5;
-        });
-    }
-
-    println!(
-        "[view.par_iter_mut] Completed row-level parallel iteration pass in {:?}",
-        start.elapsed()
+        "[par_iter fold] Total rows processed: {} | Native Average Velocity: ({:.2}, {:.2})",
+        total_count, avg_x, avg_y
     );
 }
 
 fn parallel_chunk_read_system(query: Query<(&Position, &Velocity)>) {
-    for view in query.iter() {
-        view.par_chunks(5000).for_each(|sub_chunk| {
-            let sub_count = sub_chunk.len();
-            println!(
-                "[par_chunks] Read worker swept partitioned chunk slice containing: {} rows",
-                sub_count
-            );
-        });
-    }
+    query
+        .par_chunks(5000)
+        .for_each(|chunk| for (_pos, _vel) in chunk.iter() {});
 }
 
 fn parallel_chunk_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    let start = std::time::Instant::now();
-
-    for mut view in query.iter_mut() {
-        view.par_chunks_mut(5000).for_each(|mut sub_chunk| {
-            let mut modified = 0;
-            #[allow(unused_mut)]
-            for (mut pos, vel) in sub_chunk.iter_mut() {
-                pos.x += vel.x;
-                pos.y += vel.y;
-                modified += 1;
-            }
-            println!(
-                "[par_chunks_mut] Write worker mutably stepped row slice containing: {} rows",
-                modified
-            );
-        });
-    }
-
-    println!(
-        "[par_chunks_mut] Multi-threaded sub-chunk splits executed in {:?}",
-        start.elapsed()
-    );
+    query.par_chunks_mut(5000).for_each(|mut chunk| {
+        #[allow(unused_mut)]
+        for (mut pos, vel) in chunk.iter_mut() {
+            pos.x += vel.x;
+            pos.y += vel.y;
+        }
+    });
 }
 
 fn run_parallel_test_loop(app: &mut App) {

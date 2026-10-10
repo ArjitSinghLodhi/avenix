@@ -50,18 +50,16 @@ fn apply_frame_1_mutations(
         return;
     }
 
-    for view in query.iter() {
-        for (entity, tag) in view.iter() {
-            let mut entity_cmd = commands.entity(entity.clone());
-            match tag {
-                EntityTag::AdderTarget => {
-                    entity_cmd.add(Velocity { x: 10.0, y: 10.0 });
-                }
-                EntityTag::InserterTarget => {
-                    entity_cmd.insert(Acceleration { x: 5.0, y: 5.0 });
-                }
-                EntityTag::DenseNeighbor => {}
+    for (entity, tag) in query.iter() {
+        let mut entity_cmd = commands.entity(entity.clone());
+        match tag {
+            EntityTag::AdderTarget => {
+                entity_cmd.add(Velocity { x: 10.0, y: 10.0 });
             }
+            EntityTag::InserterTarget => {
+                entity_cmd.insert(Acceleration { x: 5.0, y: 5.0 });
+            }
+            EntityTag::DenseNeighbor => {}
         }
     }
 }
@@ -76,22 +74,20 @@ fn verify_frame_1_buffering_isolation(
     }
 
     let mut vel_visible_early = false;
-    for view in query_added_vel.iter() {
-        for _ in view.iter() {
-            vel_visible_early = true;
-        }
+    for _ in query_added_vel.iter() {
+        vel_visible_early = true;
     }
+
     assert!(
         !vel_visible_early,
         "Double buffer leak! Added<Velocity> visible on write frame."
     );
 
     let mut accel_visible_early = false;
-    for view in query_added_accel.iter() {
-        for _ in view.iter() {
-            accel_visible_early = true;
-        }
+    for _ in query_added_accel.iter() {
+        accel_visible_early = true;
     }
+
     assert!(
         !accel_visible_early,
         "Double buffer leak! Added<Acceleration> visible on write frame."
@@ -109,39 +105,38 @@ fn verify_frame_2_buffered_reads(
     }
 
     let mut vel_detected = false;
-    for view in query_vel.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::AdderTarget {
-                vel_detected = true;
-            }
+    for tag in query_vel.iter() {
+        if *tag == EntityTag::AdderTarget {
+            vel_detected = true;
         }
     }
+
     assert!(
         vel_detected,
         "Buffered .add_components failed to surface on Frame 2."
     );
 
     let mut accel_detected = false;
-    for view in query_accel.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::InserterTarget {
-                accel_detected = true;
-            }
+
+    for tag in query_accel.iter() {
+        if *tag == EntityTag::InserterTarget {
+            accel_detected = true;
         }
     }
+
     assert!(
         accel_detected,
         "Buffered .insert_components failed to surface on Frame 2."
     );
 
     let mut neighbor_intact = false;
-    for view in query_neighbor.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::DenseNeighbor {
-                neighbor_intact = true;
-            }
+
+    for tag in query_neighbor.iter() {
+        if *tag == EntityTag::DenseNeighbor {
+            neighbor_intact = true;
         }
     }
+
     assert!(
         neighbor_intact,
         "Archetype neighbor layout was corrupted during buffered swaps."
@@ -157,13 +152,11 @@ fn apply_frame_2_redundant_insert(
         return;
     }
 
-    for view in query.iter() {
-        for (entity, tag) in view.iter() {
-            if *tag == EntityTag::InserterTarget {
-                commands
-                    .entity(entity.clone())
-                    .insert(Acceleration { x: 99.0, y: 99.0 });
-            }
+    for (entity, tag) in query.iter() {
+        if *tag == EntityTag::InserterTarget {
+            commands
+                .entity(entity.clone())
+                .insert(Acceleration { x: 99.0, y: 99.0 });
         }
     }
 }
@@ -178,21 +171,20 @@ fn verify_frame_3_decay_and_overwrites(
     }
 
     let mut vel_active = false;
-    for view in query_vel.iter() {
-        for _ in view.iter() {
-            vel_active = true;
-        }
+
+    for _ in query_vel.iter() {
+        vel_active = true;
     }
+
     assert!(
         !vel_active,
         "Added<Velocity> failed to naturally decay after its visibility frame."
     );
 
     let mut accel_retriggered = false;
-    for view in query_accel.iter() {
-        for _ in view.iter() {
-            accel_retriggered = true;
-        }
+
+    for _ in query_accel.iter() {
+        accel_retriggered = true;
     }
     assert!(
         !accel_retriggered,
@@ -237,29 +229,26 @@ fn complex_added_filter_verify_system(
     or_mixed_q: Query<&EntityTag, Or<(Added<Velocity>, With<Position>)>>,
 ) {
     let mut not_added_count = 0;
-    for view in not_added_q.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::AdderTarget {
-                not_added_count += 1;
-            }
+
+    for tag in not_added_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            not_added_count += 1;
         }
     }
 
     let mut not_or_count = 0;
-    for view in not_or_q.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
-                not_or_count += 1;
-            }
+
+    for tag in not_or_q.iter() {
+        if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
+            not_or_count += 1;
         }
     }
 
     let mut or_mixed_count = 0;
-    for view in or_mixed_q.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::AdderTarget {
-                or_mixed_count += 1;
-            }
+
+    for tag in or_mixed_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            or_mixed_count += 1;
         }
     }
 

@@ -37,25 +37,21 @@ fn simulate_gameplay_mutations(
     mut score_query: Query<(Entity, &mut Score)>,
 ) {
     if counter.frame == 1 {
-        for view in score_query.iter() {
-            for (entity, _) in view.iter() {
-                println!("[Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
-                commands.entity(entity.clone()).add(Buff { name: "Haste" });
-            }
+        for (entity, _) in score_query.iter() {
+            println!("[Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
+            commands.entity(entity.clone()).add(Buff { name: "Haste" });
         }
     }
 
     if counter.frame == 2 {
-        for mut view in score_query.iter_mut() {
-            for (entity, mut score) in view.iter_mut() {
-                println!("[Mutation - Frame 2] Direct Mut Write modifying Score component value.");
-                score.0 = 100;
+        for (entity, mut score) in score_query.iter_mut() {
+            println!("[Mutation - Frame 2] Direct Mut Write modifying Score component value.");
+            score.0 = 100;
 
-                println!(
-                    "[Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'."
-                );
-                commands.entity(entity.clone()).insert(StatusEffect);
-            }
+            println!(
+                "[Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'."
+            );
+            commands.entity(entity.clone()).insert(StatusEffect);
         }
     }
 }
@@ -65,21 +61,15 @@ fn reactive_added_filter_system(
     added_buffs: Query<&Buff, Added<Buff>>,
     added_effects: Query<&StatusEffect, Added<StatusEffect>>,
 ) {
-    for view in added_buffs.iter() {
-        for buff in view.iter() {
-            println!(
-                "[Reactive Filter] Added<Buff> caught structural addition: '{}'",
-                buff.name
-            );
-        }
+    for buff in added_buffs.iter() {
+        println!(
+            "[Reactive Filter] Added<Buff> caught structural addition: '{}'",
+            buff.name
+        );
     }
 
-    for view in added_effects.iter() {
-        for _ in view.iter() {
-            println!(
-                "[Reactive Filter] Added<StatusEffect> caught secondary insert structural split!"
-            );
-        }
+    for _ in added_effects.iter() {
+        println!("[Reactive Filter] Added<StatusEffect> caught secondary insert structural split!");
     }
 }
 
@@ -87,17 +77,15 @@ fn reactive_changed_filter_system(
     counter: Res<GameLoopCounter>,
     changed_scores: Query<&Score, Changed<Score>>,
 ) {
-    for view in changed_scores.iter() {
-        for score in view.iter() {
-            println!(
-                "[Reactive Filter] Changed<Score> filter caught historical mutation! Value: {}",
-                score.0
-            );
-        }
+    for score in changed_scores.iter() {
+        println!(
+            "[Reactive Filter] Changed<Score> filter caught historical mutation! Value: {}",
+            score.0
+        );
     }
 
     if counter.frame == 4 {
-        let count = changed_scores.iter().map(|v| v.len()).sum::<usize>();
+        let count = changed_scores.total_entities();
         println!(
             "[Lifecycle Decay] Frame 4 Changed<Score> item count: {} (State safely decayed to normal).",
             count
@@ -111,16 +99,14 @@ fn complex_combinator_filter_system(
     stable_entities_query: Query<Entity, (With<Player>, Not<Added<StatusEffect>>)>,
     mixed_or_query: Query<Entity, Or<(Changed<Score>, With<Buff>)>>,
 ) {
-    for view in reactive_or_query.iter() {
-        for (entity, score) in view.iter() {
-            println!(
-                "[Or Combinator] Frame {} - Or<(Added<Buff>, Changed<Score>)> matched entity {:?} (Score: {})",
-                counter.frame, entity, score.0
-            );
-        }
+    for (entity, score) in reactive_or_query.iter() {
+        println!(
+            "[Or Combinator] Frame {} - Or<(Added<Buff>, Changed<Score>)> matched entity {:?} (Score: {})",
+            counter.frame, entity, score.0
+        );
     }
 
-    let stable_count = stable_entities_query.iter().map(|v| v.len()).sum::<usize>();
+    let stable_count = stable_entities_query.total_entities();
     if stable_count > 0 {
         println!(
             "[Not Modifier] Frame {} - Not<Added<StatusEffect>> matched {} stable entity/entities.",
@@ -128,13 +114,11 @@ fn complex_combinator_filter_system(
         );
     }
 
-    for view in mixed_or_query.iter() {
-        for entity in view.iter() {
-            println!(
-                "[Mixed Or Branch] Frame {} - Or<(Changed<Score>, With<Buff>)> safely evaluated table layouts & matched: {:?}",
-                counter.frame, entity
-            );
-        }
+    for entity in mixed_or_query.iter() {
+        println!(
+            "[Mixed Or Branch] Frame {} - Or<(Changed<Score>, With<Buff>)> safely evaluated table layouts & matched: {:?}",
+            counter.frame, entity
+        );
     }
 }
 
@@ -142,14 +126,12 @@ fn granular_tracker_inspection_system(
     counter: Res<GameLoopCounter>,
     tracker_query: Query<(&Score, ChangedTracker<Score>)>,
 ) {
-    for view in tracker_query.iter() {
-        for (score, tracker) in view.iter() {
-            if tracker.is_changed() {
-                println!(
-                    "[Tracker Inspect] Frame {} - ChangedTracker detected entry delta without narrowing query array. (Score: {})",
-                    counter.frame, score.0
-                );
-            }
+    for (score, tracker) in tracker_query.iter() {
+        if tracker.is_changed() {
+            println!(
+                "[Tracker Inspect] Frame {} - ChangedTracker detected entry delta without narrowing query array. (Score: {})",
+                counter.frame, score.0
+            );
         }
     }
 }

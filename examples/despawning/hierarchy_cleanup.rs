@@ -53,24 +53,22 @@ fn hierarchy_linker_system(
     mut parent_query: Query<&mut Children>,
     link_query: Query<(Entity, &LinkTo)>,
 ) {
-    for view in link_query.iter() {
-        for (child_entity, link_comp) in view.iter() {
-            let parent_target = link_comp.parent.clone();
-            #[allow(unused_mut)]
-            if let Some(mut parent_comp) = parent_query.get_mut(&parent_target) {
-                parent_comp.children.push(child_entity.clone());
-            } else {
-                commands.entity(parent_target.clone()).add(Children {
-                    children: vec![child_entity.clone()],
-                });
-            }
-            commands
-                .entity(child_entity.clone())
-                .insert(ChildOf {
-                    parent: parent_target,
-                })
-                .remove::<LinkTo>();
+    for (child_entity, link_comp) in link_query.iter() {
+        let parent_target = link_comp.parent.clone();
+        #[allow(unused_mut)]
+        if let Some(mut parent_comp) = parent_query.get_mut(&parent_target) {
+            parent_comp.children.push(child_entity.clone());
+        } else {
+            commands.entity(parent_target.clone()).add(Children {
+                children: vec![child_entity.clone()],
+            });
         }
+        commands
+            .entity(child_entity.clone())
+            .insert(ChildOf {
+                parent: parent_target,
+            })
+            .remove::<LinkTo>();
     }
 }
 
@@ -79,25 +77,23 @@ fn hierarchy_unlinker_system(
     mut parent_query: Query<&mut Children>,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
 ) {
-    for view in unlink_query.iter() {
-        for (child_entity, child_of) in view.iter() {
-            #[allow(unused_mut)]
-            if let Some(mut parent_comp) = parent_query.get_mut(&child_of.parent) {
-                parent_comp.children.retain(|entity| entity != child_entity);
-                println!("Hierarchy Plugin: Unlinked child from parent");
-                if parent_comp.children.is_empty() {
-                    println!(
-                        "Hierarchy Plugin: Removing Children component from parent because there are no children anymore"
-                    );
-                    commands
-                        .entity(child_of.parent.clone())
-                        .remove::<Children>();
-                }
+    for (child_entity, child_of) in unlink_query.iter() {
+        #[allow(unused_mut)]
+        if let Some(mut parent_comp) = parent_query.get_mut(&child_of.parent) {
+            parent_comp.children.retain(|entity| entity != child_entity);
+            println!("Hierarchy Plugin: Unlinked child from parent");
+            if parent_comp.children.is_empty() {
+                println!(
+                    "Hierarchy Plugin: Removing Children component from parent because there are no children anymore"
+                );
+                commands
+                    .entity(child_of.parent.clone())
+                    .remove::<Children>();
             }
-            commands
-                .entity(child_entity.clone())
-                .remove::<(UnlinkChild, ChildOf)>();
         }
+        commands
+            .entity(child_entity.clone())
+            .remove::<(UnlinkChild, ChildOf)>();
     }
 }
 
@@ -130,14 +126,12 @@ fn hirearchy_cleanup_despawns(
 }
 
 fn hierarchy_cleanup_dead_link_entities(commands: Commands, link_query: Query<(Entity, &LinkTo)>) {
-    for view in link_query.iter() {
-        for (child_entity, link_comp) in view.iter() {
-            if commands.will_despawn(&link_comp.parent) {
-                println!(
-                    "Hierarchy Plugin: Target parent is dying before linkage completes. Stripping LinkTo component safely..."
-                );
-                commands.entity(child_entity.clone()).remove::<LinkTo>();
-            }
+    for (child_entity, link_comp) in link_query.iter() {
+        if commands.will_despawn(&link_comp.parent) {
+            println!(
+                "Hierarchy Plugin: Target parent is dying before linkage completes. Stripping LinkTo component safely..."
+            );
+            commands.entity(child_entity.clone()).remove::<LinkTo>();
         }
     }
 }
@@ -146,16 +140,12 @@ fn hierarchy_cleanup_dead_unlink_entities(
     commands: Commands,
     unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
 ) {
-    for view in unlink_query.iter() {
-        for (child_entity, childof) in view.iter() {
-            if commands.will_despawn(&childof.parent) {
-                println!(
-                    "Hierarchy plugin: Unlink target is dying, removing unlink comp from entity"
-                );
-                commands
-                    .entity(child_entity.clone())
-                    .remove::<UnlinkChild>();
-            }
+    for (child_entity, childof) in unlink_query.iter() {
+        if commands.will_despawn(&childof.parent) {
+            println!("Hierarchy plugin: Unlink target is dying, removing unlink comp from entity");
+            commands
+                .entity(child_entity.clone())
+                .remove::<UnlinkChild>();
         }
     }
 }
@@ -164,11 +154,9 @@ fn hierarchy_cleanup_orphan_unlink_entities(
     commands: Commands,
     unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
 ) {
-    for view in unlink_orphan_query.iter() {
-        for entity in view.iter() {
-            println!("Entity was set for unlink without parent, removing UnlinkChild component");
-            commands.entity(entity.clone()).remove::<UnlinkChild>();
-        }
+    for entity in unlink_orphan_query.iter() {
+        println!("Entity was set for unlink without parent, removing UnlinkChild component");
+        commands.entity(entity.clone()).remove::<UnlinkChild>();
     }
 }
 

@@ -66,7 +66,7 @@ where
 
 pub fn not<P, C>(condition: C) -> impl Fn(&P) -> bool + Clone
 where
-    P: 'static + ParallelSystemParam,
+    P: 'static,
     C: Condition<P, ConditionData = P> + 'static + Clone,
 {
     move |param: &P| !condition.run(param)

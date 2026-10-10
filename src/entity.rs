@@ -13,7 +13,7 @@ use crate::entity_registry::REGISTRY_HANDLE_COUNT;
 /// * **No Cloning While Commands Execute:** You must never call [`.clone()`][Self::clone] on an `Entity`
 ///   handle while the ECS world is actively executing and applying commands.
 /// * **No Random Lookups While Commands Execute:** You must never perform random lookups using query
-///   methods like [`query.get()`] or [`view.get()`] while the ECS world is actively executing and applying commands.
+///   methods like [`query.get()`] while the ECS world is actively executing and applying commands.
 ///
 /// **Crucial Distinction:** These restrictions apply **strictly and only** when manipulating or querying
 /// via `Entity` handles themselves. Out-of-band access to component columns or other archetype data blocks
@@ -21,7 +21,6 @@ use crate::entity_registry::REGISTRY_HANDLE_COUNT;
 ///
 /// [`ParallelQueryAccessor`]: crate::query::parallel_query::ParallelQueryAccessor
 /// [`query.get()`]: crate::query::Query::get
-/// [`view.get()`]: crate::query::QueryArchetypeView::get
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Entity {
     pub(crate) registry_index: u32,

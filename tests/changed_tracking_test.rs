@@ -33,30 +33,22 @@ fn pre_mutation_verify_system(
     pos_tracker_query: Query<ChangedTracker<Position>>,
     vel_tracker_query: Query<ChangedTracker<Velocity>>,
 ) {
-    let pos_changes = pos_changed_query
-        .iter()
-        .map(|view| view.len())
-        .sum::<usize>();
-    let vel_changes = vel_changed_query
-        .iter()
-        .map(|view| view.len())
-        .sum::<usize>();
+    let pos_changes = pos_changed_query.total_entities();
+    let vel_changes = vel_changed_query.total_entities();
 
     let mut pos_tracker_changes = 0;
-    for view in pos_tracker_query.iter() {
-        for tracker in view.iter() {
-            if tracker.is_changed() {
-                pos_tracker_changes += 1;
-            }
+
+    for tracker in pos_tracker_query.iter() {
+        if tracker.is_changed() {
+            pos_tracker_changes += 1;
         }
     }
 
     let mut vel_tracker_changes = 0;
-    for view in vel_tracker_query.iter() {
-        for tracker in view.iter() {
-            if tracker.is_changed() {
-                vel_tracker_changes += 1;
-            }
+
+    for tracker in vel_tracker_query.iter() {
+        if tracker.is_changed() {
+            vel_tracker_changes += 1;
         }
     }
 
@@ -143,15 +135,12 @@ fn midstream_mutator_system(
     mut vel_query: Query<&mut Velocity>,
 ) {
     if counter.current_frame == 2 {
-        for mut view in pos_query.iter_mut() {
-            for mut pos in view.iter_mut() {
-                *pos = Position { x: 20.0, y: 10.0 };
-            }
+        for mut pos in pos_query.iter_mut() {
+            *pos = Position { x: 20.0, y: 10.0 };
         }
-        for mut view in vel_query.iter_mut() {
-            for mut vel in view.iter_mut() {
-                *vel = Velocity { x: 5.0, y: 1.0 };
-            }
+
+        for mut vel in vel_query.iter_mut() {
+            *vel = Velocity { x: 5.0, y: 1.0 };
         }
     }
 }
@@ -163,30 +152,22 @@ fn post_mutation_verify_system(
     pos_tracker_query: Query<ChangedTracker<Position>>,
     vel_tracker_query: Query<ChangedTracker<Velocity>>,
 ) {
-    let pos_changes = pos_changed_query
-        .iter()
-        .map(|view| view.len())
-        .sum::<usize>();
-    let vel_changes = vel_changed_query
-        .iter()
-        .map(|view| view.len())
-        .sum::<usize>();
+    let pos_changes = pos_changed_query.total_entities();
+    let vel_changes = vel_changed_query.total_entities();
 
     let mut pos_tracker_changes = 0;
-    for view in pos_tracker_query.iter() {
-        for tracker in view.iter() {
-            if tracker.is_changed() {
-                pos_tracker_changes += 1;
-            }
+
+    for tracker in pos_tracker_query.iter() {
+        if tracker.is_changed() {
+            pos_tracker_changes += 1;
         }
     }
 
     let mut vel_tracker_changes = 0;
-    for view in vel_tracker_query.iter() {
-        for tracker in view.iter() {
-            if tracker.is_changed() {
-                vel_tracker_changes += 1;
-            }
+
+    for tracker in vel_tracker_query.iter() {
+        if tracker.is_changed() {
+            vel_tracker_changes += 1;
         }
     }
 
@@ -304,21 +285,17 @@ fn spawn_tracking_entity(commands: Commands) {
 }
 
 fn modify_component_system(mut query: Query<&mut Position>) {
-    for mut view in query.iter_mut() {
-        for mut pos in view.iter_mut() {
-            pos.x = 50.0;
-        }
+    for mut pos in query.iter_mut() {
+        pos.x = 50.0;
     }
 }
 
 fn verify_change_tracking(frame: Res<FrameCounter>, query: Query<&Position, Changed<Position>>) {
     if frame.current_frame == 2 {
         let mut change_detected = false;
-        for view in query.iter() {
-            for pos in view.iter() {
-                if pos.x == 50.0 {
-                    change_detected = true;
-                }
+        for pos in query.iter() {
+            if pos.x == 50.0 {
+                change_detected = true;
             }
         }
         assert!(change_detected);
@@ -331,11 +308,9 @@ fn verify_change_tracking_data(
 ) {
     if frame.current_frame == 2 {
         let mut change_detected_track = false;
-        for view in query.iter() {
-            for (pos, mark) in view.iter() {
-                if pos.x == 50.0 && !mark.is_changed() {
-                    change_detected_track = true;
-                }
+        for (pos, mark) in query.iter() {
+            if pos.x == 50.0 && !mark.is_changed() {
+                change_detected_track = true;
             }
         }
         assert!(change_detected_track);
@@ -376,9 +351,9 @@ fn complex_filter_verify_system(
     not_or_q: Query<&Position, Not<Or<(Changed<Position>, Changed<Velocity>)>>>,
     or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
 ) {
-    let not_changed_count = not_changed_q.iter().map(|v| v.len()).sum::<usize>();
-    let not_or_count = not_or_q.iter().map(|v| v.len()).sum::<usize>();
-    let or_mixed_count = or_mixed_q.iter().map(|v| v.len()).sum::<usize>();
+    let not_changed_count = not_changed_q.total_entities();
+    let not_or_count = not_or_q.total_entities();
+    let or_mixed_count = or_mixed_q.total_entities();
 
     if counter.current_frame == 1 {
         assert_eq!(

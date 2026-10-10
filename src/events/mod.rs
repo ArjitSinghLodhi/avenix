@@ -1,5 +1,3 @@
-#![cfg(feature = "events")]
-
 mod parallel_events;
 
 use orx_parallel::IterIntoParIter;

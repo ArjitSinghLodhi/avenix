@@ -22,7 +22,7 @@ use crate::{
 ///
 /// # Thread Safety
 /// Standard concurrent reads and writes for component columns are completely safe without any extra rules.
-/// For specific rules regarding cloning `Entity` handles, lookups, or using [`query.get()`] / [`view.get()`] out-of-band,
+/// For specific rules regarding cloning `Entity` handles, lookups, or using [`query.get()`] out-of-band,
 /// please refer to the [`Entity`] documentation.
 ///
 /// # Deadlock Safety Rules
@@ -36,7 +36,6 @@ use crate::{
 /// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
 /// [`Entity`]: crate::entity::Entity
 /// [`query.get()`]: crate::query::Query::get
-/// [`view.get()`]: crate::query::QueryArchetypeView::get
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,

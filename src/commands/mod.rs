@@ -3,8 +3,8 @@ mod command_queue;
 mod command_types;
 mod parallel_commands;
 pub(crate) use command_types::DespawnCommand;
+use orx_parallel::{IterIntoParIter, Par};
 pub use parallel_commands::ParallelCommands;
-use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use std::{marker::PhantomData, sync::Arc};
 
@@ -110,7 +110,7 @@ impl<'a> Commands<'a> {
     {
         self.despawns
             .iter()
-            .par_bridge()
+            .iter_into_par()
             .for_each(|entity| f(&entity));
     }
 

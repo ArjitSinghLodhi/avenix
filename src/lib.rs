@@ -53,7 +53,6 @@ pub mod prelude {
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
         ScheduleLabel, States, SystemParam, SystemSet,
     };
-    #[cfg(feature = "events")]
     pub use crate::ecs::events::{
         EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
         ParallelEventWriter,
@@ -69,7 +68,7 @@ pub mod prelude {
         commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
         entity::Entity,
         query::{
-            Has, Query, QueryArchetypeView, QueryData, QuerySubChunk,
+            Has, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk,
             filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without},
             parallel_query::ParallelQueryAccessor,
         },
@@ -90,7 +89,6 @@ pub mod extensions {
 
 pub mod ecs {
     pub use crate::component::Component;
-    #[cfg(feature = "events")]
     pub mod events {
         pub use crate::events::{
             EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
@@ -103,7 +101,7 @@ pub mod ecs {
         };
     }
     pub mod query {
-        pub use crate::query::{Has, Query, QueryArchetypeView, QueryData, QuerySubChunk};
+        pub use crate::query::{Has, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk};
         pub mod filter {
             pub use crate::query::filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without};
         }

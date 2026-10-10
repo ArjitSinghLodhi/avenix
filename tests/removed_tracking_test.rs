@@ -53,19 +53,17 @@ fn apply_frame_1_mutations(
         return;
     }
 
-    for view in query.iter() {
-        for (entity, tag) in view.iter() {
-            let mut entity_cmd = commands.entity(entity.clone());
-            match tag {
-                EntityTag::RemovalTarget => {
-                    entity_cmd.remove::<Velocity>();
-                }
-                EntityTag::DespawnTarget => {
-                    entity_cmd.remove::<Velocity>();
-                    entity_cmd.despawn();
-                }
-                EntityTag::UntouchedNeighbor => {}
+    for (entity, tag) in query.iter() {
+        let mut entity_cmd = commands.entity(entity.clone());
+        match tag {
+            EntityTag::RemovalTarget => {
+                entity_cmd.remove::<Velocity>();
             }
+            EntityTag::DespawnTarget => {
+                entity_cmd.remove::<Velocity>();
+                entity_cmd.despawn();
+            }
+            EntityTag::UntouchedNeighbor => {}
         }
     }
 }
@@ -109,11 +107,9 @@ fn verify_frame_2_removal_reads(
     );
 
     let mut neighbor_intact = false;
-    for view in query_neighbor.iter() {
-        for tag in view.iter() {
-            if *tag == EntityTag::UntouchedNeighbor {
-                neighbor_intact = true;
-            }
+    for tag in query_neighbor.iter() {
+        if *tag == EntityTag::UntouchedNeighbor {
+            neighbor_intact = true;
         }
     }
     assert!(

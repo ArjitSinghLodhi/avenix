@@ -1,4 +1,5 @@
 use crate::resources::ParallelResourceAccessor;
+use crate::system::condition::Condition;
 use crate::{
     app::App,
     resources::{ResMut, Resource},
@@ -76,7 +77,10 @@ pub(crate) fn setup_states_schedules_and_systems<T: States>(app: &mut App, state
 
 pub fn in_state<T: States>(
     expected: T,
-) -> impl Fn(&ParallelResourceAccessor<State<T>>) -> bool + Clone {
+) -> impl Condition<
+    ParallelResourceAccessor<State<T>>,
+    ConditionData = ParallelResourceAccessor<State<T>>,
+> + Clone {
     move |state_accessor: &ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|state| *state.current() == expected)
     }
@@ -84,7 +88,10 @@ pub fn in_state<T: States>(
 
 pub fn entered_state<T: States>(
     state: T,
-) -> impl Fn(&ParallelResourceAccessor<State<T>>) -> bool + Clone {
+) -> impl Condition<
+    ParallelResourceAccessor<State<T>>,
+    ConditionData = ParallelResourceAccessor<State<T>>,
+> + Clone {
     move |state_accessor: &ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|res_state| *res_state.current() == state && res_state.just_changed())
     }
@@ -92,7 +99,10 @@ pub fn entered_state<T: States>(
 
 pub fn exited_state<T: States>(
     state: T,
-) -> impl Fn(&ParallelResourceAccessor<State<T>>) -> bool + Clone {
+) -> impl Condition<
+    ParallelResourceAccessor<State<T>>,
+    ConditionData = ParallelResourceAccessor<State<T>>,
+> + Clone {
     move |state_accessor: &ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|res_state| *res_state.last() == state && res_state.just_changed())
     }

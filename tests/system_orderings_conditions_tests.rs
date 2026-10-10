@@ -1,8 +1,16 @@
 use avenix::prelude::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SystemRunEvent {
+    First,
+    Second,
+    Third,
+    Fourth,
+}
+
 #[derive(Resource, Default)]
 struct RunTracker {
-    history: Vec<&'static str>,
+    history: Vec<SystemRunEvent>,
 }
 
 #[derive(Resource, Default)]
@@ -11,19 +19,19 @@ struct Counter {
 }
 
 fn first_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("first");
+    tracker.history.push(SystemRunEvent::First);
 }
 
 fn second_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("second");
+    tracker.history.push(SystemRunEvent::Second);
 }
 
 fn third_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("third");
+    tracker.history.push(SystemRunEvent::Third);
 }
 
 fn fourth_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("fourth");
+    tracker.history.push(SystemRunEvent::Fourth);
 }
 
 #[test_fork::test]
@@ -66,7 +74,14 @@ fn test_complex_scheduling_and_conditions() {
 
     let tracker = app.world().get_resource::<RunTracker>();
 
-    assert_eq!(tracker.history, vec!["second", "first", "third"]);
+    assert_eq!(
+        tracker.history,
+        vec![
+            SystemRunEvent::Second,
+            SystemRunEvent::First,
+            SystemRunEvent::Third
+        ]
+    );
 }
 
 #[derive(ParallelSystemParam, SystemParam)]

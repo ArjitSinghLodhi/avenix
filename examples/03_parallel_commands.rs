@@ -80,20 +80,18 @@ fn system_parallel_spawn_system(par_commands: ParallelCommands) {
     });
 }
 
-fn verify_parallel_spawns_system(query: Query<(&Position, &ThreadMarker)>) {
+fn verify_parallel_spawns_system(query: Query<&ThreadMarker, With<Position>>) {
     let mut t1_count = 0;
     let mut t2_count = 0;
     let mut t3_count = 0;
 
-    for view in query.iter() {
-        for (_, marker) in view.iter() {
-            if marker.0 == 1 {
-                t1_count += 1;
-            } else if marker.0 == 2 {
-                t2_count += 1;
-            } else if marker.0 == 3 {
-                t3_count += 1;
-            }
+    for marker in query.iter() {
+        if marker.0 == 1 {
+            t1_count += 1;
+        } else if marker.0 == 2 {
+            t2_count += 1;
+        } else if marker.0 == 3 {
+            t3_count += 1;
         }
     }
 

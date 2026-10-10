@@ -47,10 +47,9 @@ fn collect_and_scramble_targets(
     if !targets.entities.is_empty() {
         return;
     }
-    for view in query.iter() {
-        for entity in view.iter() {
-            targets.entities.push(entity.clone());
-        }
+
+    for entity in query.iter() {
+        targets.entities.push(entity.clone());
     }
 
     println!("total entities: {}", targets.entities.len());

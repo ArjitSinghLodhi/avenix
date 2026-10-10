@@ -69,13 +69,11 @@ fn run_reactive_write_bench(
 
     c.bench_function("avenix_reactive_untracked_write", |b| {
         b.iter(|| {
-            for mut view in query_write.iter_mut() {
-                for (mut pos, vel) in view.iter_mut() {
-                    pos.x += vel.x;
-                    pos.y += vel.y;
-                    pos.z += vel.z;
-                    black_box(pos);
-                }
+            for (mut pos, vel) in query_write.iter_mut() {
+                pos.x += vel.x;
+                pos.y += vel.y;
+                pos.z += vel.z;
+                black_box(pos);
             }
         });
     });

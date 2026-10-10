@@ -46,11 +46,9 @@ fn test_parallel_query_accessor_mixed_workload() {
     app.run_startup();
 
     par_writer.scope(|mut query| {
-        for mut view in query.iter_mut() {
-            for (mut pos, vel) in view.iter_mut() {
-                pos.x += vel.x;
-                pos.y += vel.y;
-            }
+        for (mut pos, vel) in query.iter_mut() {
+            pos.x += vel.x;
+            pos.y += vel.y;
         }
     });
 
@@ -62,12 +60,10 @@ fn test_parallel_query_accessor_mixed_workload() {
 
             par_reader.scope(|query| {
                 let mut read_count = 0;
-                for view in query.iter() {
-                    for (pos, vel) in view.iter() {
-                        read_count += 1;
-                        assert_eq!(vel.x, 2.0);
-                        assert!(pos.x >= 0.0);
-                    }
+                for (pos, vel) in query.iter() {
+                    read_count += 1;
+                    assert_eq!(vel.x, 2.0);
+                    assert!(pos.x >= 0.0);
                 }
                 assert_eq!(read_count, 1000);
             });
@@ -77,10 +73,7 @@ fn test_parallel_query_accessor_mixed_workload() {
     });
 
     par_reactive.scope(|query| {
-        let mut total_reactive_catch = 0;
-        for view in query.iter() {
-            total_reactive_catch += view.len();
-        }
+        let total_reactive_catch = query.total_entities();
         assert_eq!(total_reactive_catch, 1000);
     });
 }
@@ -92,16 +85,11 @@ fn multi_query_in_band_system(
 ) {
     sync_ctx.barrier.wait();
 
-    let mut system_read_count = 0;
-    for view in query_read.iter() {
-        system_read_count += view.len();
-    }
+    let system_read_count = query_read.total_entities();
     assert_eq!(system_read_count, 500);
 
-    for mut view in query_write.iter_mut() {
-        for (mut pos, vel) in view.iter_mut() {
-            pos.x += vel.x * 0.1;
-        }
+    for (mut pos, vel) in query_write.iter_mut() {
+        pos.x += vel.x * 0.1;
     }
 }
 
@@ -136,13 +124,10 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
             b1.wait();
             while !done1.load(Ordering::Relaxed) {
                 par_reader.scope(|query| {
-                    let mut count = 0;
-                    for view in query.iter() {
-                        count += view.len();
-                        for (pos, vel) in view.iter() {
-                            assert!(pos.x >= 0.0 || pos.x < 0.0);
-                            assert_eq!(vel.x, 2.0);
-                        }
+                    let count = query.total_entities();
+                    for (pos, vel) in query.iter() {
+                        assert!(pos.x >= 0.0 || pos.x < 0.0);
+                        assert_eq!(vel.x, 2.0);
                     }
                     assert!(count <= 1000);
                 });
@@ -155,10 +140,8 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
             b2.wait();
             while !done2.load(Ordering::Relaxed) {
                 par_writer.scope(|mut query| {
-                    for mut view in query.iter_mut() {
-                        for (mut pos, vel) in view.iter_mut() {
-                            pos.x += vel.x * 0.01;
-                        }
+                    for (mut pos, vel) in query.iter_mut() {
+                        pos.x += vel.x * 0.01;
                     }
                 });
                 std::thread::yield_now();
@@ -202,15 +185,13 @@ fn dynamic_chaos_mutator_system(
 ) {
     sync_ctx.barrier.wait();
     let mut i = 0;
-    for view in query.iter() {
-        for entity in view.iter() {
-            if i % 2 == 0 {
-                commands.entity(entity.clone()).add(IsFollower);
-            } else {
-                commands.entity(entity.clone()).remove::<Velocity>();
-            }
-            i += 1;
+    for entity in query.iter() {
+        if i % 2 == 0 {
+            commands.entity(entity.clone()).add(IsFollower);
+        } else {
+            commands.entity(entity.clone()).remove::<Velocity>();
         }
+        i += 1;
     }
 
     sync_ctx.system_done.store(true, Ordering::Relaxed);

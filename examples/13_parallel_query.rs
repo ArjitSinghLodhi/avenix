@@ -51,12 +51,10 @@ fn main() {
 
             par_reader.scope(|query| {
                 let mut read_count = 0;
-                for view in query.iter() {
-                    for (pos, vel) in view.iter() {
-                        read_count += 1;
-                        assert_eq!(vel.x, 2.0);
-                        assert!(pos.x >= 0.0);
-                    }
+                for (pos, vel) in query.iter() {
+                    read_count += 1;
+                    assert_eq!(vel.x, 2.0);
+                    assert!(pos.x >= 0.0);
                 }
                 println!(
                     "[Background Reader Thread] Successfully scanned {} entities concurrently.",
@@ -71,12 +69,10 @@ fn main() {
 
             par_writer.scope(|mut query| {
                 let mut write_count = 0;
-                for mut view in query.iter_mut() {
-                    for (mut pos, vel) in view.iter_mut() {
-                        write_count += 1;
-                        pos.x += vel.x;
-                        pos.y += vel.y;
-                    }
+                for (mut pos, vel) in query.iter_mut() {
+                    write_count += 1;
+                    pos.x += vel.x;
+                    pos.y += vel.y;
                 }
                 println!(
                     "[Background Writer Thread] Successfully mutated {} entities out-of-band.",
@@ -89,10 +85,7 @@ fn main() {
     });
 
     par_reactive.scope(|query| {
-        let mut total_reactive_catch = 0;
-        for view in query.iter() {
-            total_reactive_catch += view.len();
-        }
+        let total_reactive_catch = query.total_entities();
         println!("[Main Thread Reactive Sweep] Caught {} mutably modified leaders via Changed<T> filter.", total_reactive_catch);
         assert_eq!(total_reactive_catch, 500);
     });
@@ -132,15 +125,10 @@ fn multi_query_in_band_system(
 ) {
     sync_ctx.barrier.wait();
 
-    let mut system_read_count = 0;
-    for view in query_read.iter() {
-        system_read_count += view.len();
-    }
+    let system_read_count = query_read.total_entities();
     assert_eq!(system_read_count, 500);
 
-    for mut view in query_write.iter_mut() {
-        for (mut pos, vel) in view.iter_mut() {
-            pos.x += vel.x * 0.1;
-        }
+    for (mut pos, vel) in query_write.iter_mut() {
+        pos.x += vel.x * 0.1;
     }
 }

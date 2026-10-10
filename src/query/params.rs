@@ -1,11 +1,15 @@
 use crate::ecs::Component;
-use crate::query::ThreadSafe;
 use crate::world::archetypes::ComponentColumnRead;
 #[cfg(not(feature = "reactivity"))]
 use crate::world::archetypes::ComponentColumnWrite;
 #[cfg(feature = "reactivity")]
 use crate::world::archetypes::ComponentColumnWrite;
-use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
+use crate::{
+    entity::Entity,
+    query::{QueryData, ThreadSafe},
+    system::AccessVec,
+    world::archetypes::Archetype,
+};
 #[cfg(feature = "reactivity")]
 use crate::{
     reactivity::{ChangedMarker, Mut},

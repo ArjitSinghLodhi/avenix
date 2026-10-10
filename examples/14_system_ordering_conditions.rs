@@ -1,8 +1,16 @@
 use avenix::prelude::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SystemRunEvent {
+    First,
+    Second,
+    Third,
+    Fourth,
+}
+
 #[derive(Resource, Default)]
 struct RunTracker {
-    history: Vec<&'static str>,
+    history: Vec<SystemRunEvent>,
 }
 
 #[derive(Resource, Default)]
@@ -16,22 +24,22 @@ struct Diagnostics {
 }
 
 fn first_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("first");
+    tracker.history.push(SystemRunEvent::First);
     println!("Executed: first_system");
 }
 
 fn second_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("second");
+    tracker.history.push(SystemRunEvent::Second);
     println!("Executed: second_system");
 }
 
 fn third_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("third");
+    tracker.history.push(SystemRunEvent::Third);
     println!("Executed: third_system");
 }
 
 fn fourth_system(mut tracker: ResMut<RunTracker>) {
-    tracker.history.push("fourth");
+    tracker.history.push(SystemRunEvent::Fourth);
     println!("Executed: fourth_system");
 }
 
@@ -98,6 +106,13 @@ fn main() {
     let tracker = app.world().get_resource::<RunTracker>();
     println!("\nFinal System Execution History: {:?}", tracker.history);
 
-    assert_eq!(tracker.history, vec!["second", "first", "third"]);
+    assert_eq!(
+        tracker.history,
+        vec![
+            SystemRunEvent::Second,
+            SystemRunEvent::First,
+            SystemRunEvent::Third
+        ]
+    );
     println!("Execution pipeline successfully validated with nested parallel system parameters!");
 }

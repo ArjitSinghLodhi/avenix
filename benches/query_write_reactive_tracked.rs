@@ -46,13 +46,11 @@ fn bench_tracked_but_unfiltered(
 
     c.bench_function("tracked_but_unfiltered_write", |b| {
         b.iter(|| {
-            for mut view in query_standard.iter_mut() {
-                for (mut pos, vel) in view.iter_mut() {
-                    pos.x += vel.x;
-                    pos.y += vel.y;
-                    pos.z += vel.z;
-                    black_box(pos);
-                }
+            for (mut pos, vel) in query_standard.iter_mut() {
+                pos.x += vel.x;
+                pos.y += vel.y;
+                pos.z += vel.z;
+                black_box(pos);
             }
         });
     });
@@ -70,13 +68,11 @@ fn bench_tracked_and_filtered(
 
     c.bench_function("tracked_and_filtered_write", |b| {
         b.iter(|| {
-            for mut view in query_reactive.iter_mut() {
-                for (mut pos, vel) in view.iter_mut() {
-                    pos.x += vel.x;
-                    pos.y += vel.y;
-                    pos.z += vel.z;
-                    black_box(pos);
-                }
+            for (mut pos, vel) in query_reactive.iter_mut() {
+                pos.x += vel.x;
+                pos.y += vel.y;
+                pos.z += vel.z;
+                black_box(pos);
             }
         });
     });

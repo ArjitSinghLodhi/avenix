@@ -66,19 +66,16 @@ fn verify_resource_and_commands(
     assert_eq!(tracker.points, 100);
 
     let mut found = false;
-    for view in query.iter() {
-        for pos in view.iter() {
-            if pos.x == 10.0 && pos.y == 20.0 {
-                found = true;
-            }
+    for pos in query.iter() {
+        if pos.x == 10.0 && pos.y == 20.0 {
+            found = true;
         }
     }
     let mut found_b = 0;
-    for view in query_b.iter() {
-        for pos in view.iter() {
-            if pos.x == 1.0 && pos.y == 1.0 {
-                found_b += 1;
-            }
+
+    for pos in query_b.iter() {
+        if pos.x == 1.0 && pos.y == 1.0 {
+            found_b += 1;
         }
     }
     assert!(found);
@@ -135,18 +132,13 @@ fn verify_logical_queries(
     or_query: Query<&Position, Or<(With<TagA>, With<TagB>)>>,
     not_query: Query<&Position, (With<TagA>, Not<With<TagB>>)>,
 ) {
-    let mut or_count = 0;
-    for view in or_query.iter() {
-        or_count += view.len();
-    }
+    let or_count = or_query.total_entities();
     assert_eq!(or_count, 3);
 
     let mut not_count = 0;
-    for view in not_query.iter() {
-        for pos in view.iter() {
-            if pos.x == 2.0 {
-                not_count += 1;
-            }
+    for pos in not_query.iter() {
+        if pos.x == 2.0 {
+            not_count += 1;
         }
     }
     assert_eq!(not_count, 1);

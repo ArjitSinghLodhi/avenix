@@ -20,7 +20,7 @@ fn main() {
             Update,
             (
                 simple_global_lookup_system,
-                complex_coordinated_view_lookup_system,
+                allocation_lookup_system,
                 zero_allocation_nested_lookup_system,
             )
                 .chain(),
@@ -33,7 +33,6 @@ fn main() {
 }
 
 fn setup_simulation_entities_system(commands: Commands) {
-    println!("[Startup] Setting up simulation entities...");
     commands.spawn((Health(100), PlayerTag));
     commands.spawn((Health(500), EnemyTag));
     commands.spawn((Health(1000), BossTag));
@@ -41,53 +40,35 @@ fn setup_simulation_entities_system(commands: Commands) {
 
 fn simple_global_lookup_system(
     mut query_health: Query<&mut Health>,
-    query_player: Query<(Entity, &PlayerTag)>,
+    query_player: Query<Entity, With<PlayerTag>>,
 ) {
-    for view in query_player.iter() {
-        for (entity, _tag) in view.iter() {
-            #[allow(unused_mut)]
-            if let Some(mut health) = query_health.get_mut(entity) {
-                if health.0 == 100 {
-                    println!("\n[Simple Lookup] Executing Query-level O(1) fetch:");
-                    println!("   -> Located Player Entity via view extraction loop.");
-                    println!("   -> Initial Player health: {}", health.0);
-                    health.0 -= 20;
-                    println!("   -> Player health cleanly updated to: {}", health.0);
-                    assert_eq!(health.0, 80);
-                }
+    for entity in query_player.iter() {
+        #[allow(unused_mut)]
+        if let Some(mut health) = query_health.get_mut(entity) {
+            if health.0 == 100 {
+                health.0 -= 20;
+                assert_eq!(health.0, 80);
             }
         }
     }
 }
 
-fn complex_coordinated_view_lookup_system(
+fn allocation_lookup_system(
     mut query_health: Query<&mut Health>,
-    query_enemy: Query<(Entity, &EnemyTag)>,
+    query_enemy: Query<Entity, With<EnemyTag>>,
 ) {
     let mut targets_to_process = Vec::new();
 
-    for view in query_enemy.iter() {
-        for (entity, _tag) in view.iter() {
-            targets_to_process.push(TargetEntity(entity.clone()));
-        }
+    for entity in query_enemy.iter() {
+        targets_to_process.push(TargetEntity(entity.clone()));
     }
 
-    for mut view in query_health.iter_mut() {
-        for target in &targets_to_process {
-            #[allow(unused_mut)]
-            if let Some(mut health) = view.get_mut(&target.0) {
-                if health.0 == 500 {
-                    println!(
-                        "\n[Complex Coordinated Lookup] Executing vector-staged View-level array fetch:"
-                    );
-                    println!(
-                        "   -> Pulling vector targets directly from active Archetype View matrix."
-                    );
-                    println!("   -> Initial Enemy health: {}", health.0);
-                    health.0 -= 100;
-                    println!("   -> Enemy health cleanly modified to: {}", health.0);
-                    assert_eq!(health.0, 400);
-                }
+    for target in &targets_to_process {
+        #[allow(unused_mut)]
+        if let Some(mut health) = query_health.get_mut(&target.0) {
+            if health.0 == 500 {
+                health.0 -= 100;
+                assert_eq!(health.0, 400);
             }
         }
     }
@@ -95,27 +76,14 @@ fn complex_coordinated_view_lookup_system(
 
 fn zero_allocation_nested_lookup_system(
     mut query_health: Query<&mut Health>,
-    query_boss: Query<(Entity, &BossTag)>,
+    query_boss: Query<Entity, With<BossTag>>,
 ) {
-    for boss_view in query_boss.iter() {
-        for (entity, _tag) in boss_view.iter() {
-            for mut health_view in query_health.iter_mut() {
-                #[allow(unused_mut)]
-                if let Some(mut health) = health_view.get_mut(entity) {
-                    #[allow(unused_mut)]
-                    if health.0 == 1000 {
-                        println!(
-                            "\n[Zero-Allocation Nested Lookup] Executing zero-heap nested array match:"
-                        );
-                        println!(
-                            "   -> Completely bypassed staging vectors; streaming directly across views."
-                        );
-                        println!("   -> Initial Boss health: {}", health.0);
-                        health.0 -= 200;
-                        println!("   -> Boss health cleanly modified to: {}", health.0);
-                        assert_eq!(health.0, 800);
-                    }
-                }
+    for entity in query_boss.iter() {
+        #[allow(unused_mut)]
+        if let Some(mut health) = query_health.get_mut(&entity) {
+            if health.0 == 1000 {
+                health.0 -= 200;
+                assert_eq!(health.0, 800);
             }
         }
     }

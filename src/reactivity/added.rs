@@ -79,7 +79,7 @@ impl<'a, T: Component> QueryFilter for Added<'a, T> {
     fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
         let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
         AddedFilterData {
-            vec_gaurd: vec_gaurd,
+            vec_gaurd,
             read_idx: CurrentBufferIdx::current_read_idx() as usize,
         }
     }

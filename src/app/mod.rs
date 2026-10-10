@@ -26,9 +26,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-#[cfg(feature = "events")]
 use crate::events::{Event, EventBuffer, register_event};
-#[cfg(feature = "events")]
 use std::any::type_name;
 
 #[cfg(feature = "reactivity")]
@@ -230,13 +228,13 @@ impl App {
         self
     }
 
+    /// Adds plugins and immediaely builds them.
     pub fn add_plugins(&mut self, plugins: impl PluginsBuildAll + 'static) -> &mut Self {
         self.configuration.not_ready();
         plugins.build_all(self);
         self
     }
 
-    #[cfg(feature = "events")]
     pub fn init_event<T: Event>(&mut self) -> &mut Self {
         self.configuration.not_ready();
         if self.world.has_resource::<EventBuffer<T>>() {
