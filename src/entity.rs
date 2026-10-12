@@ -40,7 +40,7 @@ impl Clone for Entity {
     fn clone(&self) -> Self {
         unsafe {
             let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_index() as usize);
-            (*atomic_ptr).fetch_add(1, Ordering::Acquire);
+            (*atomic_ptr).fetch_add(1, Ordering::Relaxed);
         }
         Entity::new(self.registry_index)
     }

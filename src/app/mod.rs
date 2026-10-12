@@ -1,6 +1,7 @@
 mod plugin;
 use parking_lot::RwLock;
 pub use plugin::{Plugin, PluginsBuildAll};
+use rustc_hash::FxHashSet;
 
 use crate::{
     app::system::condition::RunConditionsList,
@@ -107,7 +108,7 @@ type RunnerFn = Box<dyn FnOnce(&mut App) + 'static>;
 
 pub struct App {
     pub(crate) world: World,
-    registered_plugins: Vec<Box<dyn Plugin>>,
+    registered_plugins: FxHashSet<TypeId>,
     startup_schedule: Schedule,
     cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
@@ -137,7 +138,7 @@ impl App {
 
         Self {
             world,
-            registered_plugins: Vec::new(),
+            registered_plugins: FxHashSet::default(),
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
             schedules: Vec::new(),
@@ -243,9 +244,7 @@ impl App {
     }
 
     pub fn is_plugin_built<T: Plugin>(&self) -> bool {
-        self.registered_plugins
-            .iter()
-            .any(|plugin| plugin.plugin_type_id() == TypeId::of::<T>())
+        self.registered_plugins.contains(&TypeId::of::<T>())
     }
 
     pub fn init_event<T: Event>(&mut self) -> &mut Self {

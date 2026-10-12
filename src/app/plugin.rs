@@ -4,10 +4,6 @@ use crate::app::App;
 
 pub trait Plugin: 'static {
     fn build(&self, app: &mut App);
-    #[doc(hidden)]
-    fn plugin_type_id(&self) -> TypeId {
-        TypeId::of::<Self>()
-    }
 }
 
 #[doc(hidden)]
@@ -21,7 +17,7 @@ pub trait PluginsBuildAll {
 impl<T: Plugin> PluginsBuildAll for T {
     fn build_and_register_all(self, app: &mut App) {
         self.build(app);
-        app.registered_plugins.push(Box::new(self));
+        app.registered_plugins.insert(TypeId::of::<Self>());
     }
 
     fn get_plugin_names(&self) -> Vec<&'static str> {
@@ -35,7 +31,7 @@ macro_rules! plugin_tuple {
             fn build_and_register_all(self, app: &mut App) {
                 $(
                     $T::build(&self.$idx, app);
-                    app.registered_plugins.push(Box::new(self.$idx));
+                    app.registered_plugins.insert(TypeId::of::<$T>());
                 )*
             }
 
