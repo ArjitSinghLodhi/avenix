@@ -28,8 +28,8 @@ fn main() {
 
     app.set_runner(test_three_frames);
 
-    let par_writer_a = app.world_mut().get_par_event_writer::<ThreatEvent>();
-    let par_writer_b = app.world_mut().get_par_event_writer::<ThreatEvent>();
+    let par_writer_a = app.world().get_par_event_writer::<ThreatEvent>();
+    let par_writer_b = app.world().get_par_event_writer::<ThreatEvent>();
 
     std::thread::scope(|s| {
         s.spawn(|| {

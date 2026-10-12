@@ -14,7 +14,7 @@ use crate::system::ParallelSystemParam;
 ///
 /// `ParallelCommands` can be passed to external or background worker threads, allowing them to
 /// concurrently queue up structural modifications and despawn targets outside the main execution
-/// path. It can be obtained directly from the world layer via [`.get_par_commands()`] using `app.world_mut().get_par_commands()`.
+/// path. It can be obtained directly from the world layer via [`.get_par_commands()`] using `app.world().get_par_commands()`.
 ///
 /// [`.get_par_commands()`]: crate::world::storage::World::get_par_commands
 pub struct ParallelCommands {

@@ -1,20 +1,27 @@
+use std::any::TypeId;
+
 use crate::app::App;
 
 pub trait Plugin: 'static {
     fn build(&self, app: &mut App);
+    #[doc(hidden)]
+    fn plugin_type_id(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
 }
 
 #[doc(hidden)]
 pub trait PluginsBuildAll {
     #[doc(hidden)]
-    fn build_all(&self, app: &mut App);
+    fn build_and_register_all(self, app: &mut App);
     #[doc(hidden)]
     fn get_plugin_names(&self) -> Vec<&'static str>;
 }
 
 impl<T: Plugin> PluginsBuildAll for T {
-    fn build_all(&self, app: &mut App) {
+    fn build_and_register_all(self, app: &mut App) {
         self.build(app);
+        app.registered_plugins.push(Box::new(self));
     }
 
     fn get_plugin_names(&self) -> Vec<&'static str> {
@@ -25,9 +32,10 @@ impl<T: Plugin> PluginsBuildAll for T {
 macro_rules! plugin_tuple {
     ($($T:ident -> $idx:tt),*) => {
         impl<$($T: Plugin),*> PluginsBuildAll for ($($T,)*) {
-            fn build_all(&self, app: &mut App) {
+            fn build_and_register_all(self, app: &mut App) {
                 $(
                     $T::build(&self.$idx, app);
+                    app.registered_plugins.push(Box::new(self.$idx));
                 )*
             }
 

@@ -55,7 +55,7 @@ fn main() {
 
     println!("Scheduling state modification hook...");
     {
-        let mut next_state = app.world_mut().get_resource_mut::<NextState<GameState>>();
+        let mut next_state = app.world().get_resource_mut::<NextState<GameState>>();
         next_state.set(GameState::InGame);
     }
 

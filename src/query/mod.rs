@@ -77,7 +77,7 @@ impl<'b, Q: QueryData> QueryReadOnlyChunk<'b, Q> {
         let fetch = self.fetch;
         self.indices
             .iter()
-            .map(move |&index| unsafe { Q::fetch_read_only(fetch, index) })
+            .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
     }
 }
 
@@ -91,14 +91,14 @@ impl<'b, Q: QueryData> QueryMutableChunk<'b, Q> {
         let fetch = self.fetch;
         self.indices
             .iter()
-            .map(move |&index| unsafe { Q::fetch_read_only(fetch, index) })
+            .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
     }
 
     pub fn iter_mut<'c>(&'c mut self) -> impl Iterator<Item = Q::Item<'c>> {
         let fetch = self.fetch;
         self.indices
             .iter()
-            .map(move |&index| unsafe { Q::fetch_mut(fetch, index) })
+            .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
     }
 }
 
@@ -216,7 +216,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(|(indices, fetch)| {
                 indices
                     .iter()
-                    .map(move |&index| unsafe { Q::fetch_read_only(fetch, index) })
+                    .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
             })
     }
 
@@ -232,7 +232,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(|(indices, fetch)| {
                 indices
                     .par_iter()
-                    .map(move |&index| unsafe { Q::fetch_read_only(fetch, index) })
+                    .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
             })
     }
 
@@ -241,7 +241,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         self.cached_indices
             .iter()
             .enumerate()
-            .filter_map(move |(arch_id, maybe_indices)| {
+            .filter_map(|(arch_id, maybe_indices)| {
                 let indices = maybe_indices.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
                 Some((indices, fetch))
@@ -249,7 +249,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(|(indices, fetch)| {
                 indices
                     .iter()
-                    .map(move |&index| unsafe { Q::fetch_mut(fetch, index) })
+                    .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
             })
     }
 
@@ -258,7 +258,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         self.cached_indices
             .par_iter()
             .enumerate()
-            .filter_map(move |(arch_id, maybe_indices)| {
+            .filter_map(|(arch_id, maybe_indices)| {
                 let indices = maybe_indices.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
                 Some((indices, fetch))
@@ -266,7 +266,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(|(indices, fetch)| {
                 indices
                     .par_iter()
-                    .map(move |&index| unsafe { Q::fetch_mut(fetch, index) })
+                    .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
             })
     }
 
@@ -285,7 +285,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(move |(indices, fetch)| {
                 indices
                     .par_chunks(chunk_size)
-                    .map(move |chunk| QueryReadOnlyChunk {
+                    .map(|chunk| QueryReadOnlyChunk {
                         indices: chunk,
                         fetch,
                     })
@@ -308,7 +308,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .flat_map(move |(indices, fetch)| {
                 indices
                     .par_chunks(chunk_size)
-                    .map(move |chunk| QueryMutableChunk {
+                    .map(|chunk| QueryMutableChunk {
                         indices: chunk,
                         fetch,
                     })
@@ -371,12 +371,11 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     pub unsafe fn get_mut_unchecked<'w>(&'w mut self, entity: &Entity) -> Q::Item<'w> {
         unsafe {
             let cell_ptr = REGISTRY.get_ptr(entity.registry_index as usize);
+
             let arch_id = (*cell_ptr).archetype_id;
             let row_idx = (*cell_ptr).idx;
 
-            let fetch = self
-                .cached_fetches
-                .get_unchecked(arch_id.id() as usize)
+            let fetch = self.cached_fetches[arch_id.id() as usize]
                 .as_ref()
                 .unwrap_unchecked();
             Q::fetch_mut(fetch, row_idx as usize)
@@ -385,20 +384,60 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
 
     /// Returns a raw slice of the cached fetch states for each archetype.
     ///
+    /// This provides direct access to the query's interior state tracking array. It allows
+    /// low-level frameworks or custom batch runners to bypass standard iteration loops.
+    ///
     /// # Safety
-    /// This bypasses standard query boundaries. The caller must ensure they do not
-    /// violate aliasing rules or access uninitialized fetch states.
+    /// Calling this method is safe, but interacting with the slice contents is highly unsafe.
+    /// The caller must guarantee the following invariants:
+    ///
+    /// * **Aliasing Rules:** You must never invoke [`Self::fetch_mut`] concurrently on the same
+    ///   row index, or across overlapping rows from multiple threads.
+    /// * **Structural Modification:** The cached fetch tokens are only valid for the current frame.
+    ///   Any structural change (spawning, despawning, component insertions/removals) instantly
+    ///   invalidates these tokens.
+    /// * **Initialization Check:** You must explicitly check if the target `Option` is `Some`
+    ///   before unwrapping. Archetypes that do not match this query's filters will be `None`.
     pub unsafe fn get_fetches(&self) -> &[Option<Q::Fetch>] {
         &self.cached_fetches
     }
 
     /// Returns a raw slice of the cached entity row indices vectors for each archetype.
     ///
+    /// Provides raw access to the internal index maps that translate a query filter match
+    /// to the physical data offset inside the archetype tables.
+    ///
     /// # Safety
-    /// This bypasses standard query boundaries. The caller must ensure that reading
-    /// the raw index tables does not conflict with concurrent structural modifications.
+    /// Bypasses standard query boundaries entirely. The caller must guarantee:
+    ///
+    /// * **Concurrency Control:** You must never read these vectors while structural mutations
+    ///   are flushing. A structural flush shifts column elements via swap-remove operations,
+    ///   which will make the indices in these vectors point to out-of-bounds or incorrect memory.
     pub unsafe fn get_indices(&self) -> &[Option<Vec<usize>>] {
         &self.cached_indices
+    }
+
+    /// Unsafely extracts an immutable item view from the provided fetch token at the specified dense row index.
+    ///
+    /// # Safety
+    /// * The `fetch` state must be valid, initialized (`Some`), and sourced directly from [`Self::get_fetches`].
+    /// * The `index` must be strictly less than the length of the target archetype's data rows.
+    /// * No mutable references ([`Self::fetch_mut`]) can be actively held for this row index on any thread.
+    #[inline(always)]
+    pub unsafe fn fetch_read_only(&self, fetch: &Q::Fetch, index: usize) -> Q::ReadOnlyItem<'q> {
+        unsafe { Q::fetch_read_only(fetch, index) }
+    }
+
+    /// Unsafely extracts a mutable item view from the provided fetch token at the specified dense row index.
+    ///
+    /// # Safety
+    /// * The `fetch` state must be valid, initialized (`Some`), and sourced directly from [`Self::get_fetches`].
+    /// * The `index` must be strictly less than the length of the target archetype's data rows.
+    /// * **Strict Aliasing Rule:** You must guarantee absolute exclusive access to this row. No other
+    ///   thread or task may hold a read-only or mutable reference to this exact element simultaneously.
+    #[inline(always)]
+    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch, index: usize) -> Q::Item<'q> {
+        unsafe { Q::fetch_mut(fetch, index) }
     }
 }
 

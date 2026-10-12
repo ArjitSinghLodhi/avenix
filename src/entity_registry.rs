@@ -50,7 +50,7 @@ impl UnsafeGlobalRegistryHandleCount {
     }
     #[inline(always)]
     pub(crate) fn get_count(&self, index: usize) -> u32 {
-        unsafe { (*(*self.0.get()).as_ptr().add(index)).load(Ordering::Relaxed) }
+        unsafe { (*(*self.0.get()).as_ptr().add(index)).load(Ordering::Acquire) }
     }
 
     #[inline(always)]
@@ -67,7 +67,7 @@ impl UnsafeGlobalRegistryHandleCount {
     pub(crate) unsafe fn decrement_handle(&self, index: usize) {
         let cell_ptr = unsafe { self.get_ptr(index) };
         unsafe {
-            (*cell_ptr).fetch_sub(1, Ordering::Relaxed);
+            (*cell_ptr).fetch_sub(1, Ordering::Release);
         }
     }
 }

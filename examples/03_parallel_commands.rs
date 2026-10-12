@@ -20,7 +20,7 @@ fn main() {
 
     app.set_runner(run_parallel_test_loop);
 
-    let par_commands = app.world_mut().get_par_commands();
+    let par_commands = app.world().get_par_commands();
 
     std::thread::scope(|s| {
         s.spawn(|| {

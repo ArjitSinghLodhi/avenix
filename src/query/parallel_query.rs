@@ -5,8 +5,10 @@ use parking_lot::Mutex;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    extensions::Archetype,
+    app_impl::ConfigurationContext,
+    extensions::{Archetype, World},
     query::{EmptyQueryFilter, Query, QueryData, QueryFilter},
+    system::{AccessVec, SystemMeta, SystemParam},
     world::archetypes::ArchetypeId,
 };
 
@@ -14,7 +16,7 @@ use crate::{
 ///
 /// `ParallelQueryAccessor` can be passed to external or background worker threads, allowing them to
 /// concurrently read or modify component data arrays outside the main execution path. It can be obtained
-/// directly from the application layer via [`.get_par_query_accessor()`] before building the app.
+/// directly from the world layer via [`.get_par_query_accessor()`] before building the app.
 ///
 /// # Initialization Requirement
 /// Unlike other parallel handles, this handle must be initialized prior to app compilation. This ensures the
@@ -33,7 +35,7 @@ use crate::{
 /// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
 ///   targets overlapping components on that same thread will trigger a deadlock.
 ///
-/// [`.get_par_query_accessor()`]: crate::app::App::get_par_query_accessor
+/// [`.get_par_query_accessor()`]: crate::world::storage::World::get_par_query_accessor
 /// [`Entity`]: crate::entity::Entity
 /// [`query.get()`]: crate::query::Query::get
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
@@ -62,3 +64,32 @@ impl<Q: QueryData, F: QueryFilter> ParallelQueryAccessor<Q, F> {
 
 unsafe impl<Q: QueryData, F: QueryFilter> Send for ParallelQueryAccessor<Q, F> {}
 unsafe impl<Q: QueryData, F: QueryFilter> Sync for ParallelQueryAccessor<Q, F> {}
+
+impl<Q: QueryData, F: QueryFilter> SystemParam for ParallelQueryAccessor<Q, F> {
+    fn init_access(_system_meta: &mut SystemMeta) {}
+    fn get_param(world: &World) -> Self {
+        world.get_resource::<ConfigurationContext>().not_ready();
+        let mut local_reads = AccessVec::new();
+        let mut local_writes = AccessVec::new();
+        let mut local_with = AccessVec::new();
+        let mut local_without = AccessVec::new();
+
+        Q::collect_access(&mut local_reads, &mut local_writes);
+        F::collect_filter(&mut local_with, &mut local_without);
+        let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
+        let mut unique_writes = rustc_hash::FxHashSet::default();
+        let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
+
+        if has_intra_conflict || has_duplicate_writes {
+            panic!(
+                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in ParallelQueryAccessor: ParallelQueryAccessor<{}, {}> contains internal overlaps!",
+                std::any::type_name::<Q>(),
+                std::any::type_name::<F>()
+            );
+        }
+        ParallelQueryAccessor {
+            archetypes_map: world.archetypes_manager.archetypes.clone(),
+            _marker: PhantomData,
+        }
+    }
+}

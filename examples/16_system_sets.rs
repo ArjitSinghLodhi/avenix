@@ -89,7 +89,7 @@ fn main() {
     println!("=======================================================\n");
 
     let mut app = App::new();
-    let flat_accessor = app.world_mut().get_par_resource_accessor::<MatchState>();
+    let flat_accessor = app.world().get_par_resource_accessor::<MatchState>();
 
     app.insert_resource(ExecutionLogger::default())
         .insert_resource(MatchState { tick_paused: 0 })

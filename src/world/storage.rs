@@ -12,7 +12,6 @@ use std::{
     thread::{self, ThreadId},
 };
 
-use crate::events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS};
 use crate::{
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
@@ -22,6 +21,11 @@ use crate::{
         Resource,
     },
     world::archetypes::ArchetypeManager,
+};
+use crate::{
+    events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS},
+    query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
+    system::SystemParam,
 };
 
 #[cfg(feature = "reactivity")]
@@ -34,18 +38,18 @@ impl CurrentBufferIdx {
     #[inline]
     #[cfg(feature = "reactivity")]
     pub(crate) fn current_read_idx() -> u8 {
-        CURRENT_BUFFER_IDX.load(Ordering::Relaxed)
+        CURRENT_BUFFER_IDX.load(Ordering::Acquire)
     }
     #[cfg(feature = "reactivity")]
     pub(crate) fn current_write_idx() -> u8 {
-        let idx = CURRENT_BUFFER_IDX.load(Ordering::Relaxed);
+        let idx = CURRENT_BUFFER_IDX.load(Ordering::Acquire);
         if idx == 0 { 1 } else { 0 }
     }
 
     pub(crate) fn advance() {
-        let idx = CURRENT_BUFFER_IDX.load(Ordering::Relaxed);
+        let idx = CURRENT_BUFFER_IDX.load(Ordering::Acquire);
         let next_idx = if idx == 1 { 0 } else { 1 };
-        CURRENT_BUFFER_IDX.store(next_idx, Ordering::Relaxed);
+        CURRENT_BUFFER_IDX.store(next_idx, Ordering::Release);
     }
 }
 
@@ -229,15 +233,15 @@ impl World {
 
     #[cfg(feature = "reactivity")]
     fn clear_trackers(&mut self) {
-        use crate::reactivity::REMOVAL_TRACKED_COMPS;
         let tracked_comps = TRACKED_COMPONENTS.read();
         if !tracked_comps.is_empty() {
             for archetype in self.archetypes_manager.archetypes.iter_mut() {
+                let mut archetype_lock = archetype.lock();
                 unsafe {
                     for meta_list in tracked_comps.values() {
                         for meta in meta_list {
                             if let Some(marker_column) =
-                                archetype.lock().columns.get_mut(&meta.marker_id)
+                                archetype_lock.columns.get_mut(&meta.marker_id)
                             {
                                 let mut gaurd = marker_column.data.write();
                                 let raw_any = gaurd.as_any_mut();
@@ -248,9 +252,10 @@ impl World {
                 }
             }
         }
+
         let removal_track = REMOVAL_TRACKED_COMPS.read();
         if !removal_track.is_empty() {
-            for remove_meta in REMOVAL_TRACKED_COMPS.read().values() {
+            for remove_meta in removal_track.values() {
                 (remove_meta.swap_and_clear_buffer)(self)
             }
         }
@@ -277,24 +282,10 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input into the engine's command pipeline, manageable by external or
     /// parallel background worker threads.
-    pub fn get_par_commands(&mut self) -> ParallelCommands {
+    pub fn get_par_commands(&self) -> ParallelCommands {
         ParallelCommands {
             queue: self.commands.queue.clone(),
             despawns: self.commands.despawns.clone(),
-        }
-    }
-
-    /// Returns a thread-safe, thread-clonable [`ParallelResourceAccessor`] handle.
-    ///
-    /// This method can be called directly on the `World` to obtain a detached,
-    /// safe remote accessor into the engine's resource tables manageable by external or
-    /// parallel background threads.
-    pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
-        &mut self,
-    ) -> ParallelResourceAccessor<T> {
-        ParallelResourceAccessor {
-            resources: self.resources.clone(),
-            _marker: PhantomData,
         }
     }
 
@@ -303,7 +294,7 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
-    pub fn get_par_event_writer<T: Event>(&mut self) -> ParallelEventWriter<T> {
+    pub fn get_par_event_writer<T: Event>(&self) -> ParallelEventWriter<T> {
         ParallelEventWriter {
             write_queue: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
         }
@@ -314,10 +305,30 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
-    pub fn get_par_event_reader<T: Event>(&mut self) -> ParallelEventReader<T> {
+    pub fn get_par_event_reader<T: Event>(&self) -> ParallelEventReader<T> {
         ParallelEventReader {
             read_queue: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
         }
+    }
+
+    /// Returns a thread-safe, thread-clonable [`ParallelResourceAccessor`] handle.
+    ///
+    /// This method can be called directly on the `World` to obtain a detached,
+    /// safe remote accessor into the engine's resource tables manageable by external or
+    /// parallel background threads.
+    pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
+        &self,
+    ) -> ParallelResourceAccessor<T> {
+        ParallelResourceAccessor {
+            resources: self.resources.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
+        &self,
+    ) -> ParallelQueryAccessor<Q, F> {
+        ParallelQueryAccessor::<Q, F>::get_param(self)
     }
 }
 

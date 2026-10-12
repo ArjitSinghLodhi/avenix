@@ -75,6 +75,8 @@ pub mod prelude {
         resources::{NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut, Resource},
         world::World,
     };
+
+    pub use crate::rayon::prelude::*;
 }
 
 pub mod extensions {

@@ -35,11 +35,9 @@ fn main() {
     );
     app.set_runner(run_resource_test_loop);
 
-    let score_accessor = app.world_mut().get_par_resource_accessor::<GlobalScore>();
-    let config_accessor = app.world_mut().get_par_resource_accessor::<EngineConfig>();
-    let feature_accessor = app
-        .world_mut()
-        .get_par_resource_accessor::<OptionalFeature>();
+    let score_accessor = app.world().get_par_resource_accessor::<GlobalScore>();
+    let config_accessor = app.world().get_par_resource_accessor::<EngineConfig>();
+    let feature_accessor = app.world().get_par_resource_accessor::<OptionalFeature>();
 
     std::thread::scope(|s| {
         s.spawn(|| {

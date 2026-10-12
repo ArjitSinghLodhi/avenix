@@ -40,7 +40,7 @@ impl Clone for Entity {
     fn clone(&self) -> Self {
         unsafe {
             let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_index() as usize);
-            (*atomic_ptr).fetch_add(1, Ordering::Relaxed);
+            (*atomic_ptr).fetch_add(1, Ordering::Acquire);
         }
         Entity::new(self.registry_index)
     }
@@ -50,7 +50,7 @@ impl Drop for Entity {
     fn drop(&mut self) {
         unsafe {
             let atomic_ptr = REGISTRY_HANDLE_COUNT.get_ptr(self.registry_index() as usize);
-            (*atomic_ptr).fetch_sub(1, Ordering::Relaxed);
+            (*atomic_ptr).fetch_sub(1, Ordering::Release);
         }
     }
 }

@@ -41,7 +41,7 @@ fn hello_world_system() {
 
 ## Parallel Handles
 
-Avenix isolates out-of-band coordination into thread-safe, thread-clonable handles extracted directly from the application layer. Sourced via `app.world_mut()` (or pre-registered on `App` for queries), these handles act as detached remotes sent into background tasks, network loops, or worker threads to execute safely outside the main schedule thread.
+Avenix isolates out-of-band coordination into thread-safe, thread-clonable handles extracted directly from the application layer. Sourced via `app.world()`, these handles act as detached remotes sent into background tasks, network loops, or worker threads to execute safely outside the main schedule thread.
 
 ```
                   ┌─────────────────────────────────────┐
@@ -70,7 +70,7 @@ Avenix isolates out-of-band coordination into thread-safe, thread-clonable handl
   - **Extraction:** Sourced using `world.get_par_resource_accessor::<T>()`.
   - **Capabilities:** Provides `.scope()`, `.scope_mut()`, `.scope_opt()`, and `.scope_mut_opt()` windows into global values. Supports direct structural management via `.insert_resource()` and `.remove_resource()`, and presence checks via `.is_present()`. Clone-safe.
 * **`ParallelQueryAccessor<Q, F>`**
-  - **Extraction:** Registered on the `App` layer using `app.get_par_query_accessor::<Q, F>()` **before** calling `app.build()`.
+  - **Extraction:** Sourced using `world.get_par_query_accessor::<Q, F>()` **before** calling `app.build()`.
   - **Capabilities:** Opens read/write component data matrix structures (`Q: QueryData`) matching criteria filters (`F: QueryFilter`) for detached processing workers.
   
 ---
@@ -86,8 +86,6 @@ Please refer to the `examples/` directory for full usage blueprints covering cor
 Avenix isolates core systems into optional build targets to keep untracked execution paths unburdened by default:
 
 * `reactivity` — Activates double-buffered change tracking infrastructure (`Added<T>`, `Changed<T>`, `ChangedTracker<T>`). Uses demand-driven tracking queues allocated exclusively when systems invoke them.
-* `events` — Initializes the global broadcasting event pipeline architectures (`EventWriter`, `EventReader`, and parallel variants).
-
 ---
 
 ## Lifecycle Constraints & Safety Invariants

@@ -5,8 +5,7 @@ pub use plugin::{Plugin, PluginsBuildAll};
 use crate::{
     app::system::condition::RunConditionsList,
     extensions::SystemExt,
-    query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
-    resources::Resource,
+    resources::{ResMut, Resource},
     schedule::{
         CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
         Startup,
@@ -15,14 +14,13 @@ use crate::{
     },
     states::{States, setup_states_schedules_and_systems},
     system::{
-        AccessVec, System, system_set_traits::IntoSystemSetConfigConfigs,
-        system_traits::IntoSystemConfigs,
+        System, system_set_traits::IntoSystemSetConfigConfigs, system_traits::IntoSystemConfigs,
     },
     world::storage::World,
 };
 use crate::{schedule::SystemNode, system::system_set::SetRegistration};
 use std::{
-    marker::PhantomData,
+    any::TypeId,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -36,13 +34,16 @@ static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) static APP_BUILT: RwLock<bool> = RwLock::new(false);
 
-struct ConfigurationContext {
+pub(crate) struct ConfigurationContext {
     building_plugins: bool,
     schedules_processed: bool,
     systems_processed: bool,
     built: bool,
     ran_startup: bool,
 }
+
+impl Resource for ConfigurationContext {}
+
 impl ConfigurationContext {
     fn new() -> Self {
         Self {
@@ -53,6 +54,7 @@ impl ConfigurationContext {
             ran_startup: false,
         }
     }
+
     fn is_building_plugins(&self) -> bool {
         self.building_plugins
     }
@@ -83,8 +85,8 @@ impl ConfigurationContext {
         }
     }
 
-    fn not_ready(&self) {
-        if self.built || self.ran_startup {
+    pub(crate) fn not_ready(&self) {
+        if self.built || self.ran_startup || *APP_BUILT.read() {
             panic!("App already built when expected not");
         }
     }
@@ -105,6 +107,7 @@ type RunnerFn = Box<dyn FnOnce(&mut App) + 'static>;
 
 pub struct App {
     pub(crate) world: World,
+    registered_plugins: Vec<Box<dyn Plugin>>,
     startup_schedule: Schedule,
     cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
@@ -112,7 +115,6 @@ pub struct App {
     pub(crate) schedule_order_constraints: Vec<ScheduleConstraint>,
     pub(crate) set_registrations: Vec<SetRegistration>,
     runner_fn: RunnerFn,
-    configuration: ConfigurationContext,
 }
 
 impl App {
@@ -124,14 +126,18 @@ impl App {
 
     /// Initializes App with no default schedules except [`Startup`] and [`CleanupHandles`] schedules.
     pub fn empty() -> Self {
-        if APP_INITIALIZED.swap(true, Ordering::Relaxed) {
+        if APP_INITIALIZED.swap(true, Ordering::SeqCst) {
             panic!(
                 "❌ AVENIX ARCHITECTURE VIOLATION: Multiple App instances detected!\nEnsure you only instantiate exactly one App::new() across your entire binary runtime."
             );
         }
 
+        let world = World::new();
+        world.insert_resource(ConfigurationContext::new());
+
         Self {
-            world: World::new(),
+            world,
+            registered_plugins: Vec::new(),
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
             schedules: Vec::new(),
@@ -139,21 +145,22 @@ impl App {
             schedule_order_constraints: Vec::new(),
             set_registrations: Vec::new(),
             runner_fn: Box::new(runner_once),
-            configuration: ConfigurationContext::new(),
         }
     }
 
     pub fn init_state<T: States + Default>(&mut self) -> &mut Self {
+        self.configuration().not_ready();
         self.insert_state(T::default())
     }
 
     pub fn insert_state<T: States>(&mut self, state: T) -> &mut Self {
+        self.configuration().not_ready();
         setup_states_schedules_and_systems(self, state);
         self
     }
 
     pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
-        self.configuration.not_ready();
+        self.configuration().not_ready();
 
         if schedule.schedule().dyn_eq(&Startup) {
             panic!("Startup schedule cannot be overwritten")
@@ -170,7 +177,7 @@ impl App {
         schedule: impl crate::schedule::ScheduleLabel,
         set_configs: impl IntoSystemSetConfigConfigs,
     ) -> &mut Self {
-        self.configuration.not_ready();
+        self.configuration().not_ready();
 
         let schedule_box: Box<dyn crate::schedule::ScheduleLabel> = Box::new(schedule);
 
@@ -196,7 +203,7 @@ impl App {
         before: impl ScheduleLabel,
         after: impl ScheduleLabel,
     ) -> &mut Self {
-        self.configuration.not_ready();
+        self.configuration().not_ready();
         self.schedule_order_constraints.push(ScheduleConstraint {
             before: Box::new(before),
             after: Box::new(after),
@@ -209,7 +216,7 @@ impl App {
         schedule: impl ScheduleLabel,
         systems: impl IntoSystemConfigs<M>,
     ) -> &mut Self {
-        self.configuration.not_ready();
+        self.configuration().not_ready();
         let configs = systems.into_configs();
 
         if let Some(existing_block) = self
@@ -230,13 +237,19 @@ impl App {
 
     /// Adds plugins and immediaely builds them.
     pub fn add_plugins(&mut self, plugins: impl PluginsBuildAll + 'static) -> &mut Self {
-        self.configuration.not_ready();
-        plugins.build_all(self);
+        self.configuration().not_ready();
+        plugins.build_and_register_all(self);
         self
     }
 
+    pub fn is_plugin_built<T: Plugin>(&self) -> bool {
+        self.registered_plugins
+            .iter()
+            .any(|plugin| plugin.plugin_type_id() == TypeId::of::<T>())
+    }
+
     pub fn init_event<T: Event>(&mut self) -> &mut Self {
-        self.configuration.not_ready();
+        self.configuration().not_ready();
         if self.world.has_resource::<EventBuffer<T>>() {
             panic!("Event: {} Already initialized", type_name::<T>())
         }
@@ -246,35 +259,35 @@ impl App {
     }
 
     pub fn build(&mut self) -> &mut Self {
-        if self.configuration.is_building_plugins() {
+        if self.configuration().is_building_plugins() {
             panic!("App::build() was called while building plugins")
         }
-        self.configuration.not_ready();
+        self.configuration().not_ready();
         self.build_everything();
         *APP_BUILT.write() = true;
-        self.configuration.built = true;
+        self.configuration().built = true;
         self
     }
 
     pub fn run_startup(&mut self) -> &mut Self {
-        if self.configuration.is_building_plugins() {
+        if self.configuration().is_building_plugins() {
             panic!("App::run_startup() was called while building plugins")
         }
-        self.configuration.built();
-        if self.configuration.ran_startup {
+        self.configuration().built();
+        if self.configuration().ran_startup {
             panic!("Startup Already ran");
         }
         self.startup_schedule.run(&mut self.world);
-        self.configuration.ran_startup = true;
+        self.configuration().ran_startup = true;
         self
     }
 
     pub fn update(&mut self) {
-        if self.configuration.is_building_plugins() {
+        if self.configuration().is_building_plugins() {
             panic!("App::update() was called while building plugins")
         }
-        self.configuration.built();
-        self.configuration.ran_startup();
+        self.configuration().built();
+        self.configuration().ran_startup();
         for schedule in self.schedules.iter_mut() {
             schedule.run(&mut self.world);
         }
@@ -283,7 +296,7 @@ impl App {
     }
 
     pub fn run(&mut self) {
-        if self.configuration.is_building_plugins() {
+        if self.configuration().is_building_plugins() {
             panic!("App::run() was called while building plugins")
         }
         let function = std::mem::replace(&mut self.runner_fn, Box::new(runner_once));
@@ -314,6 +327,10 @@ impl App {
         self.world.remove_non_send_resource::<T>();
         self
     }
+
+    fn configuration<'w>(&'w self) -> ResMut<'w, ConfigurationContext> {
+        self.world().get_resource_mut::<ConfigurationContext>()
+    }
 }
 
 impl App {
@@ -323,34 +340,6 @@ impl App {
 
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
-    }
-
-    pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
-        &mut self,
-    ) -> ParallelQueryAccessor<Q, F> {
-        self.configuration.not_ready();
-        let mut local_reads = AccessVec::new();
-        let mut local_writes = AccessVec::new();
-        let mut local_with = AccessVec::new();
-        let mut local_without = AccessVec::new();
-
-        Q::collect_access(&mut local_reads, &mut local_writes);
-        F::collect_filter(&mut local_with, &mut local_without);
-        let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
-        let mut unique_writes = rustc_hash::FxHashSet::default();
-        let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
-
-        if has_intra_conflict || has_duplicate_writes {
-            panic!(
-                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in ParallelQueryAccessor: ParallelQueryAccessor<{}, {}> contains internal overlaps!",
-                std::any::type_name::<Q>(),
-                std::any::type_name::<F>()
-            );
-        }
-        ParallelQueryAccessor {
-            archetypes_map: self.world.archetypes_manager.archetypes.clone(),
-            _marker: PhantomData,
-        }
     }
 }
 
@@ -363,7 +352,7 @@ impl App {
         });
         self.startup_schedule.init_executor();
         self.cleanup_schedule.init_executor();
-        self.configuration.schedules_processed = true;
+        self.configuration().schedules_processed = true;
         #[cfg(feature = "reactivity")]
         register_removal_tracking_buffers(self);
     }
@@ -487,7 +476,7 @@ impl App {
             }
         }
 
-        self.configuration.systems_processed = true;
+        self.configuration().systems_processed = true;
     }
 
     fn configure_schedules(&mut self) {

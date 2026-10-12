@@ -89,9 +89,7 @@ fn test_system_sets() {
 
     let mut app = App::new();
 
-    let flat_accessor = app
-        .world_mut()
-        .get_par_resource_accessor::<SetConditionFlag>();
+    let flat_accessor = app.world().get_par_resource_accessor::<SetConditionFlag>();
     app.insert_resource(ExecutionHistory::default())
         .insert_resource(SetConditionFlag { counter: 0 })
         .configure_sets(
