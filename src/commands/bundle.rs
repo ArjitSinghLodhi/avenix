@@ -43,17 +43,17 @@ impl<T: Component> ComponentBundle for T {
         );
     }
     fn push_to_archetype(self, archetype: &mut Archetype) {
-        let mut vec_gaurd = archetype.get_column_mut::<T>();
-        vec_gaurd.push(self);
+        let mut vec_guard = archetype.get_column_mut::<T>();
+        vec_guard.push(self);
     }
     unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
         unsafe {
-            let mut vec_gaurd = archetype.get_column_mut::<T>();
-            if row_idx < vec_gaurd.len() {
-                std::ptr::drop_in_place(&mut vec_gaurd[row_idx]);
-                std::ptr::write(&mut vec_gaurd[row_idx], self);
+            let mut vec_guard = archetype.get_column_mut::<T>();
+            if row_idx < vec_guard.len() {
+                std::ptr::drop_in_place(&mut vec_guard[row_idx]);
+                std::ptr::write(&mut vec_guard[row_idx], self);
             } else {
-                vec_gaurd.push(self);
+                vec_guard.push(self);
             }
         }
     }

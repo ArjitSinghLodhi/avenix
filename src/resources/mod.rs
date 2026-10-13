@@ -75,7 +75,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_ref::<T>().expect("Resource type mismatch!") as *const T;
             Res {
                 _guard: guard,
-                _ref_gaurd: entry,
+                _ref_guard: entry,
                 res_ptr,
             }
         }
@@ -103,7 +103,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_mut::<T>().expect("Resource type mismatch!") as *mut T;
             ResMut {
                 _guard: guard,
-                _ref_gaurd: entry,
+                _ref_guard: entry,
                 res_ptr,
             }
         }
@@ -125,7 +125,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_ref::<T>()? as *const T;
             Some(Res {
                 _guard: guard,
-                _ref_gaurd: entry,
+                _ref_guard: entry,
                 res_ptr,
             })
         }
@@ -150,7 +150,7 @@ impl ConcurrentResourceRegistry {
             let res_ptr = guard.downcast_mut::<T>()? as *mut T;
             Some(ResMut {
                 _guard: guard,
-                _ref_gaurd: entry,
+                _ref_guard: entry,
                 res_ptr,
             })
         }
@@ -161,7 +161,7 @@ pub trait Resource: 'static {}
 
 pub struct Res<'w, T: Resource + Send + Sync> {
     _guard: RwLockReadGuard<'w, Box<dyn Any>>,
-    _ref_gaurd: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
+    _ref_guard: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
     res_ptr: *const T,
 }
 
@@ -200,7 +200,7 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Res<'w, T> {
 
 pub struct ResMut<'w, T: Resource + Send + Sync> {
     _guard: RwLockWriteGuard<'w, Box<dyn Any>>,
-    _ref_gaurd: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
+    _ref_guard: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
     res_ptr: *mut T,
 }
 

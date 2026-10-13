@@ -52,8 +52,8 @@ pub struct Commands<'a> {
 }
 
 impl<'a> Commands<'a> {
-    fn push<C: WorldCommand + 'static>(&self, command: C) {
-        self.queue.push(command);
+    fn queue<C: WorldCommand + 'static>(&self, command: C) {
+        self.queue.queue(command);
     }
 
     /// Schedules a command to spawn a single new entity with the provided bundle of components.
@@ -61,7 +61,7 @@ impl<'a> Commands<'a> {
     /// Because this command is deferred, no `Entity` identifier is returned immediately. The
     /// entity is generated and populated during the command execution phase.
     pub fn spawn<C: ComponentBundle + Send>(&self, components: C) {
-        self.push(SpawnCommand { components });
+        self.queue(SpawnCommand { components });
     }
 
     /// Schedules a command to batch-spawn multiple entities from an iterator of component bundles.
@@ -73,7 +73,7 @@ impl<'a> Commands<'a> {
         I: IntoIterator<Item = C>,
         I::IntoIter: Send + 'static,
     {
-        self.push(BatchSpawnCommand {
+        self.queue(BatchSpawnCommand {
             components_iter: Box::new(components_iter.into_iter()),
         });
     }
@@ -134,7 +134,7 @@ impl<'a> Commands<'a> {
         self.despawns.contains(entity)
     }
 
-    fn push_fn<F>(&self, f: F)
+    fn queue_fn<F>(&self, f: F)
     where
         F: FnOnce(&mut World) + Send + 'static,
     {
@@ -146,7 +146,7 @@ impl<'a> Commands<'a> {
     /// This command transfers ownership of the resource to the world during the command execution
     /// phase. If a resource of type `T` already exists, it is unconditionally dropped and replaced.
     pub fn insert_resource<T: Resource + Send + Sync>(&self, resource: T) {
-        self.push_fn(|world| {
+        self.queue_fn(|world| {
             world.insert_resource(resource);
         });
     }
@@ -156,7 +156,7 @@ impl<'a> Commands<'a> {
     /// The resource is dropped during the command execution phase. If the resource does not
     /// exist in the world, the engine handles it gracefully and silently does nothing.
     pub fn remove_resource<T: Resource + Send + Sync>(&self) {
-        self.push_fn(|world| {
+        self.queue_fn(|world| {
             world.remove_resource::<T>();
         });
     }
@@ -177,7 +177,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// * **If the component already exists:** The command is ignored and the data is **not** overwritten.
     ///   Neither the `Added<T>` nor `Changed<T>` filters are notified.
     pub fn add<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
-        self.commands.push(AddComponentsCommand {
+        self.commands.queue(AddComponentsCommand {
             entity: self.entity_id.clone(),
             components,
         });
@@ -193,7 +193,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. Neither the
     ///   `Added<T>` nor `Changed<T>` filters are notified.
     pub fn insert<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
-        self.commands.push(InsertComponentsCommand {
+        self.commands.queue(InsertComponentsCommand {
             entity: self.entity_id.clone(),
             components,
         });
@@ -208,7 +208,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// during command execution. If a component type in the bundle is not present on
     /// the entity, the engine handles it gracefully and silently does nothing.
     pub fn remove<C: ComponentBundle + Send>(&mut self) -> &mut Self {
-        self.commands.push(RemoveComponentsCommand::<C> {
+        self.commands.queue(RemoveComponentsCommand::<C> {
             entity: self.entity_id.clone(),
             _marker: PhantomData,
         });

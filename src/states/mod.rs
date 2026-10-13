@@ -1,9 +1,10 @@
 use crate::resources::ParallelResourceAccessor;
+use crate::schedule::SystemNode;
+use crate::system::IntoSystem;
 use crate::system::condition::Condition;
 use crate::{
     app::App,
     resources::{ResMut, Resource},
-    schedule::PreUpdate,
 };
 use std::fmt::Debug;
 
@@ -66,14 +67,33 @@ fn state_transition_system<T: States>(
 }
 
 pub(crate) fn setup_states_schedules_and_systems<T: States>(app: &mut App, state: T) {
-    app.add_systems(PreUpdate, state_transition_system::<T>)
-        .insert_resource(State {
-            current: state.clone(),
-            last: state.clone(),
-            just_changed: false,
-        })
-        .insert_resource(NextState::<T> { state: None });
+    let sys = SystemNode::new(state_transition_system::<T>.into_system());
+    if !app.world().has_resource::<StateTransitionSystems>() {
+        app.world()
+            .insert_resource(StateTransitionSystems { systems: vec![sys] });
+    } else {
+        let mut systems = app.world().get_resource_mut::<StateTransitionSystems>();
+        if systems
+            .systems
+            .iter()
+            .all(|sys| sys.system().func_type_id() != sys.system().func_type_id())
+        {
+            systems.systems.push(sys);
+        }
+    }
+    app.insert_resource(State {
+        current: state.clone(),
+        last: state.clone(),
+        just_changed: false,
+    })
+    .insert_resource(NextState::<T> { state: None });
 }
+
+pub(crate) struct StateTransitionSystems {
+    pub(crate) systems: Vec<SystemNode>,
+}
+
+impl Resource for StateTransitionSystems {}
 
 pub fn in_state<T: States>(
     expected: T,

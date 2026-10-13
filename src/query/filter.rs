@@ -51,14 +51,14 @@ pub struct Or<T>(PhantomData<T>);
 pub struct Not<F>(PhantomData<F>);
 
 impl<F: QueryFilter> QueryFilter for Not<F> {
-    type FilterData = (Option<F::FilterData>, bool);
+    type FilterData = Option<F::FilterData>;
 
     #[inline]
     fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
         if F::matches(archetype) {
-            (Some(F::init_filter_data(archetype)), true)
+            Some(F::init_filter_data(archetype))
         } else {
-            (None, false)
+            None
         }
     }
 
@@ -69,8 +69,8 @@ impl<F: QueryFilter> QueryFilter for Not<F> {
 
     #[inline]
     fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
-        if filter_data.1 {
-            !F::matches_row(filter_data.0.as_ref().unwrap(), row_idx)
+        if let Some(data) = filter_data {
+            !F::matches_row(data, row_idx)
         } else {
             true
         }

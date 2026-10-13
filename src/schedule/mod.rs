@@ -16,7 +16,7 @@ use crate::extensions::{System, World};
 
 use std::{any::Any, fmt::Debug};
 
-pub(crate) struct DefaultSchedulesPlugin;
+pub struct DefaultSchedulesPlugin;
 
 impl Plugin for DefaultSchedulesPlugin {
     fn build(&self, app: &mut App) {

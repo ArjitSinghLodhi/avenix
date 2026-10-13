@@ -82,7 +82,7 @@ impl ComponentColumn {
 }
 
 pub struct ComponentColumnRead<'a, T: Component> {
-    _gaurd: RwLockReadGuard<'a, Box<dyn AnyColumn>>,
+    _guard: RwLockReadGuard<'a, Box<dyn AnyColumn>>,
     column: *const Vec<T>,
 }
 
@@ -97,7 +97,7 @@ impl<'a, T: Component> Deref for ComponentColumnRead<'a, T> {
 }
 
 pub struct ComponentColumnWrite<'a, T: Component> {
-    _gaurd: RwLockWriteGuard<'a, Box<dyn AnyColumn>>,
+    _guard: RwLockWriteGuard<'a, Box<dyn AnyColumn>>,
     column: *mut Vec<T>,
 }
 
@@ -153,13 +153,13 @@ impl Archetype {
             .columns
             .get(&TypeId::of::<T>())
             .unwrap_or_else(|| panic!("Column missing of: {:?}", type_name::<T>()));
-        let read_gaurd = col.data.read();
-        let vector = read_gaurd
+        let read_guard = col.data.read();
+        let vector = read_guard
             .as_any()
             .downcast_ref::<Vec<T>>()
             .expect("Type mismatch") as *const Vec<T>;
         let reader = ComponentColumnRead {
-            _gaurd: read_gaurd,
+            _guard: read_guard,
             column: vector,
         };
         unsafe { transmute(reader) }
@@ -167,13 +167,13 @@ impl Archetype {
 
     pub fn get_column_opt<'a, T: Component>(&self) -> Option<ComponentColumnRead<'a, T>> {
         let col = self.columns.get(&TypeId::of::<T>())?;
-        let read_gaurd = col.data.read();
-        let vector = read_gaurd
+        let read_guard = col.data.read();
+        let vector = read_guard
             .as_any()
             .downcast_ref::<Vec<T>>()
             .expect("Type mismatch") as *const Vec<T>;
         let opt_read = Some(ComponentColumnRead {
-            _gaurd: read_gaurd,
+            _guard: read_guard,
             column: vector,
         });
         unsafe { transmute(opt_read) }
@@ -184,13 +184,13 @@ impl Archetype {
             .columns
             .get(&TypeId::of::<T>())
             .unwrap_or_else(|| panic!("Column missing of: {:?}", type_name::<T>()));
-        let mut write_gaurd = col.data.write();
-        let vector = write_gaurd
+        let mut write_guard = col.data.write();
+        let vector = write_guard
             .as_any_mut()
             .downcast_mut::<Vec<T>>()
             .expect("Type mismatch") as *mut Vec<T>;
         let writer = ComponentColumnWrite {
-            _gaurd: write_gaurd,
+            _guard: write_guard,
             column: vector,
         };
         unsafe { transmute(writer) }
@@ -198,13 +198,13 @@ impl Archetype {
 
     pub fn get_column_mut_opt<'a, T: Component>(&self) -> Option<ComponentColumnWrite<'a, T>> {
         let col = self.columns.get(&TypeId::of::<T>())?;
-        let mut write_gaurd = col.data.write();
-        let vector = write_gaurd
+        let mut write_guard = col.data.write();
+        let vector = write_guard
             .as_any_mut()
             .downcast_mut::<Vec<T>>()
             .expect("Type mismatch") as *mut Vec<T>;
         let opt_write = Some(ComponentColumnWrite {
-            _gaurd: write_gaurd,
+            _guard: write_guard,
             column: vector,
         });
         unsafe { transmute(opt_write) }
@@ -241,7 +241,7 @@ impl ArchetypeManager {
 
     #[cfg(feature = "reactivity")]
     pub(crate) fn sync_tracking_markers(&self, types: &mut IndexSet<TypeId, FxBuildHasher>) {
-        let tracked = TRACKED_COMPONENTS.read();
+        let tracked = TRACKED_COMPONENTS.lock();
         for (comp_id, meta_list) in tracked.iter() {
             if types.contains(comp_id) {
                 for meta in meta_list {
@@ -353,7 +353,7 @@ impl ArchetypeManager {
 
         #[cfg(feature = "reactivity")]
         {
-            let tracked = TRACKED_COMPONENTS.read();
+            let tracked = TRACKED_COMPONENTS.lock();
             for &comp_id in incoming_ids {
                 if let Some(meta_list) = tracked.get(&comp_id) {
                     for meta in meta_list {

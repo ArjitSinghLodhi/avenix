@@ -20,10 +20,11 @@ use crate::{
         ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
         Resource,
     },
+    states::StateTransitionSystems,
     world::archetypes::ArchetypeManager,
 };
 use crate::{
-    events::{Event, EventBuffer, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS},
+    events::{Event, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS},
     query::{QueryData, QueryFilter, parallel_query::ParallelQueryAccessor},
     system::SystemParam,
 };
@@ -214,14 +215,14 @@ impl World {
 
     pub fn apply_queue_commands(&mut self) {
         let queue_arc = self.commands.queue.clone();
-        let mut queue_gaurd = queue_arc.write();
-        queue_gaurd.apply(self);
+        let mut queue_guard = queue_arc.write();
+        queue_guard.apply(self);
     }
 
     pub fn apply_despawns(&mut self) {
         let despawns_arc = self.commands.despawns.clone();
-        let mut despawns_gaurd = despawns_arc.write();
-        apply_despawns(self, &mut despawns_gaurd);
+        let mut despawns_guard = despawns_arc.write();
+        apply_despawns(self, &mut despawns_guard);
     }
 
     pub fn end_of_frame_sync(&mut self) {
@@ -229,11 +230,12 @@ impl World {
         #[cfg(feature = "reactivity")]
         self.clear_trackers();
         self.clear_events();
+        self.transition_states();
     }
 
     #[cfg(feature = "reactivity")]
     fn clear_trackers(&mut self) {
-        let tracked_comps = TRACKED_COMPONENTS.read();
+        let tracked_comps = TRACKED_COMPONENTS.lock();
         if !tracked_comps.is_empty() {
             for archetype in self.archetypes_manager.archetypes.iter_mut() {
                 let mut archetype_lock = archetype.lock();
@@ -243,8 +245,8 @@ impl World {
                             if let Some(marker_column) =
                                 archetype_lock.columns.get_mut(&meta.marker_id)
                             {
-                                let mut gaurd = marker_column.data.write();
-                                let raw_any = gaurd.as_any_mut();
+                                let mut guard = marker_column.data.write();
+                                let raw_any = guard.as_any_mut();
                                 (meta.clear_column_markers)(raw_any);
                             }
                         }
@@ -253,7 +255,7 @@ impl World {
             }
         }
 
-        let removal_track = REMOVAL_TRACKED_COMPS.read();
+        let removal_track = REMOVAL_TRACKED_COMPS.lock();
         if !removal_track.is_empty() {
             for remove_meta in removal_track.values() {
                 (remove_meta.swap_and_clear_buffer)(self)
@@ -277,16 +279,23 @@ impl World {
         }
     }
 
+    fn transition_states(&mut self) {
+        let state_systems_opt = self.get_resource_mut_opt::<StateTransitionSystems>();
+        if let Some(mut state_systems) = state_systems_opt {
+            state_systems
+                .systems
+                .iter_mut()
+                .for_each(|sys| sys.run(self));
+        }
+    }
+
     /// Returns a thread-safe, thread-clonable [`ParallelCommands`] handle.
     ///
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input into the engine's command pipeline, manageable by external or
     /// parallel background worker threads.
     pub fn get_par_commands(&self) -> ParallelCommands {
-        ParallelCommands {
-            queue: self.commands.queue.clone(),
-            despawns: self.commands.despawns.clone(),
-        }
+        ParallelCommands::get_param(self)
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelEventWriter`] handle.
@@ -295,9 +304,7 @@ impl World {
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
     pub fn get_par_event_writer<T: Event>(&self) -> ParallelEventWriter<T> {
-        ParallelEventWriter {
-            write_queue: self.get_resource::<EventBuffer<T>>().write_queue.clone(),
-        }
+        ParallelEventWriter::get_param(self)
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelEventReader`] handle.
@@ -306,9 +313,7 @@ impl World {
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
     pub fn get_par_event_reader<T: Event>(&self) -> ParallelEventReader<T> {
-        ParallelEventReader {
-            read_queue: self.get_resource::<EventBuffer<T>>().read_queue.clone(),
-        }
+        ParallelEventReader::get_param(self)
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelResourceAccessor`] handle.
@@ -319,10 +324,7 @@ impl World {
     pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
         &self,
     ) -> ParallelResourceAccessor<T> {
-        ParallelResourceAccessor {
-            resources: self.resources.clone(),
-            _marker: PhantomData,
-        }
+        ParallelResourceAccessor::get_param(self)
     }
 
     pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
@@ -334,15 +336,15 @@ impl World {
 
 pub(crate) fn apply_despawns(
     world: &mut World,
-    despawns_gaurd: &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>,
+    despawns_guard: &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>,
 ) {
     #[cfg(feature = "reactivity")]
-    if !despawns_gaurd.is_empty() {
-        for meta in REMOVAL_TRACKED_COMPS.read().values() {
-            (meta.clear_dead_entities)(world, despawns_gaurd)
+    if !despawns_guard.is_empty() {
+        for meta in REMOVAL_TRACKED_COMPS.lock().values() {
+            (meta.clear_dead_entities)(world, despawns_guard)
         }
     }
-    for shard in despawns_gaurd.shards() {
+    for shard in despawns_guard.shards() {
         let mut lock = shard.write();
         for (entity_ref, _) in lock.drain() {
             unsafe {

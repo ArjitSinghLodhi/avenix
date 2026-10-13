@@ -32,7 +32,7 @@ impl CommandQueue {
         Self::default()
     }
 
-    pub(crate) fn push<C: WorldCommand>(&self, command: C) {
+    pub(crate) fn queue<C: WorldCommand>(&self, command: C) {
         let meta = CommandMeta {
             consume_and_advance: |chunks_iter, world| unsafe {
                 let mut local_buffer = MaybeUninit::<C>::uninit();
@@ -71,7 +71,7 @@ impl CommandQueue {
     where
         F: FnOnce(&mut World) + Send + 'static,
     {
-        self.push(FunctionCommand { func: f });
+        self.queue(FunctionCommand { func: f });
     }
 
     pub(crate) fn apply(&mut self, world: &mut World) {

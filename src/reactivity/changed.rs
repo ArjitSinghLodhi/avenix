@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 
 pub(crate) fn register_changed_tracked_component<T: Component>() {
     let _lock = verify_app_not_build_yet();
-    let mut tracked = TRACKED_COMPONENTS.write();
+    let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<ChangedMarker<T>>();
 
@@ -30,8 +30,8 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
             data: RwLock::new(Box::new(Vec::<ChangedMarker<T>>::new())),
         },
         push_default_marker: |column| {
-            let mut gaurd = column.data.write();
-            let raw_any = gaurd.as_any_mut();
+            let mut guard = column.data.write();
+            let raw_any = guard.as_any_mut();
             let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
             vec.push(ChangedMarker {
                 markers: [false; 2],
@@ -102,8 +102,8 @@ impl<T: Component> QueryData for ChangedTracker<T> {
     }
 
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
-        let marker_ptr = vec_gaurd.as_ptr();
+        let vec_guard = archetype.get_column::<ChangedMarker<T>>();
+        let marker_ptr = vec_guard.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
 
         ThreadSafe {
@@ -145,7 +145,7 @@ impl<T: Component> QueryData for ChangedTracker<T> {
 pub struct Changed<'a, T: Component>(std::marker::PhantomData<&'a T>);
 
 pub struct ChangedFilterData<'a, T: Component> {
-    vec_gaurd: ComponentColumnRead<'a, ChangedMarker<T>>,
+    vec_guard: ComponentColumnRead<'a, ChangedMarker<T>>,
     read_idx: usize,
 }
 
@@ -156,15 +156,15 @@ impl<'a, T: Component> QueryFilter for Changed<'a, T> {
     }
 
     fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
-        let vec_gaurd = archetype.get_column::<ChangedMarker<T>>();
+        let vec_guard = archetype.get_column::<ChangedMarker<T>>();
         ChangedFilterData {
-            vec_gaurd,
+            vec_guard,
             read_idx: CurrentBufferIdx::current_read_idx() as usize,
         }
     }
 
     fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
-        unsafe { (*(filter_data.vec_gaurd.as_ptr().add(row_idx))).markers[filter_data.read_idx] }
+        unsafe { (*(filter_data.vec_guard.as_ptr().add(row_idx))).markers[filter_data.read_idx] }
     }
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {

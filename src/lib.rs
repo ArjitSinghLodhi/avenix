@@ -165,8 +165,8 @@ pub mod app {
     }
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
-            SystemExecutor, SystemNode, SystemsSchedule, Update,
+            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
+            ScheduleLabel, Startup, SystemExecutor, SystemNode, SystemsSchedule, Update,
             dyn_eq::DynEq,
             executors::{
                 multi_threaded::MultiThreadedExecutor, single_threaded::SingleThreadedExecutor,

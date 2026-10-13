@@ -9,13 +9,13 @@ pub trait Plugin: 'static {
 #[doc(hidden)]
 pub trait PluginsBuildAll {
     #[doc(hidden)]
-    fn build_and_register_all(self, app: &mut App);
+    fn build_and_register_all(&self, app: &mut App);
     #[doc(hidden)]
     fn get_plugin_names(&self) -> Vec<&'static str>;
 }
 
 impl<T: Plugin> PluginsBuildAll for T {
-    fn build_and_register_all(self, app: &mut App) {
+    fn build_and_register_all(&self, app: &mut App) {
         self.build(app);
         app.registered_plugins.insert(TypeId::of::<Self>());
     }
@@ -28,7 +28,7 @@ impl<T: Plugin> PluginsBuildAll for T {
 macro_rules! plugin_tuple {
     ($($T:ident -> $idx:tt),*) => {
         impl<$($T: Plugin),*> PluginsBuildAll for ($($T,)*) {
-            fn build_and_register_all(self, app: &mut App) {
+            fn build_and_register_all(&self, app: &mut App) {
                 $(
                     $T::build(&self.$idx, app);
                     app.registered_plugins.insert(TypeId::of::<$T>());

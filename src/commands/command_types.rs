@@ -113,8 +113,8 @@ impl DespawnCommand {
                 panic!(
                     "\n\
                     Avenix Handle Violation: Cloned handles for an entity were not dropped before despawn execution!\n\
-                    Entity Archetype Component Names: {:?}\n\
-                    Refer to the `CleanupHandles` schedule and `Commands::despawn` documentation to understand how to coordinate handle cleanup.\n\
+                    Entity Archetype Component Names: \n{:#?}\n\
+                    Refer to the `CleanupHandles` schedule and `EntityCommands::despawn` documentation to understand how to coordinate handle cleanup.\n\
                     ",
                     types_names
                 );
@@ -501,8 +501,8 @@ unsafe fn move_matching_columns(
 ) {
     for (type_id, old_col) in src.iter_mut() {
         if let Some(new_col) = dst.get_mut(type_id) {
-            let mut data_gaurd = new_col.data.write();
-            let dst_ptr = &mut **data_gaurd as *mut dyn AnyColumn;
+            let mut data_guard = new_col.data.write();
+            let dst_ptr = &mut **data_guard as *mut dyn AnyColumn;
             unsafe { old_col.data.write().move_row_erased(row_idx, dst_ptr) };
         }
     }
@@ -536,7 +536,7 @@ unsafe fn swap_remove_entity_registry_update(arch: &mut Archetype, removed_row_i
 #[cfg(feature = "reactivity")]
 #[inline(always)]
 fn initialize_spawn_markers(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
-    let tracked = TRACKED_COMPONENTS.read();
+    let tracked = TRACKED_COMPONENTS.lock();
     for meta_list in tracked.values() {
         for meta in meta_list {
             if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
@@ -552,7 +552,7 @@ fn initialize_batch_spawn_markers(
     columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
     batch_size: usize,
 ) {
-    let tracked = TRACKED_COMPONENTS.read();
+    let tracked = TRACKED_COMPONENTS.lock();
     for meta_list in tracked.values() {
         for meta in meta_list {
             if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
@@ -570,7 +570,7 @@ fn initialize_missing_archetype_markers(
     types: &IndexSet<TypeId, FxBuildHasher>,
     columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
 ) {
-    let tracked = TRACKED_COMPONENTS.read();
+    let tracked = TRACKED_COMPONENTS.lock();
     for meta_list in tracked.values() {
         for meta in meta_list {
             if types.contains(&meta.marker_id) && !columns.contains_key(&meta.marker_id) {
@@ -587,7 +587,7 @@ unsafe fn migrate_addition_markers(
     incoming_ids: &[TypeId],
     new_cols: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
 ) {
-    let tracked = TRACKED_COMPONENTS.read();
+    let tracked = TRACKED_COMPONENTS.lock();
 
     // Performance Win: Instead of scanning all global trackers, only iterate
     // over the explicit subset of components being introduced to the entity.
@@ -614,7 +614,7 @@ unsafe fn erase_subtracted_markers(
     old_cols: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
     row_idx: usize,
 ) {
-    let tracked = TRACKED_COMPONENTS.read();
+    let tracked = TRACKED_COMPONENTS.lock();
     for meta_list in tracked.values() {
         for meta in meta_list {
             if old_types.contains(&meta.marker_id)
@@ -636,7 +636,7 @@ pub(crate) unsafe fn push_removed_components_reactivity(
     if removed_ids.is_empty() {
         return;
     }
-    let tracked = REMOVAL_TRACKED_COMPS.read();
+    let tracked = REMOVAL_TRACKED_COMPS.lock();
     if tracked.is_empty() {
         return;
     }

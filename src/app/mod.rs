@@ -107,7 +107,7 @@ impl Default for App {
 type RunnerFn = Box<dyn FnOnce(&mut App) + 'static>;
 
 pub struct App {
-    pub(crate) world: World,
+    world: World,
     registered_plugins: FxHashSet<TypeId>,
     startup_schedule: Schedule,
     cleanup_schedule: Schedule,
@@ -121,7 +121,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let mut app = Self::empty();
-        DefaultSchedulesPlugin::build(&DefaultSchedulesPlugin, &mut app);
+        DefaultSchedulesPlugin::build_and_register_all(&DefaultSchedulesPlugin, &mut app);
         app
     }
 
@@ -147,6 +147,12 @@ impl App {
             set_registrations: Vec::new(),
             runner_fn: Box::new(runner_once),
         }
+    }
+
+    pub fn has_schedule(&self, label: &impl ScheduleLabel) -> bool {
+        self.schedules
+            .iter()
+            .any(|schedule| schedule.schedule().dyn_eq(label))
     }
 
     pub fn init_state<T: States + Default>(&mut self) -> &mut Self {

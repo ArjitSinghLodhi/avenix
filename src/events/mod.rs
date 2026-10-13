@@ -43,10 +43,10 @@ pub(crate) fn register_event<T: Event>() {
                 let event_queue = raw_any
                     .downcast_mut::<EventBuffer<T>>()
                     .expect("Registered event queue was not found when clearing data");
-                let read_queue_gaurd = &mut *event_queue.read_queue.write();
-                let write_queue_gaurd = &mut *event_queue.write_queue.write();
-                read_queue_gaurd.queue.clear();
-                std::mem::swap(read_queue_gaurd, write_queue_gaurd);
+                let read_queue_guard = &mut *event_queue.read_queue.write();
+                let write_queue_guard = &mut *event_queue.write_queue.write();
+                read_queue_guard.queue.clear();
+                std::mem::swap(read_queue_guard, write_queue_guard);
             },
         });
     }

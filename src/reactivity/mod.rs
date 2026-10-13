@@ -2,7 +2,7 @@
 
 use crate::{app_impl::APP_BUILT, extensions::ComponentColumn};
 use indexmap::IndexMap;
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLockReadGuard};
 use rustc_hash::FxBuildHasher;
 use std::any::{Any, TypeId};
 
@@ -26,9 +26,9 @@ pub(crate) struct TrackedComponentMeta {
     pub(crate) clear_column_markers: unsafe fn(&mut dyn Any),
 }
 
-pub(crate) static TRACKED_COMPONENTS: RwLock<
+pub(crate) static TRACKED_COMPONENTS: Mutex<
     IndexMap<TypeId, Vec<TrackedComponentMeta>, FxBuildHasher>,
-> = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
+> = Mutex::new(IndexMap::with_hasher(FxBuildHasher));
 
 pub use changed::{Changed, ChangedTracker};
 

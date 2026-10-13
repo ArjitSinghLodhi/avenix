@@ -11,7 +11,7 @@ use crate::{
 
 pub(crate) fn register_added_tracked_component<T: Component>() {
     let _lock = verify_app_not_build_yet();
-    let mut tracked = TRACKED_COMPONENTS.write();
+    let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<AddedMarker<T>>();
 
@@ -27,8 +27,8 @@ pub(crate) fn register_added_tracked_component<T: Component>() {
             data: RwLock::new(Box::new(Vec::<AddedMarker<T>>::new())),
         },
         push_default_marker: |column| {
-            let mut gaurd = column.data.write();
-            let raw_any = gaurd.as_any_mut();
+            let mut guard = column.data.write();
+            let raw_any = guard.as_any_mut();
             let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
             let current_write_idx = CurrentBufferIdx::current_write_idx();
             let mut added_marker = [false; 2];
@@ -70,16 +70,16 @@ impl<T: Component> Component for AddedMarker<T> {}
 pub struct Added<'a, T: Component>(std::marker::PhantomData<&'a T>);
 
 pub struct AddedFilterData<'a, T: Component> {
-    vec_gaurd: ComponentColumnRead<'a, AddedMarker<T>>,
+    vec_guard: ComponentColumnRead<'a, AddedMarker<T>>,
     read_idx: usize,
 }
 
 impl<'a, T: Component> QueryFilter for Added<'a, T> {
     type FilterData = AddedFilterData<'a, T>;
     fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
-        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
+        let vec_guard = archetype.get_column::<AddedMarker<T>>();
         AddedFilterData {
-            vec_gaurd,
+            vec_guard,
             read_idx: CurrentBufferIdx::current_read_idx() as usize,
         }
     }
@@ -87,7 +87,7 @@ impl<'a, T: Component> QueryFilter for Added<'a, T> {
         archetype.has_column::<T>()
     }
     fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
-        unsafe { (*filter_data.vec_gaurd.as_ptr().add(row_idx)).added_marker[filter_data.read_idx] }
+        unsafe { (*filter_data.vec_guard.as_ptr().add(row_idx)).added_marker[filter_data.read_idx] }
     }
     fn collect_filter(
         withs: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -141,8 +141,8 @@ impl<T: Component> QueryData for AddedTracker<T> {
         archetype.has_column::<T>()
     }
     unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        let vec_gaurd = archetype.get_column::<AddedMarker<T>>();
-        let marker_ptr = vec_gaurd.as_ptr();
+        let vec_guard = archetype.get_column::<AddedMarker<T>>();
+        let marker_ptr = vec_guard.as_ptr();
         let current_read_idx = CurrentBufferIdx::current_read_idx();
         ThreadSafe {
             value: (current_read_idx, marker_ptr),

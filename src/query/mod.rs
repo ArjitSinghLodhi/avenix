@@ -119,9 +119,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .map(|_| None)
             .collect::<Vec<Option<Q::Fetch>>>();
 
-        let mut cached_indices = (0..archetypes_map.len())
-            .map(|_| None)
-            .collect::<Vec<Option<Vec<usize>>>>();
+        let mut cached_indices = vec![None; archetypes_map.len()];
 
         for arch_mutex in archetypes_map.iter() {
             let arch = arch_mutex.lock();

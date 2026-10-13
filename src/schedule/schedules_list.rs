@@ -130,9 +130,9 @@ impl SystemExecutor for CleanupHandlesExecutor {
         self.duplicate_batch.clear();
         let despawns_arc = world.commands.despawns.clone();
         {
-            let despawn_gaurd = despawns_arc.write();
-            if !despawn_gaurd.is_empty() {
-                for shard in despawn_gaurd.shards() {
+            let despawn_guard = despawns_arc.write();
+            if !despawn_guard.is_empty() {
+                for shard in despawn_guard.shards() {
                     let mut lock = shard.write();
                     for (entity, _) in lock.drain() {
                         let idx = entity.registry_index();
@@ -145,10 +145,10 @@ impl SystemExecutor for CleanupHandlesExecutor {
 
         loop {
             {
-                let despawn_gaurd = despawns_arc.write();
+                let despawn_guard = despawns_arc.write();
                 for entity in self.iteration_batch.drain(..) {
                     self.despawn_buffer.insert(entity.clone());
-                    despawn_gaurd.insert(entity);
+                    despawn_guard.insert(entity);
                 }
             }
 
@@ -156,12 +156,12 @@ impl SystemExecutor for CleanupHandlesExecutor {
 
             world.apply_queue_commands();
 
-            let mut despawns_gaurd = despawns_arc.write();
+            let mut despawns_guard = despawns_arc.write();
 
             let mut found_new_unique_despawn = false;
 
-            if !despawns_gaurd.is_empty() {
-                for shard in despawns_gaurd.shards() {
+            if !despawns_guard.is_empty() {
+                for shard in despawns_guard.shards() {
                     let mut lock = shard.write();
 
                     for (entity, _) in lock.drain() {
@@ -179,12 +179,12 @@ impl SystemExecutor for CleanupHandlesExecutor {
             if found_new_unique_despawn {
                 continue;
             }
-            despawns_gaurd.extend(self.despawn_buffer.drain());
-            despawns_gaurd.extend(self.duplicate_batch.drain(..));
+            despawns_guard.extend(self.despawn_buffer.drain());
+            despawns_guard.extend(self.duplicate_batch.drain(..));
             self.historical_seen.clear();
             self.iteration_batch.clear();
             self.duplicate_batch.clear();
-            apply_despawns(world, &mut despawns_gaurd);
+            apply_despawns(world, &mut despawns_guard);
             break;
         }
     }

@@ -2,7 +2,7 @@ use std::{any::TypeId, marker::PhantomData, sync::Arc};
 
 use dashmap::DashSet;
 use indexmap::IndexMap;
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub(crate) fn register_removal_tracking_buffers(app: &mut App) {
-    for meta in REMOVAL_TRACKED_COMPS.read().values() {
+    for meta in REMOVAL_TRACKED_COMPS.lock().values() {
         (meta.register_buffer)(app.world_mut())
     }
 }
@@ -30,13 +30,13 @@ pub(crate) struct RemovalTrackedMeta {
     pub(crate) push_to_write_queue: fn(&mut World, Entity),
 }
 
-pub(crate) static REMOVAL_TRACKED_COMPS: RwLock<
+pub(crate) static REMOVAL_TRACKED_COMPS: Mutex<
     IndexMap<TypeId, RemovalTrackedMeta, FxBuildHasher>,
-> = RwLock::new(IndexMap::with_hasher(FxBuildHasher));
+> = Mutex::new(IndexMap::with_hasher(FxBuildHasher));
 
 fn register_removal_tracking_comp<T: Component>() {
     let _lock = verify_app_not_build_yet();
-    let mut tracked = REMOVAL_TRACKED_COMPS.write();
+    let mut tracked = REMOVAL_TRACKED_COMPS.lock();
     tracked.insert(
         TypeId::of::<T>(),
         RemovalTrackedMeta {
@@ -50,18 +50,18 @@ fn register_removal_tracking_comp<T: Component>() {
             swap_and_clear_buffer: |world| {
                 let removed_tracking_buffer =
                     world.get_resource_mut::<RemovedComponentsBuffer<T>>();
-                let read_queue_gaurd = &mut *removed_tracking_buffer.read_queue.write();
-                let write_queue_gaurd = &mut *removed_tracking_buffer.write_queue.write();
-                read_queue_gaurd.clear();
-                std::mem::swap(read_queue_gaurd, write_queue_gaurd);
+                let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
+                let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
+                read_queue_guard.clear();
+                std::mem::swap(read_queue_guard, write_queue_guard);
             },
-            clear_dead_entities: |world, despawn_gaurd| {
+            clear_dead_entities: |world, despawn_guard| {
                 let removed_tracking_buffer =
                     world.get_resource_mut::<RemovedComponentsBuffer<T>>();
-                let read_queue_gaurd = &mut *removed_tracking_buffer.read_queue.write();
-                let write_queue_gaurd = &mut *removed_tracking_buffer.write_queue.write();
-                read_queue_gaurd.retain(|entity| !despawn_gaurd.contains(entity));
-                write_queue_gaurd.retain(|entity| !despawn_gaurd.contains(entity));
+                let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
+                let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
+                read_queue_guard.retain(|entity| !despawn_guard.contains(entity));
+                write_queue_guard.retain(|entity| !despawn_guard.contains(entity));
             },
             push_to_write_queue: |world, entity| {
                 let buffer = world.get_resource_mut::<RemovedComponentsBuffer<T>>();
