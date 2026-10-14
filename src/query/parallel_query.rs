@@ -65,8 +65,8 @@ unsafe impl<Q: QueryData, F: QueryFilter> Send for ParallelQueryAccessor<Q, F> {
 unsafe impl<Q: QueryData, F: QueryFilter> Sync for ParallelQueryAccessor<Q, F> {}
 
 impl<Q: QueryData, F: QueryFilter> SystemParam for ParallelQueryAccessor<Q, F> {
-    fn init_access(_system_meta: &mut SystemMeta) {
-        Query::<Q, F>::init_access(&mut SystemMeta::default());
+    fn init_access(system_meta: &mut SystemMeta) {
+        Query::<Q, F>::init_access(&mut SystemMeta::new(system_meta.get_func_name()));
     }
     fn get_param(world: &World) -> Self {
         ParallelQueryAccessor {

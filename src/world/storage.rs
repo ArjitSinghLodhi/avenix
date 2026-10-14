@@ -13,16 +13,10 @@ use std::{
 };
 
 use crate::{
-    app_impl::ConfigurationContext,
-    commands::{CommandBuffer, DespawnCommand, ParallelCommands},
-    entity::Entity,
-    entity_registry::REGISTRY_HANDLE_COUNT,
-    resources::{
+    app_impl::ConfigurationContext, commands::{CommandBuffer, DespawnCommand, ParallelCommands}, entity::Entity, entity_registry::REGISTRY_HANDLE_COUNT, resources::{
         ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
         Resource,
-    },
-    states::StateTransitionSystems,
-    world::archetypes::ArchetypeManager,
+    }, states::StateTransitionSystems, system::SystemMeta, world::archetypes::ArchetypeManager,
 };
 use crate::{
     events::{Event, ParallelEventReader, ParallelEventWriter, TRACKED_EVENTS},
@@ -332,6 +326,7 @@ impl World {
         &self,
     ) -> ParallelQueryAccessor<Q, F> {
         self.get_resource::<ConfigurationContext>().not_ready();
+        ParallelQueryAccessor::<Q, F>::init_access(&mut SystemMeta::default());
         ParallelQueryAccessor::<Q, F>::get_param(self)
     }
 }
