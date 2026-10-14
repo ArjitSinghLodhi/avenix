@@ -5,10 +5,9 @@ use parking_lot::Mutex;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    app_impl::ConfigurationContext,
     extensions::{Archetype, World},
     query::{EmptyQueryFilter, Query, QueryData, QueryFilter},
-    system::{AccessVec, SystemMeta, SystemParam},
+    system::{SystemMeta, SystemParam},
     world::archetypes::ArchetypeId,
 };
 
@@ -66,27 +65,10 @@ unsafe impl<Q: QueryData, F: QueryFilter> Send for ParallelQueryAccessor<Q, F> {
 unsafe impl<Q: QueryData, F: QueryFilter> Sync for ParallelQueryAccessor<Q, F> {}
 
 impl<Q: QueryData, F: QueryFilter> SystemParam for ParallelQueryAccessor<Q, F> {
-    fn init_access(_system_meta: &mut SystemMeta) {}
+    fn init_access(_system_meta: &mut SystemMeta) {
+        Query::<Q, F>::init_access(&mut SystemMeta::default());
+    }
     fn get_param(world: &World) -> Self {
-        world.get_resource::<ConfigurationContext>().not_ready();
-        let mut local_reads = AccessVec::new();
-        let mut local_writes = AccessVec::new();
-        let mut local_with = AccessVec::new();
-        let mut local_without = AccessVec::new();
-
-        Q::collect_access(&mut local_reads, &mut local_writes);
-        F::collect_filter(&mut local_with, &mut local_without);
-        let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
-        let mut unique_writes = rustc_hash::FxHashSet::default();
-        let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
-
-        if has_intra_conflict || has_duplicate_writes {
-            panic!(
-                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in ParallelQueryAccessor: ParallelQueryAccessor<{}, {}> contains internal overlaps!",
-                std::any::type_name::<Q>(),
-                std::any::type_name::<F>()
-            );
-        }
         ParallelQueryAccessor {
             archetypes_map: world.archetypes_manager.archetypes.clone(),
             _marker: PhantomData,

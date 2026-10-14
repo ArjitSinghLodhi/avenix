@@ -439,7 +439,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     }
 }
 
-impl<'q, 'a, Q: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query<'q, 'a, Q, F> {
+impl<'q, 'a, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, 'a, Q, F> {
     fn init_access(system_meta: &mut SystemMeta) {
         let mut local_reads = AccessVec::new();
         let mut local_writes = AccessVec::new();

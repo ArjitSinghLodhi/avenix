@@ -13,6 +13,7 @@ use std::{
 };
 
 use crate::{
+    app_impl::ConfigurationContext,
     commands::{CommandBuffer, DespawnCommand, ParallelCommands},
     entity::Entity,
     entity_registry::REGISTRY_HANDLE_COUNT,
@@ -330,6 +331,7 @@ impl World {
     pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
         &self,
     ) -> ParallelQueryAccessor<Q, F> {
+        self.get_resource::<ConfigurationContext>().not_ready();
         ParallelQueryAccessor::<Q, F>::get_param(self)
     }
 }

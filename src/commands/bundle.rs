@@ -8,9 +8,13 @@ use crate::{
     world::archetypes::{Archetype, ComponentColumn},
 };
 
+#[doc(hidden)]
 pub trait ComponentBundle: Send + Sync + 'static {
+    #[doc(hidden)]
     const TYPE_IDS: &[TypeId];
+    #[doc(hidden)]
     fn get_type_ids() -> &'static [TypeId];
+    #[doc(hidden)]
     fn push_to_archetype(self, archetype: &mut Archetype);
 
     /// # Safety
@@ -22,9 +26,13 @@ pub trait ComponentBundle: Send + Sync + 'static {
     /// * **Memory Lifecycle**: If an active component already occupies `row_idx`, the implementation
     ///   must safely run its destructor (`ptr::drop_in_place`) before overwriting it with `ptr::write`
     ///   to prevent memory leaks.
+    #[doc(hidden)]
     unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize);
+    #[doc(hidden)]
     fn create_empty_columns(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>);
+    #[doc(hidden)]
     type NamesArray: AsRef<[&'static str]>;
+    #[doc(hidden)]
     fn get_type_names() -> Self::NamesArray;
 }
 
