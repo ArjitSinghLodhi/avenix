@@ -183,10 +183,6 @@ pub struct Mut<'w, T: Component> {
 
 impl<'w, T: Component> Mut<'w, T> {
     #[inline(always)]
-    pub fn into_raw_mut(self) -> &'w mut T {
-        unsafe { &mut *self.value }
-    }
-    #[inline(always)]
     pub fn bypass_change_detection(&mut self) -> &mut T {
         unsafe { &mut *self.value }
     }
@@ -199,9 +195,10 @@ impl<'w, T: Component> Mut<'w, T> {
             }
         }
     }
+}
 
-    #[inline(always)]
-    pub fn as_ref(&self) -> &T {
+impl<'w, T: Component> AsRef<T> for Mut<'w, T> {
+    fn as_ref(&self) -> &T {
         unsafe { &*self.value }
     }
 }

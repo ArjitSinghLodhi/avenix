@@ -1,7 +1,7 @@
 use crate::{
     ecs::world::World,
     system::{
-        ParallelSystemParam,
+        ParallelSystemParam, SystemIdentity,
         condition::Condition,
         system_set::{SetConditionBuilder, SystemSet},
         system_traits::{AsSchedulingTarget, SystemOrderings},
@@ -13,8 +13,8 @@ pub struct SetConfig {
     pub(crate) set: Box<dyn SystemSet>,
     pub(crate) run_after_sets: Vec<Box<dyn SystemSet>>,
     pub(crate) run_before_sets: Vec<Box<dyn SystemSet>>,
-    pub(crate) run_after_systems: Vec<std::any::TypeId>,
-    pub(crate) run_before_systems: Vec<std::any::TypeId>,
+    pub(crate) run_after_systems: Vec<Box<dyn SystemIdentity>>,
+    pub(crate) run_before_systems: Vec<Box<dyn SystemIdentity>>,
     pub(crate) member_of: Vec<Box<dyn SystemSet>>,
     pub(crate) condition_builders: Vec<SetConditionBuilder>,
 }
@@ -112,7 +112,9 @@ pub trait SystemSetExt: SystemSet + Sized {
         let mut orderings = SystemOrderings::default();
         target.populate_after(&mut orderings);
         config.run_after_sets = orderings.run_after_sets;
-        config.run_after_systems = orderings.run_after_systems;
+        for sys_id in orderings.run_after_systems {
+            config.run_after_systems.push(sys_id.clone_box());
+        }
         config
     }
 
@@ -129,7 +131,9 @@ pub trait SystemSetExt: SystemSet + Sized {
         let mut orderings = SystemOrderings::default();
         target.populate_before(&mut orderings);
         config.run_before_sets = orderings.run_before_sets;
-        config.run_before_systems = orderings.run_before_systems;
+        for sys_id in orderings.run_before_systems {
+            config.run_before_systems.push(sys_id.clone_box());
+        }
         config
     }
 
@@ -176,7 +180,9 @@ impl SetConfig {
         let mut orderings = SystemOrderings::default();
         target.populate_after(&mut orderings);
         self.run_after_sets.extend(orderings.run_after_sets);
-        self.run_after_systems.extend(orderings.run_after_systems);
+        for sys_id in orderings.run_after_systems {
+            self.run_after_systems.push(sys_id.clone_box());
+        }
         self
     }
 
@@ -184,7 +190,9 @@ impl SetConfig {
         let mut orderings = SystemOrderings::default();
         target.populate_before(&mut orderings);
         self.run_before_sets.extend(orderings.run_before_sets);
-        self.run_before_systems.extend(orderings.run_before_systems);
+        for sys_id in orderings.run_before_systems {
+            self.run_before_systems.push(sys_id.clone_box());
+        }
         self
     }
 
@@ -250,9 +258,9 @@ impl SystemSetConfigsExt for SystemSetConfigs {
             config
                 .run_after_sets
                 .extend(orderings.run_after_sets.iter().map(|s| s.clone_box()));
-            config
-                .run_after_systems
-                .extend(orderings.run_after_systems.clone());
+            for sys_id in &orderings.run_after_systems {
+                config.run_after_systems.push(sys_id.clone_box());
+            }
         }
         self
     }
@@ -264,9 +272,9 @@ impl SystemSetConfigsExt for SystemSetConfigs {
             config
                 .run_before_sets
                 .extend(orderings.run_before_sets.iter().map(|s| s.clone_box()));
-            config
-                .run_before_systems
-                .extend(orderings.run_before_systems.clone());
+            for sys_id in &orderings.run_before_systems {
+                config.run_before_systems.push(sys_id.clone_box());
+            }
         }
         self
     }

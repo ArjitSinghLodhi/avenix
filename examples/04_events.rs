@@ -20,8 +20,21 @@ fn main() {
             Update,
             (
                 increment_frame_system,
-                event_execution_system,
-                event_verification_system,
+                event_execution_system.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                event_verification_frame_2.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                event_verification_frame_3.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 3)
+                    },
+                ),
             )
                 .chain(),
         );
@@ -36,42 +49,36 @@ fn increment_frame_system(mut tracker: ResMut<FrameCounter>) {
     tracker.current_frame += 1;
 }
 
-fn event_execution_system(
-    counter: Res<FrameCounter>,
-    reader: EventReader<ThreatEvent>,
-    writer: EventWriter<ThreatEvent>,
-) {
-    if counter.current_frame == 1 {
-        println!("[Frame 1] Sending events via EventWriter...");
-        writer.send(ThreatEvent { value: 100.0 });
-        writer.send(ThreatEvent { value: 50.0 });
-        let instant_read_count = reader.read().count();
-        assert_eq!(instant_read_count, 0);
-    }
+fn event_execution_system(reader: EventReader<ThreatEvent>, writer: EventWriter<ThreatEvent>) {
+    println!("[Frame 1] Sending events via EventWriter...");
+    writer.send(ThreatEvent { value: 100.0 });
+    writer.send(ThreatEvent { value: 50.0 });
+    let instant_read_count = reader.read().count();
+    assert_eq!(instant_read_count, 0);
 }
 
-fn event_verification_system(counter: Res<FrameCounter>, reader: EventReader<ThreatEvent>) {
+fn event_verification_frame_2(reader: EventReader<ThreatEvent>) {
     let count = reader.read().count();
+    println!("\n>> Avenix Event Analysis (Frame 2):");
+    println!("   -> EventReader verified count: {}", count);
+    assert_eq!(count, 2);
 
-    if counter.current_frame == 2 {
-        println!("\n>> Avenix Event Analysis (Frame 2):");
-        println!("   -> EventReader verified count: {}", count);
-        assert_eq!(count, 2);
-
-        let mut values = Vec::new();
-        for event in reader.read() {
-            values.push(event.value);
-        }
-        assert!(values.contains(&100.0));
-        assert!(values.contains(&50.0));
-
-        println!("   -> Success: All events synchronized cleanly on Frame 2!");
-    } else if counter.current_frame == 3 {
-        println!("\n>> Avenix Event Analysis (Frame 3):");
-        println!("   -> Checking event buffer decay. Reader count: {}", count);
-        assert_eq!(count, 0);
-        println!("   -> Success: Event buffers automatically decayed and cleared!");
+    let mut values = Vec::new();
+    for event in reader.read() {
+        values.push(event.value);
     }
+    assert!(values.contains(&100.0));
+    assert!(values.contains(&50.0));
+
+    println!("   -> Success: All events synchronized cleanly on Frame 2!");
+}
+
+fn event_verification_frame_3(reader: EventReader<ThreatEvent>) {
+    let count = reader.read().count();
+    println!("\n>> Avenix Event Analysis (Frame 3):");
+    println!("   -> Checking event buffer decay. Reader count: {}", count);
+    assert_eq!(count, 0);
+    println!("   -> Success: Event buffers automatically decayed and cleared!");
 }
 
 fn test_three_frames(app: &mut App) {

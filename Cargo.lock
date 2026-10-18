@@ -40,7 +40,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avenix"
-version = "0.20.5"
+version = "0.21.0"
 dependencies = [
  "avenix_macros",
  "criterion",
@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12e0d66d28f9d5e770b8e369258ed3caaedd782d342ac7530ee1258a5ee6139f"
+checksum = "73a483d4cf230b5987eb40095f255612ca37de0572b7210d5f8435359f1b5cc4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -239,9 +239,9 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "equivalent"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "find-msvc-tools"
@@ -334,9 +334,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "lock_api"
@@ -799,9 +799,9 @@ dependencies = [
 
 [[package]]
 name = "test-fork"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2356a5571da06fe06efc9cd4360ced27f6da0cfeee27fd717bb0a18dcfdf43b5"
+checksum = "6df86b469954c700e72913608ee8ee28b9f2b7afd9d3ffe01915791884c9172c"
 dependencies = [
  "test-fork-core",
  "test-fork-macros",
@@ -809,9 +809,9 @@ dependencies = [
 
 [[package]]
 name = "test-fork-core"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "837022bdf57df52252e90ee67301d2113862260bccbf8e41dfb6d3465e689de9"
+checksum = "f58f39f442194ee594d70ac8fec3ada39c5e173b063dca65413d56d9939e663f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -820,9 +820,9 @@ dependencies = [
 
 [[package]]
 name = "test-fork-macros"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfd7e03904f29d299e9ca68642c3d926bbc47776ca25da9121fbd65de40c0eb8"
+checksum = "6084206131f0f85f809717dd7139272aa324a3684bb00dd122bb28effbbd6663"
 dependencies = [
  "syn 3.0.9",
  "test-fork-core",
@@ -996,18 +996,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86502bf56ac7c77571a32e2647bb2a15894565e981fb2a48d7bde2d91c965a9d"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.62"
+version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5457206954b06561e2608c7e19cf58b1926586d999c246eebe4502f7e2039d1a"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
 dependencies = [
  "proc-macro2",
  "quote",

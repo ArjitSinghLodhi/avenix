@@ -282,3 +282,60 @@ fn test_system_sets_tuple_level_orderings() {
         " -> Verification Complete: Symmetrical tuple-to-set and set-to-tuple block bounds resolved cleanly!"
     );
 }
+
+#[derive(PartialEq, Clone, Debug, SystemSet)]
+struct GuardValidationSet;
+
+#[derive(Resource, Default)]
+struct RunPermissionFlag {
+    allowed: bool,
+}
+
+fn pre_condition_setter(mut perm: ResMut<RunPermissionFlag>) {
+    perm.allowed = true;
+}
+
+fn validate_set_member(mut history: ResMut<ExecutionHistory>) {
+    history.steps.push(ExecutionStep::SecondaryVerification);
+}
+
+#[test_fork::test]
+fn test_system_ordered_strictly_before_guard_node() {
+    println!("=== Avenix GuardNode Topological Evaluation Sequence Test ===");
+
+    let mut app = App::new();
+
+    app.insert_resource(ExecutionHistory::default())
+        .insert_resource(RunPermissionFlag::default())
+        .configure_sets(
+            Update,
+            GuardValidationSet.run_if(|perm: &ParallelResourceAccessor<RunPermissionFlag>| {
+                perm.scope(|p| p.allowed)
+            }),
+        )
+        .add_systems(
+            Update,
+            (
+                pre_condition_setter.before(GuardValidationSet),
+                validate_set_member.in_set(GuardValidationSet),
+            ),
+        );
+
+    app.build();
+    app.run_startup();
+    app.update();
+
+    let history = app.world().get_resource::<ExecutionHistory>();
+    println!("Evaluated execution trace sequence: {:?}", history.steps);
+
+    assert!(
+        history
+            .steps
+            .contains(&ExecutionStep::SecondaryVerification),
+        "❌ SCHEDULING FAILURE: The system configured to run before the SystemSet did not execute before the GuardNode checked the condition!"
+    );
+
+    println!(
+        " -> Verification Complete: Systems configured before a set are confirmed to execute prior to GuardNode evaluation!"
+    );
+}

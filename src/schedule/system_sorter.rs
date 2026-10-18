@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 
 use crate::{
     app_impl::SystemsBlock,
@@ -95,10 +95,10 @@ pub(crate) fn dispatch_system_blocks(
 
 pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
     struct SortingMeta {
-        type_id: TypeId,
-        name: &'static str,
-        run_after_systems: Vec<TypeId>,
-        run_before_systems: Vec<TypeId>,
+        identity: Box<dyn crate::system::SystemIdentity>,
+        name: String,
+        run_after_systems: Vec<Box<dyn crate::system::SystemIdentity>>,
+        run_before_systems: Vec<Box<dyn crate::system::SystemIdentity>>,
         is_send: bool,
         component_reads: Vec<TypeId>,
         component_writes: Vec<TypeId>,
@@ -112,8 +112,8 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
     let mut meta_list = Vec::with_capacity(n);
     for node in schedule_systems.iter_mut() {
         let system_mut_ref = node.system_mut();
-        let tid = system_mut_ref.func_type_id();
-        let sys_name = system_mut_ref.name();
+        let sys_identity = system_mut_ref.identity();
+        let sys_name = system_mut_ref.identity().display_name();
 
         let meta = system_mut_ref.get_or_init(SystemMeta::default);
         let is_send = meta.is_send();
@@ -124,12 +124,20 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         let with_filters = meta.with_filters().copied().collect();
         let without_filters = meta.without_filters().copied().collect();
 
-        let orderings = system_mut_ref.get_or_init(SystemOrderings::default);
-        let run_after_systems = orderings.run_after_systems.clone();
-        let run_before_systems = orderings.run_before_systems.clone();
+        let orderings = system_mut_ref.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
+        let run_after_systems = orderings
+            .run_after_systems
+            .iter()
+            .map(|id| id.clone_box())
+            .collect();
+        let run_before_systems = orderings
+            .run_before_systems
+            .iter()
+            .map(|id| id.clone_box())
+            .collect();
 
         meta_list.push(SortingMeta {
-            type_id: tid,
+            identity: sys_identity,
             name: sys_name,
             run_after_systems,
             run_before_systems,
@@ -143,61 +151,72 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         });
     }
 
-    let mut type_to_idx: FxHashMap<TypeId, usize> =
-        FxHashMap::with_capacity_and_hasher(n, FxBuildHasher);
-    for (idx, meta) in meta_list.iter().enumerate() {
-        type_to_idx.insert(meta.type_id, idx);
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if meta_list[i]
+                .identity
+                .dyn_system_eq(meta_list[j].identity.as_ref())
+            {
+                panic!(
+                    "❌ SCHEDULING ERROR: Multiple instances of system '{}' are registered! This will cause non-deterministic execution.",
+                    meta_list[i].name
+                );
+            }
+        }
     }
 
     let mut graph: Vec<Vec<usize>> = vec![vec![]; n];
     let mut in_degree = vec![0; n];
 
     for (idx, meta) in meta_list.iter().enumerate() {
-        for target_type in &meta.run_after_systems {
-            if *target_type == meta.type_id {
+        for target_id in &meta.run_after_systems {
+            if target_id.dyn_system_eq(meta.identity.as_ref()) {
                 panic!(
                     "❌ SCHEDULING ERROR: System '{}' cannot be configured to run after itself!",
                     meta.name
                 );
             }
-            match type_to_idx.get(target_type) {
-                Some(&target_idx) => {
+            let mut found = false;
+            for (target_idx, prospective_match) in meta_list.iter().enumerate() {
+                if target_id.dyn_system_eq(prospective_match.identity.as_ref()) {
                     graph[target_idx].push(idx);
                     in_degree[idx] += 1;
-                }
-                None => {
-                    panic!(
-                        "❌ SCHEDULING ERROR: System '{}' attempted to schedule a dependency targeting a system that does not exist in this schedule!",
-                        meta.name
-                    );
+                    found = true;
                 }
             }
+            if !found {
+                panic!(
+                    "❌ SCHEDULING ERROR: System '{}' attempted to schedule a dependency targeting a system that does not exist in this schedule!",
+                    meta.name
+                );
+            }
         }
-        for target_type in &meta.run_before_systems {
-            if *target_type == meta.type_id {
+        for target_id in &meta.run_before_systems {
+            if target_id.dyn_system_eq(meta.identity.as_ref()) {
                 panic!(
                     "❌ SCHEDULING ERROR: System '{}' cannot be configured to run before itself!",
                     meta.name
                 );
             }
-            match type_to_idx.get(target_type) {
-                Some(&target_idx) => {
+            let mut found = false;
+            for (target_idx, prospective_match) in meta_list.iter().enumerate() {
+                if target_id.dyn_system_eq(prospective_match.identity.as_ref()) {
                     graph[idx].push(target_idx);
                     in_degree[target_idx] += 1;
+                    found = true;
                 }
-                None => {
-                    panic!(
-                        "❌ SCHEDULING ERROR: System '{}' attempted to schedule a dependency targeting a system that does not exist in this schedule!",
-                        meta.name
-                    );
-                }
+            }
+            if !found {
+                panic!(
+                    "❌ SCHEDULING ERROR: System '{}' attempted to schedule a dependency targeting a system that does not exist in this schedule!",
+                    meta.name
+                );
             }
         }
     }
 
     let mut sorted_indices = Vec::with_capacity(n);
     let mut completed = vec![false; n];
-
     let mut active_batch_systems: Vec<usize> = Vec::new();
 
     while sorted_indices.len() < n {

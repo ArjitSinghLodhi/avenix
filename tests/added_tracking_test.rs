@@ -41,15 +41,7 @@ fn setup_double_buffer_entities(commands: Commands) {
     commands.spawn((Position { x: 3.0, y: 3.0 }, EntityTag::DenseNeighbor));
 }
 
-fn apply_frame_1_mutations(
-    counter: Res<FrameCounter>,
-    query: Query<(Entity, &EntityTag)>,
-    commands: Commands,
-) {
-    if counter.current_frame != 1 {
-        return;
-    }
-
+fn apply_frame_1_mutations(query: Query<(Entity, &EntityTag)>, commands: Commands) {
     for (entity, tag) in query.iter() {
         let mut entity_cmd = commands.entity(entity.clone());
         match tag {
@@ -65,14 +57,9 @@ fn apply_frame_1_mutations(
 }
 
 fn verify_frame_1_buffering_isolation(
-    counter: Res<FrameCounter>,
     query_added_vel: Query<&EntityTag, Added<Velocity>>,
     query_added_accel: Query<&EntityTag, Added<Acceleration>>,
 ) {
-    if counter.current_frame != 1 {
-        return;
-    }
-
     let mut vel_visible_early = false;
     for _ in query_added_vel.iter() {
         vel_visible_early = true;
@@ -95,15 +82,10 @@ fn verify_frame_1_buffering_isolation(
 }
 
 fn verify_frame_2_buffered_reads(
-    counter: Res<FrameCounter>,
     query_vel: Query<&EntityTag, Added<Velocity>>,
     query_accel: Query<&EntityTag, Added<Acceleration>>,
     query_neighbor: Query<&EntityTag, (With<Position>, Without<Velocity>, Without<Acceleration>)>,
 ) {
-    if counter.current_frame != 2 {
-        return;
-    }
-
     let mut vel_detected = false;
     for tag in query_vel.iter() {
         if *tag == EntityTag::AdderTarget {
@@ -117,7 +99,6 @@ fn verify_frame_2_buffered_reads(
     );
 
     let mut accel_detected = false;
-
     for tag in query_accel.iter() {
         if *tag == EntityTag::InserterTarget {
             accel_detected = true;
@@ -130,7 +111,6 @@ fn verify_frame_2_buffered_reads(
     );
 
     let mut neighbor_intact = false;
-
     for tag in query_neighbor.iter() {
         if *tag == EntityTag::DenseNeighbor {
             neighbor_intact = true;
@@ -143,15 +123,7 @@ fn verify_frame_2_buffered_reads(
     );
 }
 
-fn apply_frame_2_redundant_insert(
-    counter: Res<FrameCounter>,
-    query: Query<(Entity, &EntityTag)>,
-    commands: Commands,
-) {
-    if counter.current_frame != 2 {
-        return;
-    }
-
+fn apply_frame_2_redundant_insert(query: Query<(Entity, &EntityTag)>, commands: Commands) {
     for (entity, tag) in query.iter() {
         if *tag == EntityTag::InserterTarget {
             commands
@@ -162,16 +134,10 @@ fn apply_frame_2_redundant_insert(
 }
 
 fn verify_frame_3_decay_and_overwrites(
-    counter: Res<FrameCounter>,
     query_vel: Query<&EntityTag, Added<Velocity>>,
     query_accel: Query<&EntityTag, Added<Acceleration>>,
 ) {
-    if counter.current_frame != 3 {
-        return;
-    }
-
     let mut vel_active = false;
-
     for _ in query_vel.iter() {
         vel_active = true;
     }
@@ -182,7 +148,6 @@ fn verify_frame_3_decay_and_overwrites(
     );
 
     let mut accel_retriggered = false;
-
     for _ in query_accel.iter() {
         accel_retriggered = true;
     }
@@ -201,11 +166,31 @@ fn test_double_buffered_add_and_insert() {
             Update,
             (
                 increment_frame_system,
-                apply_frame_1_mutations,
-                verify_frame_1_buffering_isolation,
-                verify_frame_2_buffered_reads,
-                apply_frame_2_redundant_insert,
-                verify_frame_3_decay_and_overwrites,
+                apply_frame_1_mutations.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                verify_frame_1_buffering_isolation.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                verify_frame_2_buffered_reads.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                apply_frame_2_redundant_insert.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                verify_frame_3_decay_and_overwrites.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 3)
+                    },
+                ),
             )
                 .chain(),
         );
@@ -222,14 +207,12 @@ fn test_runner_double_buffered(app: &mut App) {
     app.update();
 }
 
-fn complex_added_filter_verify_system(
-    counter: Res<FrameCounter>,
+fn complex_added_filter_verify_frame_1(
     not_added_q: Query<&EntityTag, Not<Added<Velocity>>>,
     not_or_q: Query<&EntityTag, Not<Or<(Added<Velocity>, Added<Acceleration>)>>>,
     or_mixed_q: Query<&EntityTag, Or<(Added<Velocity>, With<Position>)>>,
 ) {
     let mut not_added_count = 0;
-
     for tag in not_added_q.iter() {
         if *tag == EntityTag::AdderTarget {
             not_added_count += 1;
@@ -237,7 +220,6 @@ fn complex_added_filter_verify_system(
     }
 
     let mut not_or_count = 0;
-
     for tag in not_or_q.iter() {
         if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
             not_or_count += 1;
@@ -245,30 +227,77 @@ fn complex_added_filter_verify_system(
     }
 
     let mut or_mixed_count = 0;
-
     for tag in or_mixed_q.iter() {
         if *tag == EntityTag::AdderTarget {
             or_mixed_count += 1;
         }
     }
 
-    if counter.current_frame == 1 {
-        assert_eq!(not_added_count, 1);
-        assert_eq!(not_or_count, 2);
-        assert_eq!(or_mixed_count, 1);
+    assert_eq!(not_added_count, 1);
+    assert_eq!(not_or_count, 2);
+    assert_eq!(or_mixed_count, 1);
+}
+
+fn complex_added_filter_verify_frame_2(
+    not_added_q: Query<&EntityTag, Not<Added<Velocity>>>,
+    not_or_q: Query<&EntityTag, Not<Or<(Added<Velocity>, Added<Acceleration>)>>>,
+    or_mixed_q: Query<&EntityTag, Or<(Added<Velocity>, With<Position>)>>,
+) {
+    let mut not_added_count = 0;
+    for tag in not_added_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            not_added_count += 1;
+        }
     }
 
-    if counter.current_frame == 2 {
-        assert_eq!(not_added_count, 0);
-        assert_eq!(not_or_count, 0);
-        assert_eq!(or_mixed_count, 1);
+    let mut not_or_count = 0;
+    for tag in not_or_q.iter() {
+        if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
+            not_or_count += 1;
+        }
     }
 
-    if counter.current_frame == 3 {
-        assert_eq!(not_added_count, 1);
-        assert_eq!(not_or_count, 2);
-        assert_eq!(or_mixed_count, 1);
+    let mut or_mixed_count = 0;
+    for tag in or_mixed_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            or_mixed_count += 1;
+        }
     }
+
+    assert_eq!(not_added_count, 0);
+    assert_eq!(not_or_count, 0);
+    assert_eq!(or_mixed_count, 1);
+}
+
+fn complex_added_filter_verify_frame_3(
+    not_added_q: Query<&EntityTag, Not<Added<Velocity>>>,
+    not_or_q: Query<&EntityTag, Not<Or<(Added<Velocity>, Added<Acceleration>)>>>,
+    or_mixed_q: Query<&EntityTag, Or<(Added<Velocity>, With<Position>)>>,
+) {
+    let mut not_added_count = 0;
+    for tag in not_added_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            not_added_count += 1;
+        }
+    }
+
+    let mut not_or_count = 0;
+    for tag in not_or_q.iter() {
+        if *tag == EntityTag::AdderTarget || *tag == EntityTag::InserterTarget {
+            not_or_count += 1;
+        }
+    }
+
+    let mut or_mixed_count = 0;
+    for tag in or_mixed_q.iter() {
+        if *tag == EntityTag::AdderTarget {
+            or_mixed_count += 1;
+        }
+    }
+
+    assert_eq!(not_added_count, 1);
+    assert_eq!(not_or_count, 2);
+    assert_eq!(or_mixed_count, 1);
 }
 
 #[test_fork::test]
@@ -280,8 +309,24 @@ fn test_complex_added_combinator_filters() {
         Update,
         (
             increment_frame_system,
-            apply_frame_1_mutations,
-            complex_added_filter_verify_system,
+            apply_frame_1_mutations.run_if(|counter: &ParallelResourceAccessor<FrameCounter>| {
+                counter.scope(|c| c.current_frame == 1)
+            }),
+            complex_added_filter_verify_frame_1.run_if(
+                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 1)
+                },
+            ),
+            complex_added_filter_verify_frame_2.run_if(
+                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 2)
+                },
+            ),
+            complex_added_filter_verify_frame_3.run_if(
+                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 3)
+                },
+            ),
         )
             .chain(),
     );

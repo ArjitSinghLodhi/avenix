@@ -37,7 +37,6 @@ fn pre_mutation_verify_system(
     let vel_changes = vel_changed_query.total_entities();
 
     let mut pos_tracker_changes = 0;
-
     for tracker in pos_tracker_query.iter() {
         if tracker.is_changed() {
             pos_tracker_changes += 1;
@@ -45,7 +44,6 @@ fn pre_mutation_verify_system(
     }
 
     let mut vel_tracker_changes = 0;
-
     for tracker in vel_tracker_query.iter() {
         if tracker.is_changed() {
             vel_tracker_changes += 1;
@@ -130,18 +128,15 @@ fn pre_mutation_verify_system(
 }
 
 fn midstream_mutator_system(
-    counter: Res<FrameCounter>,
     mut pos_query: Query<&mut Position>,
     mut vel_query: Query<&mut Velocity>,
 ) {
-    if counter.current_frame == 2 {
-        for mut pos in pos_query.iter_mut() {
-            *pos = Position { x: 20.0, y: 10.0 };
-        }
+    for mut pos in pos_query.iter_mut() {
+        *pos = Position { x: 20.0, y: 10.0 };
+    }
 
-        for mut vel in vel_query.iter_mut() {
-            *vel = Velocity { x: 5.0, y: 1.0 };
-        }
+    for mut vel in vel_query.iter_mut() {
+        *vel = Velocity { x: 5.0, y: 1.0 };
     }
 }
 
@@ -156,7 +151,6 @@ fn post_mutation_verify_system(
     let vel_changes = vel_changed_query.total_entities();
 
     let mut pos_tracker_changes = 0;
-
     for tracker in pos_tracker_query.iter() {
         if tracker.is_changed() {
             pos_tracker_changes += 1;
@@ -164,7 +158,6 @@ fn post_mutation_verify_system(
     }
 
     let mut vel_tracker_changes = 0;
-
     for tracker in vel_tracker_query.iter() {
         if tracker.is_changed() {
             vel_tracker_changes += 1;
@@ -270,7 +263,9 @@ fn test_multiple_changed_filters_lifecycle() {
         (
             increment_frame_system,
             pre_mutation_verify_system,
-            midstream_mutator_system,
+            midstream_mutator_system.run_if(|counter: &ParallelResourceAccessor<FrameCounter>| {
+                counter.scope(|c| c.current_frame == 2)
+            }),
             post_mutation_verify_system,
         )
             .chain(),
@@ -345,60 +340,70 @@ fn test_runner_once(app: &mut App) {
     app.update();
 }
 
-fn complex_filter_verify_system(
-    counter: Res<FrameCounter>,
+fn complex_filter_verify_frame_1(
     not_changed_q: Query<&Position, Not<Changed<Position>>>,
     not_or_q: Query<&Position, Not<Or<(Changed<Position>, Changed<Velocity>)>>>,
     or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
 ) {
-    let not_changed_count = not_changed_q.total_entities();
-    let not_or_count = not_or_q.total_entities();
-    let or_mixed_count = or_mixed_q.total_entities();
+    assert_eq!(
+        not_changed_q.total_entities(),
+        1,
+        "❌ Not<Changed> failed on frame 1 baseline!"
+    );
+    assert_eq!(
+        not_or_q.total_entities(),
+        1,
+        "❌ Not<Or<...>> failed on frame 1 baseline!"
+    );
+    assert_eq!(
+        or_mixed_q.total_entities(),
+        1,
+        "❌ Or<Changed, With> structural arm failed on frame 1 baseline!"
+    );
+}
 
-    if counter.current_frame == 1 {
-        assert_eq!(
-            not_changed_count, 1,
-            "❌ Not<Changed> failed on frame 1 baseline!"
-        );
-        assert_eq!(
-            not_or_count, 1,
-            "❌ Not<Or<...>> failed on frame 1 baseline!"
-        );
-        assert_eq!(
-            or_mixed_count, 1,
-            "❌ Or<Changed, With> structural arm failed on frame 1 baseline!"
-        );
-    }
+fn complex_filter_verify_frame_3(
+    not_changed_q: Query<&Position, Not<Changed<Position>>>,
+    not_or_q: Query<&Position, Not<Or<(Changed<Position>, Changed<Velocity>)>>>,
+    or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
+) {
+    assert_eq!(
+        not_changed_q.total_entities(),
+        0,
+        "❌ Not<Changed> failed to filter out mutated entity on frame 3!"
+    );
+    assert_eq!(
+        not_or_q.total_entities(),
+        0,
+        "❌ Not<Or<...>> failed to filter out mutated entity on frame 3!"
+    );
+    assert_eq!(
+        or_mixed_q.total_entities(),
+        1,
+        "❌ Or<Changed, With> dynamic arm failed to catch matching entity on frame 3!"
+    );
+}
 
-    if counter.current_frame == 3 {
-        assert_eq!(
-            not_changed_count, 0,
-            "❌ Not<Changed> failed to filter out mutated entity on frame 3!"
-        );
-        assert_eq!(
-            not_or_count, 0,
-            "❌ Not<Or<...>> failed to filter out mutated entity on frame 3!"
-        );
-        assert_eq!(
-            or_mixed_count, 1,
-            "❌ Or<Changed, With> dynamic arm failed to catch matching entity on frame 3!"
-        );
-    }
-
-    if counter.current_frame == 4 {
-        assert_eq!(
-            not_changed_count, 1,
-            "❌ Not<Changed> failed to reset after change stagnation on frame 4!"
-        );
-        assert_eq!(
-            not_or_count, 1,
-            "❌ Not<Or<...>> failed to reset after change stagnation on frame 4!"
-        );
-        assert_eq!(
-            or_mixed_count, 1,
-            "❌ Or<Changed, With> dropped evaluation via structural arm on frame 4!"
-        );
-    }
+fn complex_filter_verify_frame_4(
+    not_changed_q: Query<&Position, Not<Changed<Position>>>,
+    not_or_q: Query<&Position, Not<Or<(Changed<Position>, Changed<Velocity>)>>>,
+    or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
+) {
+    assert_eq!(
+        not_changed_q.total_entities(),
+        1,
+        "❌ Not<Changed> failed to reset after change stagnation on frame 4!"
+    );
+    assert_eq!(
+        not_or_q.total_entities(),
+        1,
+        "❌ Not<Or<...>> failed to reset after change stagnation on frame 4!"
+    );
+    assert_eq!(
+        or_mixed_q.total_entities(),
+        1,
+        "❌ Or<Changed, With> dropped evaluation via structural arm on frame 4!"
+    );
 }
 
 #[test_fork::test]
@@ -410,8 +415,26 @@ fn test_complex_changed_combinator_filters() {
             Update,
             (
                 increment_frame_system,
-                midstream_mutator_system,
-                complex_filter_verify_system,
+                midstream_mutator_system.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                complex_filter_verify_frame_1.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                complex_filter_verify_frame_3.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 3)
+                    },
+                ),
+                complex_filter_verify_frame_4.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 4)
+                    },
+                ),
             )
                 .chain(),
         )

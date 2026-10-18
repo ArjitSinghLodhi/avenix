@@ -24,19 +24,19 @@ struct MatchState {
     tick_paused: u32,
 }
 
-#[derive(PartialEq, Clone, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet, Debug)]
 struct PhysicsSet;
 
-#[derive(PartialEq, Clone, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet, Debug)]
 struct NetworkingSet;
 
-#[derive(PartialEq, Clone, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet, Debug)]
 struct AudioSet;
 
-#[derive(PartialEq, Clone, SystemSet)]
+#[derive(PartialEq, Clone, SystemSet, Debug)]
 struct ParticleSet;
 
-#[derive(Clone, PartialEq, SystemSet)]
+#[derive(Clone, PartialEq, SystemSet, Debug)]
 enum GameLoopStage {
     Input,
     Simulation,

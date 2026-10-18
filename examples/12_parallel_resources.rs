@@ -31,7 +31,20 @@ fn main() {
 
     app.add_systems(
         Update,
-        (increment_frame_system, parallel_verification_system).chain(),
+        (
+            increment_frame_system,
+            parallel_verification_frame_1.run_if(
+                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 1)
+                },
+            ),
+            parallel_verification_frame_2.run_if(
+                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 2)
+                },
+            ),
+        )
+            .chain(),
     );
     app.set_runner(run_resource_test_loop);
 
@@ -92,58 +105,57 @@ fn increment_frame_system(mut tracker: ResMut<FrameCounter>) {
     tracker.current_frame += 1;
 }
 
-fn parallel_verification_system(
-    counter: Res<FrameCounter>,
+fn parallel_verification_frame_1(
     score_accessor: ParallelResourceAccessor<GlobalScore>,
     config_accessor: ParallelResourceAccessor<EngineConfig>,
     feature_accessor: ParallelResourceAccessor<OptionalFeature>,
 ) {
-    if counter.current_frame == 1 {
-        println!("\n>> Avenix System Injected Verification Analysis (Frame 1):");
+    println!("\n>> Avenix System Injected Verification Analysis (Frame 1):");
 
-        config_accessor.scope(|config| {
-            println!(
-                " -> Verified EngineConfig mutation: max_fps = {}",
-                config.max_fps
-            );
-            assert_eq!(config.max_fps, 120);
-        });
+    config_accessor.scope(|config| {
+        println!(
+            " -> Verified EngineConfig mutation: max_fps = {}",
+            config.max_fps
+        );
+        assert_eq!(config.max_fps, 120);
+    });
 
-        feature_accessor.scope(|feature| {
-            println!(
-                " -> Verified Dynamic OptionalFeature mutation: enabled = {}",
-                feature.enabled
-            );
-            assert_eq!(feature.enabled, false);
-        });
+    feature_accessor.scope(|feature| {
+        println!(
+            " -> Verified Dynamic OptionalFeature mutation: enabled = {}",
+            feature.enabled
+        );
+        assert_eq!(feature.enabled, false);
+    });
 
-        std::thread::scope(|s| {
-            s.spawn(move || {
-                score_accessor.scope_mut(|mut score| {
-                    println!("[System-Spawned Thread 3] Incrementing GlobalScore (+50)...");
-                    score.value += 50;
-                });
+    std::thread::scope(|s| {
+        s.spawn(move || {
+            score_accessor.scope_mut(|mut score| {
+                println!("[System-Spawned Thread 3] Incrementing GlobalScore (+50)...");
+                score.value += 50;
             });
         });
-    } else if counter.current_frame == 2 {
-        println!("\n>> Avenix System Injected Verification Analysis (Frame 2):");
+    });
+}
 
-        score_accessor.scope(|score| {
-            println!(
-                " -> Verified GlobalScore accumulation from Thread 3: {}",
-                score.value
-            );
-            assert_eq!(score.value, 150);
-        });
+fn parallel_verification_frame_2(score_accessor: ParallelResourceAccessor<GlobalScore>) {
+    println!("\n>> Avenix System Injected Verification Analysis (Frame 2):");
 
-        println!(" -> Attempting dynamic teardown of GlobalScore...");
-        let removed_score = score_accessor.remove_resource();
-        assert!(removed_score.is_some());
-        assert_eq!(removed_score.unwrap().value, 150);
+    score_accessor.scope(|score| {
+        println!(
+            " -> Verified GlobalScore accumulation from Thread 3: {}",
+            score.value
+        );
+        assert_eq!(score.value, 150);
+    });
 
-        assert!(!score_accessor.is_present());
-        println!(" -> Success: GlobalScore successfully popped out of core registry safely!");
-    }
+    println!(" -> Attempting dynamic teardown of GlobalScore...");
+    let removed_score = score_accessor.remove_resource();
+    assert!(removed_score.is_some());
+    assert_eq!(removed_score.unwrap().value, 150);
+
+    assert!(!score_accessor.is_present());
+    println!(" -> Success: GlobalScore successfully popped out of core registry safely!");
 }
 
 fn run_resource_test_loop(app: &mut App) {

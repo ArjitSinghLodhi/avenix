@@ -232,13 +232,9 @@ pub trait SystemParam {
     fn get_param(world: &World) -> Self;
 }
 
-#[doc(hidden)]
 pub trait System: SystemData + 'static {
     fn run(&mut self, world: &World);
-    #[doc(hidden)]
-    fn func_type_id(&self) -> TypeId;
-    #[doc(hidden)]
-    fn name(&self) -> &'static str;
+    fn identity(&self) -> Box<dyn SystemIdentity>;
 }
 
 #[doc(hidden)]
@@ -281,4 +277,38 @@ pub trait IntoSystem<Marker> {
     type SystemType: System + 'static;
     #[doc(hidden)]
     fn into_system(self) -> Self::SystemType;
+}
+
+pub trait SystemIdentity: Send + Sync + 'static {
+    fn as_any(&self) -> &dyn Any;
+    fn dyn_system_eq(&self, other: &dyn SystemIdentity) -> bool;
+    fn clone_box(&self) -> Box<dyn SystemIdentity>;
+    fn display_name(&self) -> String;
+}
+
+pub struct FunctionIdentity {
+    pub type_id: TypeId,
+    pub name: String,
+}
+
+impl SystemIdentity for FunctionIdentity {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn dyn_system_eq(&self, other: &dyn SystemIdentity) -> bool {
+        if let Some(other_concrete) = other.as_any().downcast_ref::<Self>() {
+            self.type_id == other_concrete.type_id
+        } else {
+            false
+        }
+    }
+    fn clone_box(&self) -> Box<dyn SystemIdentity> {
+        Box::new(FunctionIdentity {
+            type_id: self.type_id,
+            name: self.name.clone(),
+        })
+    }
+    fn display_name(&self) -> String {
+        self.name.clone()
+    }
 }

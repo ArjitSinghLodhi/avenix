@@ -48,9 +48,9 @@ impl SystemExecutor for MultiThreadedExecutor {
 
         struct CachedMeta {
             is_send: bool,
-            type_id: TypeId,
-            run_after: Vec<TypeId>,
-            run_before: Vec<TypeId>,
+            identity: Box<dyn crate::system::SystemIdentity>,
+            run_after: Vec<Box<dyn crate::system::SystemIdentity>>,
+            run_before: Vec<Box<dyn crate::system::SystemIdentity>>,
             component_reads: Vec<TypeId>,
             component_writes: Vec<TypeId>,
             resource_reads: Vec<TypeId>,
@@ -62,21 +62,57 @@ impl SystemExecutor for MultiThreadedExecutor {
         let mut cached_meta_list = Vec::with_capacity(n);
         for sys_node in systems {
             let system_mut_ref = sys_node.system_mut();
-            let orderings = system_mut_ref.get_or_init(SystemOrderings::default).clone();
-            let func_id = system_mut_ref.func_type_id();
-            let meta = system_mut_ref.get_or_init(SystemMeta::default);
+            let sys_identity = system_mut_ref.identity();
+
+            let (
+                is_send,
+                component_reads,
+                component_writes,
+                resource_reads,
+                resource_writes,
+                with_filters,
+                without_filters,
+            ) = {
+                let meta = system_mut_ref.get_or_init(SystemMeta::default);
+                (
+                    meta.is_send(),
+                    meta.component_reads().copied().collect(),
+                    meta.component_writes().copied().collect(),
+                    meta.resource_reads().copied().collect(),
+                    meta.resource_writes().copied().collect(),
+                    meta.with_filters().copied().collect(),
+                    meta.without_filters().copied().collect(),
+                )
+            };
+
+            let (run_after, run_before) = {
+                let orderings =
+                    system_mut_ref.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
+                (
+                    orderings
+                        .run_after_systems
+                        .iter()
+                        .map(|id| id.clone_box())
+                        .collect(),
+                    orderings
+                        .run_before_systems
+                        .iter()
+                        .map(|id| id.clone_box())
+                        .collect(),
+                )
+            };
 
             cached_meta_list.push(CachedMeta {
-                is_send: meta.is_send(),
-                type_id: func_id,
-                run_after: orderings.run_after_systems.clone(),
-                run_before: orderings.run_before_systems.clone(),
-                component_reads: meta.component_reads().copied().collect(),
-                component_writes: meta.component_writes().copied().collect(),
-                resource_reads: meta.resource_reads().copied().collect(),
-                resource_writes: meta.resource_writes().copied().collect(),
-                with_filters: meta.with_filters().copied().collect(),
-                without_filters: meta.without_filters().copied().collect(),
+                is_send,
+                identity: sys_identity,
+                run_after,
+                run_before,
+                component_reads,
+                component_writes,
+                resource_reads,
+                resource_writes,
+                with_filters,
+                without_filters,
             });
         }
 
@@ -115,21 +151,37 @@ impl SystemExecutor for MultiThreadedExecutor {
             for active_idx in current_start..i {
                 let active_meta = &cached_meta_list[active_idx];
 
-                if meta.run_after.contains(&active_meta.type_id) {
+                if meta
+                    .run_after
+                    .iter()
+                    .any(|id| id.dyn_system_eq(active_meta.identity.as_ref()))
+                {
                     conflict = true;
                     break;
                 }
 
-                if meta.run_before.contains(&active_meta.type_id) {
+                if meta
+                    .run_before
+                    .iter()
+                    .any(|id| id.dyn_system_eq(active_meta.identity.as_ref()))
+                {
                     conflict = true;
                     break;
                 }
 
-                if active_meta.run_before.contains(&meta.type_id) {
+                if active_meta
+                    .run_before
+                    .iter()
+                    .any(|id| id.dyn_system_eq(meta.identity.as_ref()))
+                {
                     conflict = true;
                     break;
                 }
-                if active_meta.run_after.contains(&meta.type_id) {
+                if active_meta
+                    .run_after
+                    .iter()
+                    .any(|id| id.dyn_system_eq(meta.identity.as_ref()))
+                {
                     conflict = true;
                     break;
                 }

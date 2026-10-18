@@ -69,14 +69,16 @@ fn state_transition_system<T: States>(
 pub(crate) fn setup_states_schedules_and_systems<T: States>(app: &mut App, state: T) {
     let new_sys = SystemNode::new(state_transition_system::<T>.into_system());
     if !app.world().has_resource::<StateTransitionSystems>() {
-        app.world()
-            .insert_resource(StateTransitionSystems { systems: vec![new_sys] });
+        app.world().insert_resource(StateTransitionSystems {
+            systems: vec![new_sys],
+        });
     } else {
         let mut systems = app.world().get_resource_mut::<StateTransitionSystems>();
+        let new_identity = new_sys.system().identity();
         if systems
             .systems
             .iter()
-            .all(|sys| sys.system().func_type_id() != new_sys.system().func_type_id())
+            .all(|sys| !sys.system().identity().dyn_system_eq(new_identity.as_ref()))
         {
             systems.systems.push(new_sys);
         }

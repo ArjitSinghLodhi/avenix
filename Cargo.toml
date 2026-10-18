@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.20.5"
+version = "0.21.0"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["ecs", "archetype", "simulation", "parallel"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = "0.5.2"
+avenix_macros = "0.5.3"
 indexmap = "2.14.2"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"

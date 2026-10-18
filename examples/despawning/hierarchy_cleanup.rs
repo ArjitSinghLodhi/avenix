@@ -20,7 +20,7 @@ pub struct UnlinkChild;
 
 pub struct HierarchyPlugin;
 
-#[derive(SystemSet, Clone, PartialEq)]
+#[derive(SystemSet, Clone, PartialEq, Debug)]
 enum HierarchySet {
     UpdateSync,
     Cleanup,
@@ -230,73 +230,57 @@ fn build_generation_hierarchy(
     }
 }
 
-fn trigger_runtime_lifecycle_stages(
+fn trigger_runtime_lifecycle_stage_1(
     commands: Commands,
-    stepper: Res<FrameStepper>,
     alpha_query: Query<Entity, With<AlphaCommander>>,
 ) {
-    let frame = stepper.current_frame;
-    if frame == 1 {
-        if let Some(alpha_entity) = alpha_query.single() {
-            println!(
-                "System (Update Frame {}): Despawning root AlphaCommander!",
-                frame
-            );
-            commands.entity(alpha_entity.clone()).despawn();
-        }
+    if let Some(alpha_entity) = alpha_query.single() {
+        println!("System (Update Frame 1): Despawning root AlphaCommander!");
+        commands.entity(alpha_entity.clone()).despawn();
     }
 }
 
-fn test_unlink_edge_cases_system(
+fn test_unlink_edge_cases_frame_2(
     commands: Commands,
-    stepper: Res<FrameStepper>,
+    test_child_query: Query<Entity, With<BetaTestChild>>,
+) {
+    let test_child_ent = test_child_query.single();
+    if let Some(child) = test_child_ent {
+        println!("Unlink System (Frame 2): Requesting normal unlink_child on BetaTestChild.");
+        commands.entity(child.clone()).unlink_parent();
+    }
+}
+
+fn test_unlink_edge_cases_frame_3(commands: Commands) {
+    commands.spawn(TestOrphanMarker);
+    println!(
+        "Unlink System (Frame 3): Spawned a standalone orphan entity with tracking component."
+    );
+}
+
+fn test_unlink_edge_cases_frame_4(
+    commands: Commands,
     beta_query: Query<Entity, With<BetaCommander>>,
     minion_query: Query<Entity, With<MinionSubUnit>>,
     orphan_query: Query<Entity, With<TestOrphanMarker>>,
-    test_child_query: Query<Entity, With<BetaTestChild>>,
 ) {
-    let frame = stepper.current_frame;
-
-    if frame == 2 {
-        let test_child_ent = test_child_query.single();
-        if let Some(child) = test_child_ent {
-            println!(
-                "Unlink System (Frame {}): Requesting normal unlink_child on BetaTestChild.",
-                frame
-            );
-            commands.entity(child.clone()).unlink_parent();
-        }
-    }
-
-    if frame == 3 {
-        commands.spawn(TestOrphanMarker);
+    let orphan_ent = orphan_query.single();
+    if let Some(orphan) = orphan_ent {
         println!(
-            "Unlink System (Frame {}): Spawned a standalone orphan entity with tracking component.",
-            frame
+            "Unlink System (Frame 4) [EDGE CASE]: Requesting unlink on an orphan (no parent)."
         );
+        commands.entity(orphan.clone()).unlink_parent();
     }
 
-    if frame == 4 {
-        let orphan_ent = orphan_query.single();
-        if let Some(orphan) = orphan_ent {
-            println!(
-                "Unlink System (Frame {}) [EDGE CASE]: Requesting unlink on an orphan (no parent).",
-                frame
-            );
-            commands.entity(orphan.clone()).unlink_parent();
-        }
+    let minion_ent = minion_query.single();
+    let beta_ent = beta_query.single();
 
-        let minion_ent = minion_query.single();
-        let beta_ent = beta_query.single();
-
-        if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
-            println!(
-                "Unlink System (Frame {}) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit.",
-                frame
-            );
-            commands.entity(minion.clone()).set_parent(beta.clone());
-            commands.entity(minion.clone()).unlink_parent();
-        }
+    if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
+        println!(
+            "Unlink System (Frame 4) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit."
+        );
+        commands.entity(minion.clone()).set_parent(beta.clone());
+        commands.entity(minion.clone()).unlink_parent();
     }
 }
 
@@ -338,8 +322,26 @@ fn main() {
             Update,
             (
                 increment_frame,
-                trigger_runtime_lifecycle_stages,
-                test_unlink_edge_cases_system,
+                trigger_runtime_lifecycle_stage_1.run_if(
+                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                        stepper.scope(|s| s.current_frame == 1)
+                    },
+                ),
+                test_unlink_edge_cases_frame_2.run_if(
+                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                        stepper.scope(|s| s.current_frame == 2)
+                    },
+                ),
+                test_unlink_edge_cases_frame_3.run_if(
+                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                        stepper.scope(|s| s.current_frame == 3)
+                    },
+                ),
+                test_unlink_edge_cases_frame_4.run_if(
+                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                        stepper.scope(|s| s.current_frame == 4)
+                    },
+                ),
             )
                 .chain()
                 .after(HierarchySet::UpdateSync),

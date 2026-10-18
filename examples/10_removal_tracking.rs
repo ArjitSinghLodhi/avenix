@@ -44,15 +44,7 @@ fn setup_removal_entities(commands: Commands) {
     commands.spawn((Position { x: 2.0, y: 2.0 }, EntityTag::UntouchedNeighbor));
 }
 
-fn apply_frame_1_mutations(
-    counter: Res<FrameCounter>,
-    query: Query<(Entity, &EntityTag)>,
-    commands: Commands,
-) {
-    if counter.current_frame != 1 {
-        return;
-    }
-
+fn apply_frame_1_mutations(query: Query<(Entity, &EntityTag)>, commands: Commands) {
     for (entity, tag) in query.iter() {
         let mut entity_cmd = commands.entity(entity.clone());
         match tag {
@@ -68,14 +60,7 @@ fn apply_frame_1_mutations(
     }
 }
 
-fn verify_frame_1_removal_isolation(
-    counter: Res<FrameCounter>,
-    removed_vel: RemovedComponents<Velocity>,
-) {
-    if counter.current_frame != 1 {
-        return;
-    }
-
+fn verify_frame_1_removal_isolation(removed_vel: RemovedComponents<Velocity>) {
     let mut removal_visible_early = false;
     for _entity in removed_vel.iter() {
         removal_visible_early = true;
@@ -87,14 +72,9 @@ fn verify_frame_1_removal_isolation(
 }
 
 fn verify_frame_2_removal_reads(
-    counter: Res<FrameCounter>,
     removed_vel: RemovedComponents<Velocity>,
     query_neighbor: Query<&EntityTag, (With<Position>, Without<Velocity>)>,
 ) {
-    if counter.current_frame != 2 {
-        return;
-    }
-
     let mut tracking_count = 0;
     for _entity in removed_vel.iter() {
         tracking_count += 1;
@@ -118,14 +98,7 @@ fn verify_frame_2_removal_reads(
     );
 }
 
-fn verify_frame_3_removal_decay(
-    counter: Res<FrameCounter>,
-    removed_vel: RemovedComponents<Velocity>,
-) {
-    if counter.current_frame != 3 {
-        return;
-    }
-
+fn verify_frame_3_removal_decay(removed_vel: RemovedComponents<Velocity>) {
     let mut removal_active = false;
     for _entity in removed_vel.iter() {
         removal_active = true;
@@ -144,10 +117,26 @@ fn main() {
             Update,
             (
                 increment_frame_system,
-                apply_frame_1_mutations,
-                verify_frame_1_removal_isolation,
-                verify_frame_2_removal_reads,
-                verify_frame_3_removal_decay,
+                apply_frame_1_mutations.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                verify_frame_1_removal_isolation.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                verify_frame_2_removal_reads.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                verify_frame_3_removal_decay.run_if(
+                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 3)
+                    },
+                ),
             )
                 .chain(),
         );

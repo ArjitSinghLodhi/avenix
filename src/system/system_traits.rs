@@ -1,11 +1,14 @@
+use std::any::type_name;
 use std::marker::PhantomData;
 
 use crate::app::system::SystemMeta;
 use crate::app::system::SystemParam;
 use crate::ecs::world::World;
 use crate::extensions::FunctionSystem;
+use crate::system::FunctionIdentity;
 use crate::system::IntoSystem;
 use crate::system::System;
+use crate::system::SystemIdentity;
 use crate::system::condition::{Condition, RunConditionsList};
 use crate::system::system_set::SystemSet;
 use crate::system::system_storage::SystemExt;
@@ -29,14 +32,14 @@ impl IntoSystemConfigs<()> for SystemConfigs<()> {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 #[doc(hidden)]
 pub struct SystemOrderings {
     pub(crate) run_after_sets: Vec<Box<dyn SystemSet>>,
     pub(crate) run_before_sets: Vec<Box<dyn SystemSet>>,
     pub(crate) member_of: Vec<Box<dyn SystemSet>>,
-    pub(crate) run_after_systems: Vec<std::any::TypeId>,
-    pub(crate) run_before_systems: Vec<std::any::TypeId>,
+    pub(crate) run_after_systems: Vec<Box<dyn SystemIdentity>>,
+    pub(crate) run_before_systems: Vec<Box<dyn SystemIdentity>>,
 }
 
 #[doc(hidden)]
@@ -83,13 +86,13 @@ pub trait ConfigureSystemConfigs<MarkerGroup> {
 #[doc(hidden)]
 pub trait TrackHierarchyEdges<MarkerGroup> {
     #[doc(hidden)]
-    fn collect_edge_ids(&self, ids: &mut Vec<TypeId>);
+    fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>);
 }
 
 impl<Marker> TrackHierarchyEdges<Marker> for SystemConfigs<Marker> {
-    fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
+    fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
         for sys in &self.systems {
-            ids.push(sys.func_type_id());
+            ids.push(sys.identity());
         }
     }
 }
@@ -110,12 +113,11 @@ macro_rules! impl_system_for_functions {
                 (self.func)($($param),*);
             }
 
-            fn func_type_id(&self) -> TypeId {
-                TypeId::of::<F>()
-            }
-
-            fn name(&self) -> &'static str {
-                std::any::type_name::<F>()
+            fn identity(&self) -> Box<dyn SystemIdentity> {
+                Box::new(FunctionIdentity {
+                    type_id: TypeId::of::<F>(),
+                    name: type_name::<Self>().to_string(),
+                })
             }
         }
 
@@ -155,11 +157,17 @@ macro_rules! impl_system_for_functions {
             F: Fn($($param),*) + 'static,
         {
             fn populate_before(&self, orderings: &mut SystemOrderings) {
-                orderings.run_before_systems.push(std::any::TypeId::of::<F>());
+                orderings.run_before_systems.push(Box::new(FunctionIdentity {
+                    type_id: TypeId::of::<F>(),
+                    name: std::any::type_name::<F>().to_string(),
+                }));
             }
 
             fn populate_after(&self, orderings: &mut SystemOrderings) {
-                orderings.run_after_systems.push(std::any::TypeId::of::<F>());
+                orderings.run_after_systems.push(Box::new(FunctionIdentity {
+                    type_id: TypeId::of::<F>(),
+                    name: std::any::type_name::<F>().to_string(),
+                }));
             }
         }
 
@@ -224,8 +232,11 @@ macro_rules! impl_system_for_functions {
             $( $param: SystemParam + 'static, )*
             F: Fn($($param),*) + 'static,
         {
-            fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
-                ids.push(TypeId::of::<Self>());
+            fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
+                ids.push(Box::new(FunctionIdentity {
+                    type_id: TypeId::of::<Self>(),
+                    name: std::any::type_name::<Self>().to_string(),
+                }));
             }
         }
 
@@ -234,8 +245,11 @@ macro_rules! impl_system_for_functions {
             $( $param: SystemParam + 'static, )*
             F: 'static,
         {
-            fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
-                ids.push(TypeId::of::<F>());
+            fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
+                ids.push(Box::new(FunctionIdentity {
+                    type_id: TypeId::of::<F>(),
+                    name: std::any::type_name::<F>().to_string(),
+                }));
             }
         }
     };
@@ -262,12 +276,11 @@ where
         (self.func)();
     }
 
-    fn func_type_id(&self) -> TypeId {
-        TypeId::of::<F>()
-    }
-
-    fn name(&self) -> &'static str {
-        std::any::type_name::<F>()
+    fn identity(&self) -> Box<dyn SystemIdentity> {
+        Box::new(FunctionIdentity {
+            type_id: TypeId::of::<F>(),
+            name: type_name::<Self>().to_string(),
+        })
     }
 }
 
@@ -357,13 +370,17 @@ where
     fn populate_before(&self, orderings: &mut SystemOrderings) {
         orderings
             .run_before_systems
-            .push(std::any::TypeId::of::<F>());
+            .push(Box::new(FunctionIdentity {
+                type_id: TypeId::of::<F>(),
+                name: std::any::type_name::<F>().to_string(),
+            }));
     }
 
     fn populate_after(&self, orderings: &mut SystemOrderings) {
-        orderings
-            .run_after_systems
-            .push(std::any::TypeId::of::<F>());
+        orderings.run_after_systems.push(Box::new(FunctionIdentity {
+            type_id: TypeId::of::<F>(),
+            name: std::any::type_name::<F>().to_string(),
+        }));
     }
 }
 
@@ -371,8 +388,11 @@ impl<F> TrackHierarchyEdges<()> for F
 where
     F: Fn() + 'static,
 {
-    fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
-        ids.push(TypeId::of::<Self>());
+    fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
+        ids.push(Box::new(FunctionIdentity {
+            type_id: TypeId::of::<Self>(),
+            name: std::any::type_name::<Self>().to_string(),
+        }));
     }
 }
 
@@ -380,8 +400,11 @@ impl<F> TrackHierarchyEdges<()> for FunctionSystem<(), F>
 where
     F: 'static,
 {
-    fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
-        ids.push(TypeId::of::<F>());
+    fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
+        ids.push(Box::new(FunctionIdentity {
+            type_id: TypeId::of::<F>(),
+            name: std::any::type_name::<F>().to_string(),
+        }));
     }
 }
 
@@ -407,7 +430,7 @@ macro_rules! impl_system_configs_for_tuples {
         where
             $( $sys: TrackHierarchyEdges<$marker> ),*
         {
-            fn collect_edge_ids(&self, ids: &mut Vec<TypeId>) {
+            fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
                 #[allow(non_snake_case)]
                 let ($($sys,)*) = self;
                 $( $sys.collect_edge_ids(ids); )*
@@ -440,7 +463,7 @@ macro_rules! impl_system_configs_for_tuples {
                 let ($($sys,)*) = self;
                 let mut flattened_configs = Vec::new();
 
-                let mut previous_edges: Vec<TypeId> = Vec::new();
+                let mut previous_edges: Vec<Box<dyn SystemIdentity>> = Vec::new();
 
                 $({
                     let mut current_edges = Vec::new();
@@ -452,8 +475,8 @@ macro_rules! impl_system_configs_for_tuples {
                         for sys_item in current_config.systems.iter_mut() {
                             let orderings = sys_item.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
                             for prev_id in previous_edges.iter() {
-                                if !orderings.run_after_systems.contains(prev_id) {
-                                    orderings.run_after_systems.push(*prev_id);
+                                if !orderings.run_after_systems.iter().any(|id| id.dyn_system_eq(prev_id.as_ref())) {
+                                    orderings.run_after_systems.push(prev_id.clone_box());
                                 }
                             }
                         }
@@ -510,12 +533,12 @@ macro_rules! impl_system_configs_for_tuples {
             fn chain(mut self) -> SystemConfigs<($($marker,)*)> {
                 let n = self.systems.len();
                 for idx in 1..n {
-                    let prev_type_id = self.systems[idx - 1].func_type_id();
+                    let prev_identity = self.systems[idx - 1].identity();
                     let sys_mut = &mut self.systems[idx];
                     sys_mut
                         .get_or_init_mut::<SystemOrderings>(SystemOrderings::default)
                         .run_after_systems
-                        .push(prev_type_id);
+                        .push(prev_identity);
                 }
                 self
             }

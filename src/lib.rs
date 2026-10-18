@@ -37,7 +37,7 @@ pub mod prelude {
         },
         states::{NextState, State, States, entered_state, exited_state, in_state},
         system::{
-            IntoSystem, System, SystemMeta, SystemParam,
+            FunctionIdentity, IntoSystem, System, SystemIdentity, SystemMeta, SystemParam,
             condition::{
                 Condition, ConditionBuilder, ConditionFn, RunConditionsList, not, resource_exists,
             },
@@ -60,7 +60,7 @@ pub mod prelude {
     #[cfg(feature = "reactivity")]
     pub use crate::ecs::reactivity::{
         added::{Added, AddedTracker},
-        changed::{Changed, ChangedTracker},
+        changed::{Changed, ChangedTracker, Mut},
         removed::RemovedComponents,
     };
     pub use crate::ecs::{
@@ -114,7 +114,7 @@ pub mod ecs {
     #[cfg(feature = "reactivity")]
     pub mod reactivity {
         pub mod changed {
-            pub use crate::reactivity::{Changed, ChangedTracker};
+            pub use crate::reactivity::{Changed, ChangedTracker, Mut};
         }
         pub mod added {
             pub use crate::reactivity::{Added, AddedTracker};
@@ -140,7 +140,10 @@ pub mod ecs {
 pub mod app {
     pub use crate::app_impl::App;
     pub mod system {
-        pub use crate::system::{IntoSystem, ParallelSystemParam, System, SystemMeta, SystemParam};
+        pub use crate::system::{
+            FunctionIdentity, IntoSystem, ParallelSystemParam, System, SystemIdentity, SystemMeta,
+            SystemParam,
+        };
         pub mod condition {
             pub use crate::system::condition::{
                 Condition, ConditionBuilder, ConditionFn, RunConditionsList, not, resource_exists,

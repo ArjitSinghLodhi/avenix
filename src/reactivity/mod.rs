@@ -30,9 +30,9 @@ pub(crate) static TRACKED_COMPONENTS: Mutex<
     IndexMap<TypeId, Vec<TrackedComponentMeta>, FxBuildHasher>,
 > = Mutex::new(IndexMap::with_hasher(FxBuildHasher));
 
-pub use changed::{Changed, ChangedTracker};
+pub use changed::{Changed, ChangedTracker, Mut};
 
-pub(crate) use changed::{ChangedMarker, Mut};
+pub(crate) use changed::ChangedMarker;
 
 pub use added::{Added, AddedTracker};
 
