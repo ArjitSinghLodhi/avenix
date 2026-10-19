@@ -33,7 +33,6 @@ impl Plugin for DefaultSchedulesPlugin {
     }
 }
 
-#[doc(hidden)]
 pub trait ScheduleLabel: Any + Send + Sync + DynEq + Debug {
     fn default_executor(&mut self) -> Box<dyn SystemExecutor> {
         Box::new(MultiThreadedExecutor::new())

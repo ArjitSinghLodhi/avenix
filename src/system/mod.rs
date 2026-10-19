@@ -287,8 +287,8 @@ pub trait SystemIdentity: Send + Sync + 'static {
 }
 
 pub struct FunctionIdentity {
-    pub type_id: TypeId,
-    pub name: String,
+    type_id: TypeId,
+    name: String,
 }
 
 impl SystemIdentity for FunctionIdentity {

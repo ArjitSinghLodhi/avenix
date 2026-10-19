@@ -59,7 +59,6 @@ impl<S: SystemData + ?Sized> SystemExt for S {
 }
 
 #[doc(hidden)]
-#[derive(Debug)]
 pub struct FunctionData {
     data: FxHashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }

@@ -13,7 +13,7 @@ use rayon::{
     slice::ParallelSlice,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::{marker::PhantomData, sync::Arc};
+use std::{any::TypeId, marker::PhantomData, mem::transmute, sync::Arc};
 
 use crate::{
     entity::Entity,
@@ -24,19 +24,20 @@ use crate::{
         storage::World,
     },
 };
-
+#[cfg(feature = "reactivity")]
 #[doc(hidden)]
 pub struct ThreadSafe<T> {
     pub(crate) value: T,
 }
-
+#[cfg(feature = "reactivity")]
 unsafe impl<T> Send for ThreadSafe<T> {}
+#[cfg(feature = "reactivity")]
 unsafe impl<T> Sync for ThreadSafe<T> {}
 
 pub trait QueryData {
-    type Item<'w>: Send + Sync;
-    type ReadOnlyItem<'w>: Send + Sync;
-    type Fetch: Send + Sync;
+    type Item<'w>: Send;
+    type ReadOnlyItem<'w>: Send;
+    type Fetch<'w>: Sync;
 
     fn matches(archetype: &Archetype) -> bool;
 
@@ -45,11 +46,8 @@ pub trait QueryData {
     /// Implementations must guarantee that the returned `Self::Fetch` value contains valid,
     /// initialized metadata, pointers, or references that remain valid for the duration of
     /// the borrow layout. It must not lead to out-of-bounds memory access or invalid type casting.
-    unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch;
-    fn collect_access(
-        reads: &mut AccessVec<std::any::TypeId>,
-        writes: &mut AccessVec<std::any::TypeId>,
-    );
+    unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w>;
+    fn collect_access(reads: &mut AccessVec<TypeId>, writes: &mut AccessVec<TypeId>);
 
     /// # Safety
     ///
@@ -57,23 +55,26 @@ pub trait QueryData {
     /// * `index` must be strictly within the bounds of the allocated entity array for this archetype.
     /// * The caller must ensure that unique, mutable access to the underlying item at `index`
     ///   is maintained globally (no aliasing reads or writes).
-    unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w>;
+    unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w>;
 
     /// # Safety
     ///
     /// * `fetch` must be a valid state originally produced by `init_fetch`.
     /// * `index` must be strictly within bounds.
     /// * Shared access must be synchronized; no concurrent mutable borrows may exist for this item.
-    unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w>;
+    unsafe fn fetch_read_only<'w, 'b>(
+        fetch: &Self::Fetch<'b>,
+        index: usize,
+    ) -> Self::ReadOnlyItem<'w>;
 }
 
 pub struct QueryReadOnlyChunk<'b, Q: QueryData> {
     indices: &'b [usize],
-    fetch: &'b Q::Fetch,
+    fetch: &'b Q::Fetch<'b>,
 }
 
 impl<'b, Q: QueryData> QueryReadOnlyChunk<'b, Q> {
-    pub fn iter<'c>(&'c self) -> impl Iterator<Item = Q::ReadOnlyItem<'c>> {
+    pub fn iter<'d>(&'d self) -> impl Iterator<Item = Q::ReadOnlyItem<'d>> {
         let fetch = self.fetch;
         self.indices
             .iter()
@@ -83,7 +84,7 @@ impl<'b, Q: QueryData> QueryReadOnlyChunk<'b, Q> {
 
 pub struct QueryMutableChunk<'b, Q: QueryData> {
     indices: &'b [usize],
-    fetch: &'b Q::Fetch,
+    fetch: &'b Q::Fetch<'b>,
 }
 
 impl<'b, Q: QueryData> QueryMutableChunk<'b, Q> {
@@ -103,21 +104,20 @@ impl<'b, Q: QueryData> QueryMutableChunk<'b, Q> {
 }
 
 pub struct Query<'q, 'a, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
-    cached_fetches: Vec<Option<Q::Fetch>>,
+    cached_fetches: Vec<Option<Q::Fetch<'q>>>,
     cached_indices: Vec<Option<Vec<usize>>>,
     _marker: std::marker::PhantomData<(&'q (), &'a (), F)>,
 }
 
-unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Send for Query<'q, 'a, Q, F> {}
 unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Sync for Query<'q, 'a, Q, F> {}
 
 impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     pub(crate) fn new(
-        archetypes_map: &'a Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
+        archetypes_map: &'q Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     ) -> Self {
         let mut cached_fetches = (0..archetypes_map.len())
             .map(|_| None)
-            .collect::<Vec<Option<Q::Fetch>>>();
+            .collect::<Vec<Option<Q::Fetch<'q>>>>();
 
         let mut cached_indices = vec![None; archetypes_map.len()];
 
@@ -125,8 +125,12 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             let arch = arch_mutex.lock();
             let arch_id = arch.id();
             if Q::matches(&arch) && F::matches(&arch) {
-                let fetch = unsafe { Q::init_fetch(&arch) };
-                let mut indices = (0..arch.entities.len()).collect::<Vec<usize>>();
+                let fetch = unsafe {
+                    transmute::<<Q as QueryData>::Fetch<'_>, <Q as QueryData>::Fetch<'_>>(
+                        Q::init_fetch(&arch),
+                    )
+                };
+                let mut indices = (0..arch.entities.read().len()).collect::<Vec<usize>>();
                 let filter_data = F::init_filter_data(&arch);
                 indices.retain(|row_idx| F::matches_row(&filter_data, *row_idx));
 
@@ -278,12 +282,14 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .filter_map(|(arch_id, maybe_indices)| {
                 let indices = maybe_indices.as_ref()?;
                 let fetch = self.cached_fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
+                Some((indices, unsafe {
+                    transmute::<&<Q as QueryData>::Fetch<'_>, &<Q as QueryData>::Fetch<'_>>(fetch)
+                }))
             })
             .flat_map(move |(indices, fetch)| {
                 indices
                     .par_chunks(chunk_size)
-                    .map(|chunk| QueryReadOnlyChunk {
+                    .map(move |chunk| QueryReadOnlyChunk {
                         indices: chunk,
                         fetch,
                     })
@@ -301,12 +307,14 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             .filter_map(|(arch_id, maybe_indices)| {
                 let indices = maybe_indices.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
+                Some((indices, unsafe {
+                    transmute::<&<Q as QueryData>::Fetch<'_>, &<Q as QueryData>::Fetch<'_>>(fetch)
+                }))
             })
             .flat_map(move |(indices, fetch)| {
                 indices
                     .par_chunks(chunk_size)
-                    .map(|chunk| QueryMutableChunk {
+                    .map(move |chunk| QueryMutableChunk {
                         indices: chunk,
                         fetch,
                     })
@@ -396,7 +404,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     ///   invalidates these tokens.
     /// * **Initialization Check:** You must explicitly check if the target `Option` is `Some`
     ///   before unwrapping. Archetypes that do not match this query's filters will be `None`.
-    pub unsafe fn get_fetches(&self) -> &[Option<Q::Fetch>] {
+    pub unsafe fn get_fetches(&self) -> &[Option<Q::Fetch<'q>>] {
         &self.cached_fetches
     }
 
@@ -422,7 +430,11 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     /// * The `index` must be strictly less than the length of the target archetype's data rows.
     /// * No mutable references ([`Self::fetch_mut`]) can be actively held for this row index on any thread.
     #[inline(always)]
-    pub unsafe fn fetch_read_only(&self, fetch: &Q::Fetch, index: usize) -> Q::ReadOnlyItem<'q> {
+    pub unsafe fn fetch_read_only(
+        &self,
+        fetch: &Q::Fetch<'a>,
+        index: usize,
+    ) -> Q::ReadOnlyItem<'q> {
         unsafe { Q::fetch_read_only(fetch, index) }
     }
 
@@ -434,7 +446,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     /// * **Strict Aliasing Rule:** You must guarantee absolute exclusive access to this row. No other
     ///   thread or task may hold a read-only or mutable reference to this exact element simultaneously.
     #[inline(always)]
-    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch, index: usize) -> Q::Item<'q> {
+    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'a>, index: usize) -> Q::Item<'q> {
         unsafe { Q::fetch_mut(fetch, index) }
     }
 }

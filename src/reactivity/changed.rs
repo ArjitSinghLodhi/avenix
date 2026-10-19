@@ -2,12 +2,10 @@ use crate::ecs::Component;
 use crate::extensions::ComponentColumnRead;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
-use crate::query::ThreadSafe;
 use crate::reactivity::verify_app_not_build_yet;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
 use crate::system::AccessVec;
 use crate::world::archetypes::{Archetype, ComponentColumn};
-use crate::world::storage::CurrentBufferIdx;
 use parking_lot::RwLock;
 use std::any::TypeId;
 use std::marker::PhantomData;
@@ -34,15 +32,16 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
             let raw_any = guard.as_any_mut();
             let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
             vec.push(ChangedMarker {
-                markers: [false; 2],
+                read: false,
+                write: false,
                 phantom: PhantomData,
             });
         },
         clear_column_markers: |raw_any| {
-            let idx = CurrentBufferIdx::current_write_idx();
             let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
             vec.iter_mut().for_each(|marker| {
-                marker.markers[idx as usize] = false;
+                marker.read = marker.write;
+                marker.write = false;
             });
         },
     });
@@ -50,7 +49,8 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
 
 #[derive(Clone, Copy)]
 pub struct ChangedMarker<T: Component> {
-    pub(crate) markers: [bool; 2],
+    read: bool,
+    write: bool,
     phantom: PhantomData<T>,
 }
 
@@ -87,7 +87,7 @@ impl<T: Component> ChangedTracker<T> {
 impl<T: Component> QueryData for ChangedTracker<T> {
     type Item<'w> = ChangedTracker<T>;
     type ReadOnlyItem<'w> = ChangedTracker<T>;
-    type Fetch = ThreadSafe<(u8, *const ChangedMarker<T>)>;
+    type Fetch<'w> = ComponentColumnRead<'w, ChangedMarker<T>>;
 
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
@@ -101,31 +101,139 @@ impl<T: Component> QueryData for ChangedTracker<T> {
         register_changed_tracked_component::<T>();
     }
 
-    unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        let vec_guard = archetype.get_column::<ChangedMarker<T>>();
-        let marker_ptr = vec_guard.as_ptr();
-        let current_read_idx = CurrentBufferIdx::current_read_idx();
-
-        ThreadSafe {
-            value: (current_read_idx, marker_ptr),
-        }
+    unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
+        archetype.get_column::<ChangedMarker<T>>()
     }
 
-    unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
-        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
-        let changed = marker_ref.markers[fetch.value.0 as usize];
+    unsafe fn fetch_read_only<'w, 'b>(
+        fetch: &Self::Fetch<'b>,
+        index: usize,
+    ) -> Self::ReadOnlyItem<'w> {
+        let marker_ref = unsafe { &(*fetch.as_ptr().add(index)) };
+        let changed = marker_ref.read;
         ChangedTracker {
             changed,
             _marker: PhantomData,
         }
     }
 
-    unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
-        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
-        let changed = marker_ref.markers[fetch.value.0 as usize];
+    unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
+        let marker_ref = unsafe { &(*fetch.as_ptr().add(index)) };
+        let changed = marker_ref.read;
         ChangedTracker {
             changed,
             _marker: PhantomData,
+        }
+    }
+}
+
+pub struct ChangedRefMut<'w, T: Component> {
+    value: Mut<'w, T>,
+    changed: bool,
+}
+
+pub struct ChangedRef<'w, T: Component> {
+    value: &'w T,
+    changed: bool,
+}
+
+impl<'w, T: Component> ChangedRefMut<'w, T> {
+    #[inline(always)]
+    pub fn is_changed(&self) -> bool {
+        self.changed
+    }
+    #[inline(always)]
+    pub fn bypass_change_detection(&mut self) -> &mut T {
+        self.value.bypass_change_detection()
+    }
+
+    #[inline(always)]
+    pub fn trigger_change_detection(&mut self) {
+        self.value.trigger_change_detection();
+    }
+}
+
+impl<'w, T: Component> ChangedRef<'w, T> {
+    #[inline(always)]
+    pub fn is_changed(&self) -> bool {
+        self.changed
+    }
+}
+
+impl<'w, T: Component> std::ops::Deref for ChangedRefMut<'w, T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.value.value }
+    }
+}
+
+impl<'w, T: Component> std::ops::Deref for ChangedRef<'w, T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'w, T: Component> std::ops::DerefMut for ChangedRefMut<'w, T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value.trigger_change_detection();
+        unsafe { &mut *self.value.value }
+    }
+}
+
+impl<T: Component> QueryData for ChangedRefMut<'_, T> {
+    type Item<'w> = ChangedRefMut<'w, T>;
+    type ReadOnlyItem<'w> = ChangedRef<'w, T>;
+    type Fetch<'w> = (
+        <&'w mut T as QueryData>::Fetch<'w>,
+        <ChangedTracker<T> as QueryData>::Fetch<'w>,
+    );
+
+    fn matches(archetype: &Archetype) -> bool {
+        <&mut T as QueryData>::matches(archetype)
+    }
+
+    fn collect_access(
+        reads: &mut AccessVec<std::any::TypeId>,
+        writes: &mut AccessVec<std::any::TypeId>,
+    ) {
+        <&mut T as QueryData>::collect_access(reads, writes);
+        <ChangedTracker<T> as QueryData>::collect_access(reads, writes);
+    }
+
+    unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
+        unsafe {
+            (
+                <&mut T as QueryData>::init_fetch(archetype),
+                <ChangedTracker<T> as QueryData>::init_fetch(archetype),
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
+        let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(&fetch.0, index) };
+        let tracker = unsafe { <ChangedTracker<T> as QueryData>::fetch_mut(&fetch.1, index) };
+
+        ChangedRefMut {
+            value: mut_item,
+            changed: tracker.changed,
+        }
+    }
+
+    unsafe fn fetch_read_only<'w, 'b>(
+        fetch: &Self::Fetch<'b>,
+        index: usize,
+    ) -> Self::ReadOnlyItem<'w> {
+        let read_only_item = unsafe { <&mut T as QueryData>::fetch_read_only(&fetch.0, index) };
+        let tracker = unsafe { <ChangedTracker<T> as QueryData>::fetch_read_only(&fetch.1, index) };
+
+        ChangedRef {
+            value: read_only_item,
+            changed: tracker.changed,
         }
     }
 }
@@ -142,29 +250,20 @@ impl<T: Component> QueryData for ChangedTracker<T> {
 /// * **Frame 3 (Purge):** The change state is unconditionally cleared.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Changed<'a, T: Component>(std::marker::PhantomData<&'a T>);
+pub struct Changed<T: Component>(std::marker::PhantomData<T>);
 
-pub struct ChangedFilterData<'a, T: Component> {
-    vec_guard: ComponentColumnRead<'a, ChangedMarker<T>>,
-    read_idx: usize,
-}
-
-impl<'a, T: Component> QueryFilter for Changed<'a, T> {
-    type FilterData = ChangedFilterData<'a, T>;
+impl<T: Component> QueryFilter for Changed<T> {
+    type FilterData<'w> = ComponentColumnRead<'w, ChangedMarker<T>>;
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
     }
 
-    fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
-        let vec_guard = archetype.get_column::<ChangedMarker<T>>();
-        ChangedFilterData {
-            vec_guard,
-            read_idx: CurrentBufferIdx::current_read_idx() as usize,
-        }
+    fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
+        archetype.get_column::<ChangedMarker<T>>()
     }
 
-    fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
-        unsafe { (*(filter_data.vec_guard.as_ptr().add(row_idx))).markers[filter_data.read_idx] }
+    fn matches_row<'w>(filter_data: &Self::FilterData<'w>, row_idx: usize) -> bool {
+        unsafe { (*(filter_data.as_ptr().add(row_idx))).read }
     }
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {
@@ -176,8 +275,6 @@ impl<'a, T: Component> QueryFilter for Changed<'a, T> {
 pub struct Mut<'w, T: Component> {
     pub(crate) value: *mut T,
     pub(crate) marker: *mut ChangedMarker<T>,
-    pub(crate) current_write_idx: u8,
-    pub(crate) should_modify: bool,
     pub(crate) _marker: std::marker::PhantomData<&'w mut T>,
 }
 
@@ -189,9 +286,9 @@ impl<'w, T: Component> Mut<'w, T> {
 
     #[inline(always)]
     pub fn trigger_change_detection(&mut self) {
-        if self.should_modify {
+        if !self.marker.is_null() {
             unsafe {
-                (*self.marker).markers[self.current_write_idx as usize] = true;
+                (*self.marker).write = true;
             }
         }
     }
@@ -218,9 +315,7 @@ impl<'w, T: Component> std::ops::DerefMut for Mut<'w, T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
-            if self.should_modify {
-                (*self.marker).markers[self.current_write_idx as usize] = true;
-            }
+            self.trigger_change_detection();
             &mut *self.value
         }
     }

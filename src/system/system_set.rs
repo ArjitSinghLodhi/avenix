@@ -33,6 +33,7 @@ impl Clone for Box<dyn SystemSet> {
 pub type SetConditionBuilder =
     Box<dyn FnOnce(&mut World) -> Box<dyn Fn() -> bool + Send + Sync> + Send + Sync>;
 
+#[doc(hidden)]
 pub struct GuardNode<S: SystemSet> {
     pub(crate) _marker: PhantomData<S>,
     pub(crate) set: Box<dyn SystemSet>,

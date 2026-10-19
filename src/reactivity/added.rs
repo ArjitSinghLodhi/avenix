@@ -4,9 +4,8 @@ use std::{any::TypeId, marker::PhantomData};
 use crate::{
     ecs::Component,
     extensions::{Archetype, ComponentColumn, ComponentColumnRead},
-    query::{QueryData, QueryFilter, ThreadSafe},
+    query::{QueryData, QueryFilter},
     reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta, verify_app_not_build_yet},
-    world::storage::CurrentBufferIdx,
 };
 
 pub(crate) fn register_added_tracked_component<T: Component>() {
@@ -30,26 +29,25 @@ pub(crate) fn register_added_tracked_component<T: Component>() {
             let mut guard = column.data.write();
             let raw_any = guard.as_any_mut();
             let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
-            let current_write_idx = CurrentBufferIdx::current_write_idx();
-            let mut added_marker = [false; 2];
-            added_marker[current_write_idx as usize] = true;
             vec.push(AddedMarker {
-                added_marker,
+                read: false,
+                write: true,
                 phantom: PhantomData,
             });
         },
         clear_column_markers: |raw_any| {
-            let idx = CurrentBufferIdx::current_write_idx();
             let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
             vec.iter_mut().for_each(|marker| {
-                marker.added_marker[idx as usize] = false;
+                marker.read = marker.write;
+                marker.write = false;
             });
         },
     });
 }
 
 pub struct AddedMarker<T> {
-    added_marker: [bool; 2],
+    read: bool,
+    write: bool,
     phantom: PhantomData<T>,
 }
 
@@ -67,27 +65,18 @@ impl<T: Component> Component for AddedMarker<T> {}
 /// * **Frame 3 (Purge):** The addition state is unconditionally cleared and resets to `false`.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
-pub struct Added<'a, T: Component>(std::marker::PhantomData<&'a T>);
+pub struct Added<T: Component>(std::marker::PhantomData<T>);
 
-pub struct AddedFilterData<'a, T: Component> {
-    vec_guard: ComponentColumnRead<'a, AddedMarker<T>>,
-    read_idx: usize,
-}
-
-impl<'a, T: Component> QueryFilter for Added<'a, T> {
-    type FilterData = AddedFilterData<'a, T>;
-    fn init_filter_data(archetype: &Archetype) -> Self::FilterData {
-        let vec_guard = archetype.get_column::<AddedMarker<T>>();
-        AddedFilterData {
-            vec_guard,
-            read_idx: CurrentBufferIdx::current_read_idx() as usize,
-        }
+impl<T: Component> QueryFilter for Added<T> {
+    type FilterData<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
+    fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
+        archetype.get_column::<AddedMarker<T>>()
     }
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
     }
-    fn matches_row(filter_data: &Self::FilterData, row_idx: usize) -> bool {
-        unsafe { (*filter_data.vec_guard.as_ptr().add(row_idx)).added_marker[filter_data.read_idx] }
+    fn matches_row<'w>(filter_data: &Self::FilterData<'w>, row_idx: usize) -> bool {
+        unsafe { (*filter_data.as_ptr().add(row_idx)).read }
     }
     fn collect_filter(
         withs: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -129,7 +118,7 @@ impl<T: Component> AddedTracker<T> {
 impl<T: Component> QueryData for AddedTracker<T> {
     type Item<'w> = AddedTracker<T>;
     type ReadOnlyItem<'w> = AddedTracker<T>;
-    type Fetch = ThreadSafe<(u8, *const AddedMarker<T>)>;
+    type Fetch<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
     fn collect_access(
         reads: &mut crate::extensions::AccessVec<std::any::TypeId>,
         _writes: &mut crate::extensions::AccessVec<std::any::TypeId>,
@@ -140,27 +129,25 @@ impl<T: Component> QueryData for AddedTracker<T> {
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
     }
-    unsafe fn init_fetch(archetype: &Archetype) -> Self::Fetch {
-        let vec_guard = archetype.get_column::<AddedMarker<T>>();
-        let marker_ptr = vec_guard.as_ptr();
-        let current_read_idx = CurrentBufferIdx::current_read_idx();
-        ThreadSafe {
-            value: (current_read_idx, marker_ptr),
-        }
+    unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
+        archetype.get_column::<AddedMarker<T>>()
     }
 
-    unsafe fn fetch_mut<'w>(fetch: &Self::Fetch, index: usize) -> Self::Item<'w> {
-        let marker_ref = unsafe { &*fetch.value.1.add(index) };
-        let added = marker_ref.added_marker[fetch.value.0 as usize];
+    unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
+        let marker_ref = unsafe { &*fetch.as_ptr().add(index) };
+        let added = marker_ref.read;
         AddedTracker {
             added,
             _phantom: PhantomData,
         }
     }
 
-    unsafe fn fetch_read_only<'w>(fetch: &Self::Fetch, index: usize) -> Self::ReadOnlyItem<'w> {
-        let marker_ref = unsafe { &(*fetch.value.1.add(index)) };
-        let added = marker_ref.added_marker[fetch.value.0 as usize];
+    unsafe fn fetch_read_only<'w, 'b>(
+        fetch: &Self::Fetch<'b>,
+        index: usize,
+    ) -> Self::ReadOnlyItem<'w> {
+        let marker_ref = unsafe { &(*fetch.as_ptr().add(index)) };
+        let added = marker_ref.read;
         AddedTracker {
             added,
             _phantom: PhantomData,

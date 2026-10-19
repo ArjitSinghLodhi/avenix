@@ -14,9 +14,7 @@ use crate::{
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
-    system::{
-        System, system_set_traits::IntoSystemSetConfigConfigs, system_traits::IntoSystemConfigs,
-    },
+    system::{System, system_set_traits::IntoSystemSetConfigs, system_traits::IntoSystemConfigs},
     world::storage::World,
 };
 use crate::{schedule::SystemNode, system::system_set::SetRegistration};
@@ -182,7 +180,7 @@ impl App {
     pub fn configure_sets(
         &mut self,
         schedule: impl crate::schedule::ScheduleLabel,
-        set_configs: impl IntoSystemSetConfigConfigs,
+        set_configs: impl IntoSystemSetConfigs,
     ) -> &mut Self {
         self.configuration().not_ready();
 

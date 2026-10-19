@@ -132,7 +132,7 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
 
         s.spawn(move || {
             b1.wait();
-            while !done1.load(Ordering::Relaxed) {
+            while !done1.load(Ordering::Acquire) {
                 par_reader.scope(|query| {
                     let count = query.total_entities();
                     for (pos, vel) in query.iter() {
@@ -148,7 +148,7 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
 
         s.spawn(move || {
             b2.wait();
-            while !done2.load(Ordering::Relaxed) {
+            while !done2.load(Ordering::Acquire) {
                 par_writer.scope(|mut query| {
                     for (mut pos, vel) in query.iter_mut() {
                         pos.x += vel.x * 0.01;
@@ -204,6 +204,6 @@ fn dynamic_chaos_mutator_system(
         i += 1;
     }
 
-    sync_ctx.system_done.store(true, Ordering::Relaxed);
+    sync_ctx.system_done.store(true, Ordering::Release);
     sync_ctx.barrier.wait();
 }

@@ -120,7 +120,7 @@ impl<'a, T: Component> DerefMut for ComponentColumnWrite<'a, T> {
 pub struct Archetype {
     pub(crate) id: ArchetypeId,
     pub(crate) types: IndexSet<TypeId, FxBuildHasher>,
-    pub(crate) entities: Vec<Entity>,
+    pub(crate) entities: RwLock<Vec<Entity>>,
     pub(crate) columns: IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
     pub(crate) type_names: IndexSet<&'static str, FxBuildHasher>,
 }
@@ -138,7 +138,7 @@ impl Archetype {
         Self {
             id,
             types,
-            entities: Vec::new(),
+            entities: RwLock::new(Vec::new()),
             columns,
             type_names,
         }

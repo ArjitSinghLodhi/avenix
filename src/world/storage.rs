@@ -5,10 +5,7 @@ use std::{
     any::{Any, TypeId, type_name},
     cell::UnsafeCell,
     marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    },
+    sync::Arc,
     thread::{self, ThreadId},
 };
 
@@ -33,28 +30,6 @@ use crate::{
 
 #[cfg(feature = "reactivity")]
 use crate::reactivity::{REMOVAL_TRACKED_COMPS, TRACKED_COMPONENTS};
-
-pub(crate) struct CurrentBufferIdx;
-static CURRENT_BUFFER_IDX: AtomicU8 = AtomicU8::new(1);
-
-impl CurrentBufferIdx {
-    #[inline]
-    #[cfg(feature = "reactivity")]
-    pub(crate) fn current_read_idx() -> u8 {
-        CURRENT_BUFFER_IDX.load(Ordering::Acquire)
-    }
-    #[cfg(feature = "reactivity")]
-    pub(crate) fn current_write_idx() -> u8 {
-        let idx = CURRENT_BUFFER_IDX.load(Ordering::Acquire);
-        if idx == 0 { 1 } else { 0 }
-    }
-
-    pub(crate) fn advance() {
-        let idx = CURRENT_BUFFER_IDX.load(Ordering::Acquire);
-        let next_idx = if idx == 1 { 0 } else { 1 };
-        CURRENT_BUFFER_IDX.store(next_idx, Ordering::Release);
-    }
-}
 
 pub struct World {
     pub(crate) archetypes_manager: ArchetypeManager,
@@ -228,7 +203,6 @@ impl World {
     }
 
     pub fn end_of_frame_sync(&mut self) {
-        CurrentBufferIdx::advance();
         #[cfg(feature = "reactivity")]
         self.clear_trackers();
         self.clear_events();
@@ -240,12 +214,11 @@ impl World {
         let tracked_comps = TRACKED_COMPONENTS.lock();
         if !tracked_comps.is_empty() {
             for archetype in self.archetypes_manager.archetypes.iter_mut() {
-                let mut archetype_lock = archetype.lock();
+                let archetype_lock = archetype.lock();
                 unsafe {
                     for meta_list in tracked_comps.values() {
                         for meta in meta_list {
-                            if let Some(marker_column) =
-                                archetype_lock.columns.get_mut(&meta.marker_id)
+                            if let Some(marker_column) = archetype_lock.columns.get(&meta.marker_id)
                             {
                                 let mut guard = marker_column.data.write();
                                 let raw_any = guard.as_any_mut();
@@ -350,12 +323,12 @@ pub(crate) fn apply_despawns(
     }
     for shard in despawns_guard.shards() {
         let mut lock = shard.write();
-        for (entity_ref, _) in lock.drain() {
+        for (entity, _) in lock.drain() {
             unsafe {
-                REGISTRY_HANDLE_COUNT.decrement_handle(entity_ref.registry_index as usize);
+                REGISTRY_HANDLE_COUNT.decrement_handle(entity.registry_index as usize);
             }
-            let cmd_ref = unsafe { &*(&entity_ref as *const Entity as *const DespawnCommand) };
-            cmd_ref.apply(world);
+            let cmd = DespawnCommand { entity };
+            cmd.apply(world);
         }
     }
 }

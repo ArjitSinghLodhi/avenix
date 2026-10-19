@@ -217,30 +217,30 @@ impl SetConfig {
 }
 
 #[doc(hidden)]
-pub trait IntoSystemSetConfigConfigs {
+pub trait IntoSystemSetConfigs {
     #[doc(hidden)]
     fn into_configs(self) -> Vec<SetConfig>;
 }
 
-impl IntoSystemSetConfigConfigs for SetConfig {
+impl IntoSystemSetConfigs for SetConfig {
     fn into_configs(self) -> Vec<SetConfig> {
         vec![self]
     }
 }
 
-impl IntoSystemSetConfigConfigs for SystemSetConfigs {
+impl IntoSystemSetConfigs for SystemSetConfigs {
     fn into_configs(self) -> Vec<SetConfig> {
         self.configs
     }
 }
 
-impl IntoSystemSetConfigConfigs for Box<dyn SystemSet> {
+impl IntoSystemSetConfigs for Box<dyn SystemSet> {
     fn into_configs(self) -> Vec<SetConfig> {
         vec![self.into_config()]
     }
 }
 
-impl<T: SystemSet> IntoSystemSetConfigConfigs for T {
+impl<T: SystemSet> IntoSystemSetConfigs for T {
     fn into_configs(self) -> Vec<SetConfig> {
         vec![self.into_config()]
     }
@@ -323,7 +323,7 @@ impl SystemSetConfigsExt for SystemSetConfigs {
 
 macro_rules! impl_system_set_configs_for_tuples {
     ($($set:ident),*) => {
-        impl<$($set: IntoSystemSetConfigConfigs),*> IntoSystemSetConfigConfigs for ($($set,)*) {
+        impl<$($set: IntoSystemSetConfigs),*> IntoSystemSetConfigs for ($($set,)*) {
             fn into_configs(self) -> Vec<SetConfig> {
                 #[allow(non_snake_case)]
                 let ($($set,)*) = self;
@@ -333,7 +333,7 @@ macro_rules! impl_system_set_configs_for_tuples {
             }
         }
 
-        impl<$($set: IntoSystemSetConfigConfigs + TrackSetHierarchyEdges + 'static),*> SystemSetConfigsExt for ($($set,)*) {
+        impl<$($set: IntoSystemSetConfigs + TrackSetHierarchyEdges + 'static),*> SystemSetConfigsExt for ($($set,)*) {
             fn after<T>(self, target: impl AsSchedulingTarget<T> + Clone) -> SystemSetConfigs {
                 SystemSetConfigs { configs: self.into_configs() }.after(target)
             }

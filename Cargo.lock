@@ -40,7 +40,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avenix"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "avenix_macros",
  "criterion",
@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "avenix_macros"
-version = "0.5.3"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73a483d4cf230b5987eb40095f255612ca37de0572b7210d5f8435359f1b5cc4"
+checksum = "4fd3efd2aac3f1cd14bf2c795ffa71865d82af2e768d216a53c7ad23a0c7d3ed"
 dependencies = [
  "proc-macro2",
  "quote",

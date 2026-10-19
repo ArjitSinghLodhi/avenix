@@ -1,2 +1,2 @@
-pub mod archetypes;
-pub mod storage;
+pub(crate) mod archetypes;
+pub(crate) mod storage;

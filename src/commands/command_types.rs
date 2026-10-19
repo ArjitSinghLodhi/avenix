@@ -2,7 +2,7 @@ use dashmap::mapref::one::Ref;
 use indexmap::IndexMap;
 #[cfg(feature = "reactivity")]
 use indexmap::IndexSet;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 use std::{any::TypeId, sync::atomic::AtomicU32};
 
@@ -24,7 +24,7 @@ impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
     fn apply(self, world: &mut World) {
         let arch_id = world.archetypes_manager.get_or_create_from_generic::<T>();
         let next_idx = match world.archetypes_manager.get_mut(arch_id) {
-            Some(arch) => arch.entities.len() as u32,
+            Some(arch) => arch.entities.read().len() as u32,
             None => 0,
         };
         let assigned_registry_idx = alloc_registry_cell(arch_id, next_idx, world);
@@ -33,7 +33,9 @@ impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
             .get_mut(arch_id)
             .expect("Archetype generation failed");
 
-        arch.entities.push(Entity::new(assigned_registry_idx));
+        arch.entities
+            .write()
+            .push(Entity::new(assigned_registry_idx));
         self.components.push_to_archetype(&mut arch);
         #[cfg(feature = "reactivity")]
         {
@@ -65,18 +67,21 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
 
         let (lower_bound, _) = self.components_iter.size_hint();
         if lower_bound > 0 {
-            arch.entities.reserve(lower_bound);
+            arch.entities.write().reserve(lower_bound);
         }
 
         #[cfg(feature = "reactivity")]
         let mut batch_size = 0;
 
         for components in self.components_iter {
-            let next_idx = arch.entities.len() as u32;
-            let assigned_registry_idx =
-                unsafe { alloc_registry_cell(arch_id, next_idx, &mut *world_ptr) };
+            {
+                let mut arch_entities = arch.entities.write();
+                let next_idx = arch_entities.len() as u32;
+                let assigned_registry_idx =
+                    unsafe { alloc_registry_cell(arch_id, next_idx, &mut *world_ptr) };
 
-            arch.entities.push(Entity::new(assigned_registry_idx));
+                arch_entities.push(Entity::new(assigned_registry_idx));
+            }
             components.push_to_archetype(&mut arch);
 
             #[cfg(feature = "reactivity")]
@@ -127,11 +132,11 @@ impl DespawnCommand {
             .archetypes_manager
             .get_mut(arch_id)
             .expect("Target archetype missing");
-        let last_idx = (arch.entities.len() - 1) as u32;
+        let last_idx = (arch.entities.read().len() - 1) as u32;
 
         if target_idx != last_idx {
             let swapped_entity_registry_idx =
-                arch.entities[last_idx as usize].registry_index as usize;
+                arch.entities.read()[last_idx as usize].registry_index as usize;
 
             unsafe {
                 let swapped_cell_ptr = REGISTRY.get_mut_ptr(swapped_entity_registry_idx);
@@ -145,7 +150,7 @@ impl DespawnCommand {
             }
         }
 
-        arch.entities.swap_remove(target_idx as usize);
+        arch.entities.write().swap_remove(target_idx as usize);
         world.free_indices_list.push(target_registry_idx as u32);
     }
 }
@@ -184,16 +189,16 @@ impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
                 let old_cols = &mut old_arch.columns;
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
             }
-            let new_dense_idx = new_arch.entities.len() as u32;
+            let new_dense_idx = new_arch.entities.read().len() as u32;
             self.components.push_to_archetype(&mut new_arch);
             #[cfg(feature = "reactivity")]
             {
                 let fresh_new_cols = &mut new_arch.columns;
                 migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
             }
-            swap_remove_entity_registry_update(&mut old_arch, old_idx);
-            let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
-            new_arch.entities.push(entity_handle);
+            swap_remove_entity_registry_update(&mut old_arch.entities.write(), old_idx);
+            let entity_handle = old_arch.entities.write().swap_remove(old_idx as usize);
+            new_arch.entities.write().push(entity_handle);
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
         }
     }
@@ -236,12 +241,19 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
                 get_double_archetypes(world, old_arch_id, new_arch_id);
             let mut old_arch = old_arch_mutex.lock();
             let mut new_arch = new_arch_mutex.lock();
-            let new_dense_idx = new_arch.entities.len() as u32;
-            {
-                let new_cols = &mut new_arch.columns;
-                let old_cols = &mut old_arch.columns;
+            let new_dense_idx = {
+                let Archetype {
+                    columns: old_cols, ..
+                } = &mut *old_arch;
+                let Archetype {
+                    entities: new_arch_entities,
+                    columns: new_cols,
+                    ..
+                } = &mut *new_arch;
+                let new_arch_entities = new_arch_entities.read();
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
-            }
+                new_arch_entities.len() as u32
+            };
             self.components
                 .insert_to_archetype(&mut new_arch, new_dense_idx as usize);
 
@@ -250,10 +262,10 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
                 let fresh_new_cols = &mut new_arch.columns;
                 migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
             }
-
-            swap_remove_entity_registry_update(&mut old_arch, old_idx);
-            let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
-            new_arch.entities.push(entity_handle);
+            let mut old_arch_entities = old_arch.entities.write();
+            swap_remove_entity_registry_update(&mut old_arch_entities, old_idx);
+            let entity_handle = old_arch_entities.swap_remove(old_idx as usize);
+            new_arch.entities.write().push(entity_handle);
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
         }
     }
@@ -290,14 +302,17 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
                 get_double_archetypes(world, old_arch_id, new_arch_id);
             let mut old_arch = old_arch_mutex.lock();
             let mut new_arch = new_arch_mutex.lock();
-            let new_dense_idx = new_arch.entities.len() as u32;
             let Archetype {
+                entities: new_arch_entities,
                 columns: new_cols,
                 #[cfg(feature = "reactivity")]
                     types: new_types,
                 ..
             } = &mut *new_arch;
+            let mut new_arch_entities = new_arch_entities.write();
+            let new_dense_idx = new_arch_entities.len() as u32;
             let Archetype {
+                entities: old_arch_entities,
                 columns: old_cols,
                 #[cfg(feature = "reactivity")]
                     types: old_types,
@@ -306,17 +321,18 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
             move_matching_columns(old_cols, new_cols, old_idx as usize);
             erase_subtracted_columns(removed_ids, old_cols, old_idx as usize);
 
+            let mut old_arch_entities = old_arch_entities.write();
             #[cfg(feature = "reactivity")]
             {
                 erase_subtracted_markers(old_types, new_types, old_cols, old_idx as usize);
-                let entity_handle = &old_arch.entities[old_idx as usize];
+                let entity_handle = &old_arch_entities[old_idx as usize];
                 push_removed_components_reactivity(world_ptr, removed_ids, entity_handle);
             }
 
-            swap_remove_entity_registry_update(&mut old_arch, old_idx);
+            swap_remove_entity_registry_update(&mut old_arch_entities, old_idx);
 
-            let entity_handle = old_arch.entities.swap_remove(old_idx as usize);
-            new_arch.entities.push(entity_handle);
+            let entity_handle = old_arch_entities.swap_remove(old_idx as usize);
+            new_arch_entities.push(entity_handle);
 
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
         }
@@ -522,10 +538,13 @@ unsafe fn erase_subtracted_columns(
 }
 
 #[inline(always)]
-unsafe fn swap_remove_entity_registry_update(arch: &mut Archetype, removed_row_idx: u32) {
-    let last_idx = (arch.entities.len() - 1) as u32;
+unsafe fn swap_remove_entity_registry_update(
+    arch_entities: &mut RwLockWriteGuard<Vec<Entity>>,
+    removed_row_idx: u32,
+) {
+    let last_idx = (arch_entities.len() - 1) as u32;
     if removed_row_idx != last_idx {
-        let swapped_entity_registry_idx = arch.entities[last_idx as usize].registry_index as usize;
+        let swapped_entity_registry_idx = arch_entities[last_idx as usize].registry_index as usize;
         let swapped_cell = unsafe { REGISTRY.get_mut_ptr(swapped_entity_registry_idx) };
         unsafe {
             (*swapped_cell).idx = removed_row_idx;

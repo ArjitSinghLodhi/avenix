@@ -41,9 +41,7 @@ pub mod prelude {
             condition::{
                 Condition, ConditionBuilder, ConditionFn, RunConditionsList, not, resource_exists,
             },
-            system_set::{
-                IntoSystemSetConfigConfigs, SystemSet, SystemSetConfigsExt, SystemSetExt,
-            },
+            system_set::{IntoSystemSetConfigs, SystemSet, SystemSetConfigsExt, SystemSetExt},
             system_traits::{
                 ConfigureSystem, ConfigureSystemConfigs, IntoSystemConfigs, SystemConfigs,
             },
@@ -60,7 +58,7 @@ pub mod prelude {
     #[cfg(feature = "reactivity")]
     pub use crate::ecs::reactivity::{
         added::{Added, AddedTracker},
-        changed::{Changed, ChangedTracker, Mut},
+        changed::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut},
         removed::RemovedComponents,
     };
     pub use crate::ecs::{
@@ -114,7 +112,7 @@ pub mod ecs {
     #[cfg(feature = "reactivity")]
     pub mod reactivity {
         pub mod changed {
-            pub use crate::reactivity::{Changed, ChangedTracker, Mut};
+            pub use crate::reactivity::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut};
         }
         pub mod added {
             pub use crate::reactivity::{Added, AddedTracker};
@@ -160,8 +158,8 @@ pub mod app {
             pub use crate::system::{
                 system_set::{GuardNode, SetConditionBuilder, SystemSet},
                 system_set_traits::{
-                    IntoSystemSetConfig, IntoSystemSetConfigConfigs, SetConfig,
-                    SystemSetConfigsExt, SystemSetExt,
+                    IntoSystemSetConfig, IntoSystemSetConfigs, SetConfig, SystemSetConfigsExt,
+                    SystemSetExt,
                 },
             };
         }

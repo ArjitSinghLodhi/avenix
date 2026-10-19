@@ -1,6 +1,6 @@
 # Avenix ECS Engine
 
-A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring high-performance parallel workloads, out-of-band remote coordination, native **States**, and advanced **SystemSets** grouping.
+A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring high-performance parallel workloads, out-of-band remote coordination, native **States**, and **SystemSets** grouping.
 
 ---
 
@@ -116,7 +116,7 @@ Avenix enforces an explicit design invariant: **All cloned handles referencing a
 ### Component Reactivity Architecture
 When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
 
-* **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`).
+* **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`, `Changed<T>`).
 * **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened by default.
 
 ---
