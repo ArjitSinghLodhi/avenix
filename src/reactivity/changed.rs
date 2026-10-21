@@ -187,10 +187,7 @@ impl<'w, T: Component> std::ops::DerefMut for ChangedRefMut<'w, T> {
 impl<T: Component> QueryData for ChangedRefMut<'_, T> {
     type Item<'w> = ChangedRefMut<'w, T>;
     type ReadOnlyItem<'w> = ChangedRef<'w, T>;
-    type Fetch<'w> = (
-        <&'w mut T as QueryData>::Fetch<'w>,
-        <ChangedTracker<T> as QueryData>::Fetch<'w>,
-    );
+    type Fetch<'w> = <&'w mut T as QueryData>::Fetch<'w>;
 
     fn matches(archetype: &Archetype) -> bool {
         <&mut T as QueryData>::matches(archetype)
@@ -201,26 +198,22 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
         writes: &mut AccessVec<std::any::TypeId>,
     ) {
         <&mut T as QueryData>::collect_access(reads, writes);
-        <ChangedTracker<T> as QueryData>::collect_access(reads, writes);
+        register_changed_tracked_component::<T>();
     }
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
         unsafe {
-            (
-                <&mut T as QueryData>::init_fetch(archetype),
-                <ChangedTracker<T> as QueryData>::init_fetch(archetype),
-            )
+            <&mut T as QueryData>::init_fetch(archetype)
         }
     }
 
     #[inline(always)]
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
-        let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(&fetch.0, index) };
-        let tracker = unsafe { <ChangedTracker<T> as QueryData>::fetch_mut(&fetch.1, index) };
-
+        let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(&fetch, index) };
+        let changed =  unsafe { (&*mut_item.marker).read };
         ChangedRefMut {
             value: mut_item,
-            changed: tracker.changed,
+            changed,
         }
     }
 
@@ -228,8 +221,12 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
         fetch: &Self::Fetch<'b>,
         index: usize,
     ) -> Self::ReadOnlyItem<'w> {
-        let read_only_item = unsafe { <&mut T as QueryData>::fetch_read_only(&fetch.0, index) };
-        let tracker = unsafe { <ChangedTracker<T> as QueryData>::fetch_read_only(&fetch.1, index) };
+        let read_only_item = unsafe { <&mut T as QueryData>::fetch_read_only(&fetch, index) };
+        let changed = unsafe { (&*fetch.1.as_ref().unwrap().as_ptr().add(index)).read };
+        let tracker = ChangedTracker::<T> {
+            changed,
+            _marker: PhantomData,
+        };
 
         ChangedRef {
             value: read_only_item,
