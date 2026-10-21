@@ -89,6 +89,6 @@ fn main() {
         .add_systems(Startup, setup_macro_entities)
         .add_systems(Update, verify_and_mutate_macros);
     app.run();
-    let tracker = app.world().get_resource::<ScoreTracker>();
+    let tracker = app.world().resource::<ScoreTracker>();
     assert_eq!(tracker.points, 500);
 }

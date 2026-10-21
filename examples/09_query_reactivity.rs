@@ -34,7 +34,7 @@ fn setup_game(commands: Commands) {
 fn simulate_gameplay_mutations_frame_1(commands: Commands, score_query: Query<(Entity, &Score)>) {
     for (entity, _) in score_query.iter() {
         println!("[Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
-        commands.entity(entity.clone()).add(Buff { name: "Haste" });
+        commands.entity(entity).add(Buff { name: "Haste" });
     }
 }
 
@@ -47,7 +47,7 @@ fn simulate_gameplay_mutations_frame_2(
         score.0 = 100;
 
         println!("[Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'.");
-        commands.entity(entity.clone()).insert(StatusEffect);
+        commands.entity(entity).insert(StatusEffect);
     }
 }
 

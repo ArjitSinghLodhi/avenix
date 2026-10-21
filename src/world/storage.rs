@@ -101,11 +101,11 @@ impl World {
         }
     }
 
-    pub fn get_resource<'w, T: Resource + Send + Sync>(&'w self) -> Res<'w, T> {
-        self.resources.get_resource::<T>()
+    pub fn resource<'w, T: Resource + Send + Sync>(&'w self) -> Res<'w, T> {
+        self.resources.resource::<T>()
     }
 
-    pub fn get_non_send_resource<'w, T: Resource>(&'w self) -> NonSend<'w, T> {
+    pub fn non_send_resource<'w, T: Resource>(&'w self) -> NonSend<'w, T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get(&type_id).unwrap_or_else(|| {
@@ -127,11 +127,11 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&'w self) -> ResMut<'w, T> {
-        self.resources.get_resource_mut::<T>()
+    pub fn resource_mut<'w, T: Resource + Send + Sync>(&'w self) -> ResMut<'w, T> {
+        self.resources.resource_mut::<T>()
     }
 
-    pub fn get_non_send_resource_mut<'w, T: Resource>(&'w mut self) -> NonSendMut<'w, T> {
+    pub fn non_send_resource_mut<'w, T: Resource>(&'w mut self) -> NonSendMut<'w, T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self
@@ -153,11 +153,11 @@ impl World {
         }
     }
 
-    pub fn get_resource_opt<'w, T: Resource + Send + Sync>(&'w self) -> Option<Res<'w, T>> {
-        self.resources.get_resource_opt::<T>()
+    pub fn get_resource<'w, T: Resource + Send + Sync>(&'w self) -> Option<Res<'w, T>> {
+        self.resources.get_resource::<T>()
     }
 
-    pub fn get_non_send_resource_opt<'w, T: Resource>(&'w self) -> Option<NonSend<'w, T>> {
+    pub fn get_non_send_resource<'w, T: Resource>(&'w self) -> Option<NonSend<'w, T>> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get(&type_id)?;
@@ -172,13 +172,11 @@ impl World {
         }
     }
 
-    pub fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(&'w self) -> Option<ResMut<'w, T>> {
-        self.resources.get_resource_mut_opt::<T>()
+    pub fn get_resource_mut<'w, T: Resource + Send + Sync>(&'w self) -> Option<ResMut<'w, T>> {
+        self.resources.get_resource_mut::<T>()
     }
 
-    pub fn get_non_send_resource_mut_opt<'w, T: Resource>(
-        &'w mut self,
-    ) -> Option<NonSendMut<'w, T>> {
+    pub fn get_non_send_resource_mut<'w, T: Resource>(&'w mut self) -> Option<NonSendMut<'w, T>> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get_mut(&type_id)?;
@@ -206,7 +204,6 @@ impl World {
         #[cfg(feature = "reactivity")]
         self.clear_trackers();
         self.clear_events();
-        self.transition_states();
     }
 
     #[cfg(feature = "reactivity")]
@@ -254,8 +251,12 @@ impl World {
         }
     }
 
+    pub fn start_frame_sync(&mut self) {
+        self.transition_states();
+    }
+
     fn transition_states(&mut self) {
-        let state_systems_opt = self.get_resource_mut_opt::<StateTransitionSystems>();
+        let state_systems_opt = self.get_resource_mut::<StateTransitionSystems>();
         if let Some(mut state_systems) = state_systems_opt {
             state_systems
                 .systems
@@ -269,7 +270,7 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input into the engine's command pipeline, manageable by external or
     /// parallel background worker threads.
-    pub fn get_par_commands(&self) -> ParallelCommands {
+    pub fn par_commands(&self) -> ParallelCommands {
         ParallelCommands::get_param(self)
     }
 
@@ -278,7 +279,7 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
-    pub fn get_par_event_writer<T: Event>(&self) -> ParallelEventWriter<T> {
+    pub fn par_event_writer<T: Event>(&self) -> ParallelEventWriter<T> {
         ParallelEventWriter::get_param(self)
     }
 
@@ -287,7 +288,7 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
-    pub fn get_par_event_reader<T: Event>(&self) -> ParallelEventReader<T> {
+    pub fn par_event_reader<T: Event>(&self) -> ParallelEventReader<T> {
         ParallelEventReader::get_param(self)
     }
 
@@ -296,16 +297,12 @@ impl World {
     /// This method can be called directly on the `World` to obtain a detached,
     /// safe remote accessor into the engine's resource tables manageable by external or
     /// parallel background threads.
-    pub fn get_par_resource_accessor<T: Resource + Send + Sync>(
-        &self,
-    ) -> ParallelResourceAccessor<T> {
+    pub fn par_resource_accessor<T: Resource + Send + Sync>(&self) -> ParallelResourceAccessor<T> {
         ParallelResourceAccessor::get_param(self)
     }
 
-    pub fn get_par_query_accessor<Q: QueryData, F: QueryFilter>(
-        &self,
-    ) -> ParallelQueryAccessor<Q, F> {
-        self.get_resource::<ConfigurationContext>().not_ready();
+    pub fn par_query_accessor<Q: QueryData, F: QueryFilter>(&self) -> ParallelQueryAccessor<Q, F> {
+        self.resource::<ConfigurationContext>().not_ready();
         ParallelQueryAccessor::<Q, F>::init_access(&mut SystemMeta::default());
         ParallelQueryAccessor::<Q, F>::get_param(self)
     }
@@ -340,7 +337,7 @@ impl World {
     /// 1. This method is called exclusively from the **Main Thread** (the thread on which the non-send resource was originally registered and allocated).
     /// 2. No other active references (`&T` or `&mut T`) to this specific resource exist anywhere in the engine for the duration of the returned `NonSendMut` lifetime.
     /// 3. Concurrent execution phases do not attempt to look up or access this resource type asynchronously from background worker pool threads.
-    pub unsafe fn get_non_send_resource_mut_unsafe<'w, T: Resource>(&'w self) -> NonSendMut<'w, T> {
+    pub unsafe fn non_send_resource_mut_unsafe<'w, T: Resource>(&'w self) -> NonSendMut<'w, T> {
         self.validate_thread_safety::<T>();
         let type_id = TypeId::of::<T>();
         let cell = self.non_send_resources.get(&type_id).unwrap_or_else(|| {
@@ -367,7 +364,7 @@ impl World {
     /// 1. This method is called exclusively from the **Main Thread**.
     /// 2. No other active mutable or immutable references to this specific resource exist simultaneously within the current execution scope.
     /// 3. Access is strictly isolated from out-of-band parallel execution workers.
-    pub unsafe fn get_non_send_resource_mut_opt_unsafe<'w, T: Resource>(
+    pub unsafe fn get_non_send_resource_mut_unsafe<'w, T: Resource>(
         &'w self,
     ) -> Option<NonSendMut<'w, T>> {
         self.validate_thread_safety::<T>();

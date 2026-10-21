@@ -46,8 +46,8 @@ fn main() {
     println!("Checking initial state conditions...");
     app.update();
     {
-        let tracker = app.world().get_resource::<TransitionTracker>();
-        let state = app.world().get_resource::<State<GameState>>();
+        let tracker = app.world().resource::<TransitionTracker>();
+        let state = app.world().resource::<State<GameState>>();
 
         assert_eq!(*state.current(), GameState::MainMenu);
         assert!(tracker.history.is_empty());
@@ -55,15 +55,15 @@ fn main() {
 
     println!("Scheduling state modification hook...");
     {
-        let mut next_state = app.world().get_resource_mut::<NextState<GameState>>();
+        let mut next_state = app.world().resource_mut::<NextState<GameState>>();
         next_state.set(GameState::InGame);
     }
 
     println!("Processing transition lifecycle step...");
     app.update();
     {
-        let tracker = app.world().get_resource::<TransitionTracker>();
-        let state = app.world().get_resource::<State<GameState>>();
+        let tracker = app.world().resource::<TransitionTracker>();
+        let state = app.world().resource::<State<GameState>>();
 
         assert_eq!(*state.current(), GameState::InGame);
         assert_eq!(*state.last(), GameState::MainMenu);
@@ -82,8 +82,8 @@ fn main() {
     println!("Verifying lifecycle boundary stabilization...");
     app.update();
     {
-        let tracker = app.world().get_resource::<TransitionTracker>();
-        let state = app.world().get_resource::<State<GameState>>();
+        let tracker = app.world().resource::<TransitionTracker>();
+        let state = app.world().resource::<State<GameState>>();
 
         assert_eq!(*state.current(), GameState::InGame);
         assert!(!state.just_changed());

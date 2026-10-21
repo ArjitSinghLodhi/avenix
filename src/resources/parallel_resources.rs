@@ -9,7 +9,7 @@ use std::{marker::PhantomData, sync::Arc};
 ///
 /// `ParallelResourceAccessor` can be passed to external or background worker threads, allowing them to
 /// concurrently read or modify global resources outside the main execution path. It can be obtained
-/// directly from the world layer via [`.get_par_resource_accessor()`].
+/// directly from the world layer via [`.par_resource_accessor()`].
 ///
 /// This handle is also fully supported for use as a system parameter.
 ///
@@ -21,7 +21,7 @@ use std::{marker::PhantomData, sync::Arc};
 /// * **Overlapping Access:** Attempting to open a mutable scope while another active scope (mutable or immutable)
 ///   targets that same resource on the same thread will trigger a deadlock.
 ///
-/// [`.get_par_resource_accessor()`]: crate::world::storage::World::get_par_resource_accessor
+/// [`.par_resource_accessor()`]: crate::world::storage::World::par_resource_accessor
 pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {
     pub(crate) resources: Arc<ConcurrentResourceRegistry>,
     pub(crate) _marker: PhantomData<T>,
@@ -45,7 +45,7 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     where
         F: for<'b> FnOnce(Res<'b, T>) -> R,
     {
-        let resource = self.resources.get_resource::<T>();
+        let resource = self.resources.resource::<T>();
         f(resource)
     }
 
@@ -53,7 +53,7 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     where
         F: for<'b> FnOnce(ResMut<'b, T>) -> R,
     {
-        let resource = self.resources.get_resource_mut::<T>();
+        let resource = self.resources.resource_mut::<T>();
         f(resource)
     }
 
@@ -61,7 +61,7 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     where
         F: for<'b> FnOnce(Option<Res<'b, T>>) -> R,
     {
-        let resource = self.resources.get_resource_opt::<T>();
+        let resource = self.resources.get_resource::<T>();
         f(resource)
     }
 
@@ -69,7 +69,7 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
     where
         F: for<'b> FnOnce(Option<ResMut<'b, T>>) -> R,
     {
-        let resource = self.resources.get_resource_mut_opt::<T>();
+        let resource = self.resources.get_resource_mut::<T>();
         f(resource)
     }
 

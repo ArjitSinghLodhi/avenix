@@ -61,16 +61,16 @@ Avenix isolates out-of-band coordination into thread-safe, thread-clonable handl
 ### Configuration & Capabilities
 
 * **`ParallelCommands`**
-  - **Extraction:** Sourced using `world.get_par_commands()`.
+  - **Extraction:** Sourced using `world.par_commands()`.
   - **Capabilities:** Invoking `.scope(|cmd| ...)` grants access to a standard command buffer. This allows background threads to safely queue structural mutations (spawning/despawning entities, adding/removing components, and deferring resource swaps) to be flushed during the next apply phase.
 * **`ParallelEventWriter<T>` & `ParallelEventReader<T>`**
-  - **Extraction:** Sourced using `world.get_par_event_writer::<T>()` and `world.get_par_event_reader::<T>()`.
+  - **Extraction:** Sourced using `world.par_event_writer::<T>()` and `world.par_event_reader::<T>()`.
   - **Capabilities:** Invoking `.scope(|writer| ...)` or `.scope(|reader| ...)` lets concurrent background workers read, iterate, or push events synchronously across parallel tasks.
 * **`ParallelResourceAccessor<T>`**
-  - **Extraction:** Sourced using `world.get_par_resource_accessor::<T>()`.
+  - **Extraction:** Sourced using `world.par_resource_accessor::<T>()`.
   - **Capabilities:** Provides `.scope()`, `.scope_mut()`, `.scope_opt()`, and `.scope_mut_opt()` windows into global values. Supports direct structural management via `.insert_resource()` and `.remove_resource()`, and presence checks via `.is_present()`. Clone-safe.
 * **`ParallelQueryAccessor<Q, F>`**
-  - **Extraction:** Sourced using `world.get_par_query_accessor::<Q, F>()` **before** calling `app.build()`.
+  - **Extraction:** Sourced using `world.par_query_accessor::<Q, F>()` **before** calling `app.build()`.
   - **Capabilities:** Opens read/write component data matrix structures (`Q: QueryData`) matching criteria filters (`F: QueryFilter`) for detached processing workers.
   
 ---
@@ -109,7 +109,7 @@ Hidden From Active Queries       Caught Natively By Readers      Space Reclaimed
 Avenix enforces an explicit design invariant: **All cloned handles referencing a specific entity must be completely dropped before that entity's queued despawn command is processed.**
 
 * **The Benefit:** By requiring clear lifecycle termination boundaries, Avenix completely eliminates the need for integer generation numbers or tracking ticks inside entity keys. The engine safely packs full entity addresses into a compact **32-bit slot**, minimizing memory consumption and eliminating integer overflow errors during long uptime operations.
-* **Handling Cleanup:** The engine will invoke a diagnostic panic during the structural flush phase if a handle leak occurs, printing a detailed map of the component layout archetypes involved to help you isolate where the handle leak occurred. To satisfy this requirement cleanly, the engine provides dedicated stage lifecycles (`CleanupHandles`) and state-interception tools within the `Commands` to inspect scheduled despawns before the memory flush executes. Complete verification layouts can be observed directly within the `hierarchy_cleanup` example blueprint.
+* **Handling Cleanup:** The engine will invoke a diagnostic panic during the structural flush phase if a handle leak occurs, printing a detailed map of the component layout archetypes involved to help you isolate where the handle leak occurred. To satisfy this requirement cleanly, the engine provides dedicated stage lifecycles (`CleanupHandles`) and state-interception tools within the `Commands` to inspect scheduled despawns before the memory flush executes. Complete verification layouts can be observed directly within the all example blueprints inside the `examples/despawn_cleanup` folder.
 
 ---
 

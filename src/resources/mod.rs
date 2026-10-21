@@ -53,63 +53,25 @@ impl ConcurrentResourceRegistry {
         }
     }
 
-    pub(crate) fn get_resource<'w, T: Resource + Send + Sync>(&self) -> Res<'w, T> {
-        let type_id = TypeId::of::<T>();
-        let entry = self.resources.get(&type_id).unwrap_or_else(|| {
+    pub(crate) fn resource<'w, T: Resource + Send + Sync>(&self) -> Res<'w, T> {
+        self.get_resource().unwrap_or_else(|| {
             panic!(
                 "Requested resource: '{}' was never registered!",
                 type_name::<T>()
             );
-        });
-
-        unsafe {
-            let entry = std::mem::transmute::<
-                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
-                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
-            >(entry);
-            let raw_guard = entry.value().read();
-            let guard = std::mem::transmute::<
-                RwLockReadGuard<'_, Box<dyn Any>>,
-                RwLockReadGuard<'w, Box<dyn Any>>,
-            >(raw_guard);
-            let res_ptr = guard.downcast_ref::<T>().expect("Resource type mismatch!") as *const T;
-            Res {
-                _guard: guard,
-                _ref_guard: entry,
-                res_ptr,
-            }
-        }
+        })
     }
 
-    pub(crate) fn get_resource_mut<'w, T: Resource + Send + Sync>(&self) -> ResMut<'w, T> {
-        let type_id = TypeId::of::<T>();
-        let entry = self.resources.get(&type_id).unwrap_or_else(|| {
+    pub(crate) fn resource_mut<'w, T: Resource + Send + Sync>(&self) -> ResMut<'w, T> {
+        self.get_resource_mut().unwrap_or_else(|| {
             panic!(
                 "Requested resource: '{}' was never registered!",
                 type_name::<T>()
             );
-        });
-
-        unsafe {
-            let entry = std::mem::transmute::<
-                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
-                Ref<'_, TypeId, RwLock<Box<dyn Any>>>,
-            >(entry);
-            let raw_guard = entry.value().write();
-            let mut guard = std::mem::transmute::<
-                RwLockWriteGuard<'_, Box<dyn Any>>,
-                RwLockWriteGuard<'w, Box<dyn Any>>,
-            >(raw_guard);
-            let res_ptr = guard.downcast_mut::<T>().expect("Resource type mismatch!") as *mut T;
-            ResMut {
-                _guard: guard,
-                _ref_guard: entry,
-                res_ptr,
-            }
-        }
+        })
     }
 
-    pub(crate) fn get_resource_opt<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
+    pub(crate) fn get_resource<'w, T: Resource + Send + Sync>(&self) -> Option<Res<'w, T>> {
         let type_id = TypeId::of::<T>();
         let entry = self.resources.get(&type_id)?;
         unsafe {
@@ -120,7 +82,7 @@ impl ConcurrentResourceRegistry {
             let raw_guard = entry.value().read();
             let guard = std::mem::transmute::<
                 RwLockReadGuard<'_, Box<dyn Any>>,
-                RwLockReadGuard<'w, Box<dyn Any>>,
+                RwLockReadGuard<'_, Box<dyn Any>>,
             >(raw_guard);
             let res_ptr = guard.downcast_ref::<T>()? as *const T;
             Some(Res {
@@ -131,9 +93,7 @@ impl ConcurrentResourceRegistry {
         }
     }
 
-    pub(crate) fn get_resource_mut_opt<'w, T: Resource + Send + Sync>(
-        &self,
-    ) -> Option<ResMut<'w, T>> {
+    pub(crate) fn get_resource_mut<'w, T: Resource + Send + Sync>(&self) -> Option<ResMut<'w, T>> {
         let type_id = TypeId::of::<T>();
         let entry = self.resources.get(&type_id)?;
 
@@ -145,7 +105,7 @@ impl ConcurrentResourceRegistry {
             let raw_guard = entry.value().write();
             let mut guard = std::mem::transmute::<
                 RwLockWriteGuard<'_, Box<dyn Any>>,
-                RwLockWriteGuard<'w, Box<dyn Any>>,
+                RwLockWriteGuard<'_, Box<dyn Any>>,
             >(raw_guard);
             let res_ptr = guard.downcast_mut::<T>()? as *mut T;
             Some(ResMut {
@@ -167,7 +127,7 @@ pub struct Res<'w, T: Resource + Send + Sync> {
 
 impl<'w, T: Resource + Send + Sync> Res<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<Res<'_, T>, Res<'_, T>>(world.get_resource::<T>()) }
+        unsafe { transmute::<Res<'_, T>, Res<'_, T>>(world.resource::<T>()) }
     }
 }
 
@@ -206,7 +166,7 @@ pub struct ResMut<'w, T: Resource + Send + Sync> {
 
 impl<'w, T: Resource + Send + Sync> ResMut<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<ResMut<'_, T>, ResMut<'_, T>>(world.get_resource_mut::<T>()) }
+        unsafe { transmute::<ResMut<'_, T>, ResMut<'_, T>>(world.resource_mut::<T>()) }
     }
 }
 
@@ -245,40 +205,22 @@ impl<'w, T: Resource + Send + Sync> SystemParam for ResMut<'w, T> {
 
 impl<'w, T: Resource + Send + Sync> SystemParam for Option<Res<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
-        let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id) {
-            panic!(
-                "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters (e.g. ResMut alongside Res, or duplicate ResMut) targeting the same global resource singleton!",
-                system_meta.get_func_name()
-            );
-        }
-        system_meta.add_resource_read(res_id);
+        Res::<T>::init_access(system_meta);
     }
 
     fn get_param(world: &World) -> Self {
-        unsafe {
-            transmute::<Option<Res<'_, T>>, Option<Res<'_, T>>>(world.get_resource_opt::<T>())
-        }
+        unsafe { transmute::<Option<Res<'_, T>>, Option<Res<'_, T>>>(world.get_resource::<T>()) }
     }
 }
 
 impl<'w, T: Resource + Send + Sync> SystemParam for Option<ResMut<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
-        let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
-            panic!(
-                "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters (e.g. ResMut alongside Res, or duplicate ResMut) targeting the same global resource singleton!",
-                system_meta.get_func_name()
-            );
-        }
-        system_meta.add_resource_write(res_id);
+        ResMut::<T>::init_access(system_meta);
     }
 
     fn get_param(world: &World) -> Self {
         unsafe {
-            transmute::<Option<ResMut<'_, T>>, Option<ResMut<'_, T>>>(
-                world.get_resource_mut_opt::<T>(),
-            )
+            transmute::<Option<ResMut<'_, T>>, Option<ResMut<'_, T>>>(world.get_resource_mut::<T>())
         }
     }
 }
@@ -290,7 +232,7 @@ pub struct NonSend<'w, T: Resource> {
 
 impl<'w, T: Resource> NonSend<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<NonSend<'_, T>, NonSend<'_, T>>(world.get_non_send_resource::<T>()) }
+        unsafe { transmute::<NonSend<'_, T>, NonSend<'_, T>>(world.non_send_resource::<T>()) }
     }
 
     pub fn get(&self) -> &T {
@@ -332,7 +274,7 @@ impl<'w, T: Resource> NonSendMut<'w, T> {
     pub(crate) unsafe fn new(world: &World) -> Self {
         unsafe {
             transmute::<NonSendMut<'_, T>, NonSendMut<'_, T>>(
-                world.get_non_send_resource_mut_unsafe::<T>(),
+                world.non_send_resource_mut_unsafe::<T>(),
             )
         }
     }
@@ -371,21 +313,13 @@ impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
 
 impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
-        let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id) {
-            panic!(
-                "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters targeting the same global resource singleton!",
-                system_meta.get_func_name()
-            );
-        }
-        system_meta.add_resource_read(res_id);
-        system_meta.set_non_send();
+        NonSend::<T>::init_access(system_meta);
     }
 
     fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<NonSend<'_, T>>, Option<NonSend<'_, T>>>(
-                world.get_non_send_resource_opt::<T>(),
+                world.get_non_send_resource::<T>(),
             )
         }
     }
@@ -393,21 +327,13 @@ impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
 
 impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
     fn init_access(system_meta: &mut SystemMeta) {
-        let res_id = TypeId::of::<T>();
-        if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
-            panic!(
-                "❌ ECS RESOURCE BORROW CONFLICT: Function '{}' contains conflicting parameters targeting the same global resource singleton!",
-                system_meta.get_func_name()
-            );
-        }
-        system_meta.add_resource_write(res_id);
-        system_meta.set_non_send();
+        NonSendMut::<T>::init_access(system_meta);
     }
 
     fn get_param(world: &World) -> Self {
         unsafe {
             transmute::<Option<NonSendMut<'_, T>>, Option<NonSendMut<'_, T>>>(
-                world.get_non_send_resource_mut_opt_unsafe::<T>(),
+                world.get_non_send_resource_mut_unsafe::<T>(),
             )
         }
     }

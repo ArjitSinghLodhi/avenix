@@ -46,7 +46,7 @@ fn setup_removal_entities(commands: Commands) {
 
 fn apply_frame_1_mutations(query: Query<(Entity, &EntityTag)>, commands: Commands) {
     for (entity, tag) in query.iter() {
-        let mut entity_cmd = commands.entity(entity.clone());
+        let entity_cmd = commands.entity(entity);
         match tag {
             EntityTag::RemovalTarget => {
                 entity_cmd.remove::<Velocity>();

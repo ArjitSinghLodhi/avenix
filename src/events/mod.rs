@@ -125,7 +125,7 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 
     fn get_param(world: &World) -> Self {
         unsafe {
-            let buffer = world.get_resource::<EventBuffer<T>>();
+            let buffer = world.resource::<EventBuffer<T>>();
 
             let queue = buffer.write_queue.read();
 
@@ -176,7 +176,7 @@ impl<'w, T: Event> SystemParam for EventReader<'w, T> {
 
     fn get_param(world: &World) -> Self {
         unsafe {
-            let buffer = world.get_resource::<EventBuffer<T>>();
+            let buffer = world.resource::<EventBuffer<T>>();
 
             let queue = buffer.read_queue.read();
 

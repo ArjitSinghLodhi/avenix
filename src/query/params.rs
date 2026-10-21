@@ -6,9 +6,9 @@ use crate::reactivity::{ChangedMarker, Mut};
 use crate::world::archetypes::ComponentColumnRead;
 #[cfg(not(feature = "reactivity"))]
 use crate::world::archetypes::ComponentColumnWrite;
-use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
 #[cfg(feature = "reactivity")]
-use crate::{query::ThreadSafe, world::archetypes::ComponentColumnWrite};
+use crate::world::archetypes::ComponentColumnWrite;
+use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
 
 use std::{any::TypeId, marker::PhantomData};
 
@@ -76,10 +76,10 @@ impl<T: Component> QueryData for &mut T {
 impl<T: Component> QueryData for &mut T {
     type Item<'w> = Mut<'w, T>;
     type ReadOnlyItem<'w> = &'w T;
-    type Fetch<'w> = ThreadSafe<(
+    type Fetch<'w> = (
         ComponentColumnWrite<'w, T>,
         Option<ComponentColumnWrite<'w, ChangedMarker<T>>>,
-    )>;
+    );
 
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
@@ -90,19 +90,14 @@ impl<T: Component> QueryData for &mut T {
         let marker_writer_opt = archetype.get_column_mut_opt::<ChangedMarker<T>>();
 
         if let Some(marker_writer) = marker_writer_opt {
-            ThreadSafe {
-                value: (data_writer, Some(marker_writer)),
-            }
+            (data_writer, Some(marker_writer))
         } else {
-            ThreadSafe {
-                value: (data_writer, None),
-            }
+            (data_writer, None)
         }
     }
 
     #[inline(always)]
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
-        let fetch = &fetch.value;
         let val_ptr = fetch.0.as_ptr() as *mut T;
 
         let final_marker = fetch
@@ -126,7 +121,7 @@ impl<T: Component> QueryData for &mut T {
         fetch: &Self::Fetch<'b>,
         index: usize,
     ) -> Self::ReadOnlyItem<'w> {
-        unsafe { &*fetch.value.0.as_ptr().add(index) }
+        unsafe { &*fetch.0.as_ptr().add(index) }
     }
 
     fn collect_access(_reads: &mut AccessVec<TypeId>, writes: &mut AccessVec<TypeId>) {
@@ -145,7 +140,7 @@ impl QueryData for Entity {
     }
     fn collect_access(_reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {}
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        archetype.entities.read()
+        archetype.entities()
     }
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
         unsafe { &*fetch.as_ptr().add(index) }
@@ -247,12 +242,10 @@ impl<T: Component> QueryData for Option<&mut T> {
 impl<T: Component> QueryData for Option<&mut T> {
     type Item<'w> = Option<Mut<'w, T>>;
     type ReadOnlyItem<'w> = Option<&'w T>;
-    type Fetch<'w> = Option<
-        ThreadSafe<(
-            ComponentColumnWrite<'w, T>,
-            Option<ComponentColumnWrite<'w, ChangedMarker<T>>>,
-        )>,
-    >;
+    type Fetch<'w> = Option<(
+        ComponentColumnWrite<'w, T>,
+        Option<ComponentColumnWrite<'w, ChangedMarker<T>>>,
+    )>;
 
     fn matches(_archetype: &Archetype) -> bool {
         true
@@ -268,13 +261,9 @@ impl<T: Component> QueryData for Option<&mut T> {
         let data_writer_opt = archetype.get_column_mut_opt::<T>();
         if let Some(data_writer) = data_writer_opt {
             if let Some(marker_writer) = marker_writer_opt {
-                Some(ThreadSafe {
-                    value: (data_writer, Some(marker_writer)),
-                })
+                Some((data_writer, Some(marker_writer)))
             } else {
-                Some(ThreadSafe {
-                    value: (data_writer, None),
-                })
+                Some((data_writer, None))
             }
         } else {
             None
@@ -285,7 +274,6 @@ impl<T: Component> QueryData for Option<&mut T> {
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
         unsafe {
             if let Some(fetch) = fetch {
-                let fetch = &fetch.value;
                 let data_ptr = fetch.0.as_ptr() as *mut T;
 
                 let final_marker = fetch
@@ -314,7 +302,7 @@ impl<T: Component> QueryData for Option<&mut T> {
     ) -> Self::ReadOnlyItem<'w> {
         unsafe {
             if let Some(data_head) = fetch {
-                Some(&*data_head.value.0.as_ptr().add(index))
+                Some(&*data_head.0.as_ptr().add(index))
             } else {
                 None
             }

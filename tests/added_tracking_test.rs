@@ -43,7 +43,7 @@ fn setup_double_buffer_entities(commands: Commands) {
 
 fn apply_frame_1_mutations(query: Query<(Entity, &EntityTag)>, commands: Commands) {
     for (entity, tag) in query.iter() {
-        let mut entity_cmd = commands.entity(entity.clone());
+        let entity_cmd = commands.entity(entity);
         match tag {
             EntityTag::AdderTarget => {
                 entity_cmd.add(Velocity { x: 10.0, y: 10.0 });
@@ -127,7 +127,7 @@ fn apply_frame_2_redundant_insert(query: Query<(Entity, &EntityTag)>, commands: 
     for (entity, tag) in query.iter() {
         if *tag == EntityTag::InserterTarget {
             commands
-                .entity(entity.clone())
+                .entity(entity)
                 .insert(Acceleration { x: 99.0, y: 99.0 });
         }
     }

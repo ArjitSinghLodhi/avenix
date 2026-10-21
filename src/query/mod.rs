@@ -8,12 +8,11 @@ pub use params::Has;
 pub use filter::*;
 
 use parking_lot::Mutex;
-use rayon::{
-    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-    slice::ParallelSlice,
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::{any::TypeId, marker::PhantomData, mem::transmute, sync::Arc};
+use std::{any::TypeId, sync::Arc};
 
 use crate::{
     entity::Entity,
@@ -24,15 +23,6 @@ use crate::{
         storage::World,
     },
 };
-#[cfg(feature = "reactivity")]
-#[doc(hidden)]
-pub struct ThreadSafe<T> {
-    pub(crate) value: T,
-}
-#[cfg(feature = "reactivity")]
-unsafe impl<T> Send for ThreadSafe<T> {}
-#[cfg(feature = "reactivity")]
-unsafe impl<T> Sync for ThreadSafe<T> {}
 
 pub trait QueryData {
     type Item<'w>: Send;
@@ -68,44 +58,68 @@ pub trait QueryData {
     ) -> Self::ReadOnlyItem<'w>;
 }
 
-pub struct QueryReadOnlyChunk<'b, Q: QueryData> {
-    indices: &'b [usize],
-    fetch: &'b Q::Fetch<'b>,
+pub struct QueryReadOnlyChunk<'b, 'q, Q: QueryData, F: QueryFilter> {
+    start_idx: usize,
+    end_idx: usize,
+    fetch: &'b Q::Fetch<'q>,
+    filter_data: &'b F::FilterData<'q>,
 }
 
-impl<'b, Q: QueryData> QueryReadOnlyChunk<'b, Q> {
+impl<'b, 'q, Q: QueryData, F: QueryFilter> QueryReadOnlyChunk<'b, 'q, Q, F> {
     pub fn iter<'d>(&'d self) -> impl Iterator<Item = Q::ReadOnlyItem<'d>> {
         let fetch = self.fetch;
-        self.indices
-            .iter()
-            .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
+        let filter_data = self.filter_data;
+        (self.start_idx..self.end_idx)
+            .filter(move |&index| F::matches_row(filter_data, index))
+            .map(move |index| unsafe { Q::fetch_read_only(fetch, index) })
     }
 }
 
-pub struct QueryMutableChunk<'b, Q: QueryData> {
-    indices: &'b [usize],
-    fetch: &'b Q::Fetch<'b>,
+pub struct QueryMutableChunk<'b, 'q, Q: QueryData, F: QueryFilter> {
+    start_idx: usize,
+    end_idx: usize,
+    fetch: &'b Q::Fetch<'q>,
+    filter_data: &'b F::FilterData<'q>,
 }
 
-impl<'b, Q: QueryData> QueryMutableChunk<'b, Q> {
+impl<'b, 'q, Q: QueryData, F: QueryFilter> QueryMutableChunk<'b, 'q, Q, F> {
     pub fn iter<'c>(&'c self) -> impl Iterator<Item = Q::ReadOnlyItem<'c>> {
         let fetch = self.fetch;
-        self.indices
-            .iter()
-            .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
+        let filter_data = self.filter_data;
+        (self.start_idx..self.end_idx)
+            .filter(move |&index| F::matches_row(filter_data, index))
+            .map(move |index| unsafe { Q::fetch_read_only(fetch, index) })
     }
 
     pub fn iter_mut<'c>(&'c mut self) -> impl Iterator<Item = Q::Item<'c>> {
         let fetch = self.fetch;
-        self.indices
-            .iter()
-            .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
+        let filter_data = self.filter_data;
+        (self.start_idx..self.end_idx)
+            .filter(move |&index| F::matches_row(filter_data, index))
+            .map(move |index| unsafe { Q::fetch_mut(fetch, index) })
+    }
+}
+
+pub struct MatchedArchetypeData<'q, F: QueryFilter> {
+    row_count: usize,
+    filter_data: F::FilterData<'q>,
+}
+
+impl<'q, F: QueryFilter> MatchedArchetypeData<'q, F> {
+    #[inline(always)]
+    pub fn row_count(&self) -> usize {
+        self.row_count
+    }
+
+    #[inline(always)]
+    pub fn filter_data(&self) -> &F::FilterData<'q> {
+        &self.filter_data
     }
 }
 
 pub struct Query<'q, 'a, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     cached_fetches: Vec<Option<Q::Fetch<'q>>>,
-    cached_indices: Vec<Option<Vec<usize>>>,
+    cached_archetypes: Vec<Option<MatchedArchetypeData<'q, F>>>,
     _marker: std::marker::PhantomData<(&'q (), &'a (), F)>,
 }
 
@@ -115,209 +129,247 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     pub(crate) fn new(
         archetypes_map: &'q Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     ) -> Self {
-        let mut cached_fetches = (0..archetypes_map.len())
+        let len = archetypes_map.len();
+
+        let mut cached_fetches = (0..len)
             .map(|_| None)
             .collect::<Vec<Option<Q::Fetch<'q>>>>();
 
-        let mut cached_indices = vec![None; archetypes_map.len()];
+        let mut cached_archetypes = (0..len)
+            .map(|_| None)
+            .collect::<Vec<Option<MatchedArchetypeData<'q, F>>>>();
 
         for arch_mutex in archetypes_map.iter() {
             let arch = arch_mutex.lock();
-            let arch_id = arch.id();
+            let arch_id = arch.id() as usize;
+
             if Q::matches(&arch) && F::matches(&arch) {
                 let fetch = unsafe {
-                    transmute::<<Q as QueryData>::Fetch<'_>, <Q as QueryData>::Fetch<'_>>(
+                    std::mem::transmute::<<Q as QueryData>::Fetch<'_>, <Q as QueryData>::Fetch<'_>>(
                         Q::init_fetch(&arch),
                     )
                 };
-                let mut indices = (0..arch.entities.read().len()).collect::<Vec<usize>>();
-                let filter_data = F::init_filter_data(&arch);
-                indices.retain(|row_idx| F::matches_row(&filter_data, *row_idx));
 
-                cached_fetches[arch_id as usize] = Some(fetch);
-                cached_indices[arch_id as usize] = Some(indices);
+                let filter_data = F::init_filter_data(&arch);
+                let row_count = arch.entities.read().len();
+
+                cached_fetches[arch_id] = Some(fetch);
+                cached_archetypes[arch_id] = Some(MatchedArchetypeData {
+                    row_count,
+                    filter_data,
+                });
             }
         }
 
         Self {
             cached_fetches,
-            cached_indices,
-            _marker: PhantomData,
+            cached_archetypes,
+            _marker: std::marker::PhantomData,
         }
     }
 
     pub fn single<'w>(&'w self) -> Option<Q::ReadOnlyItem<'w>> {
-        let mut found_item = None;
+        let mut target_arch_id: Option<usize> = None;
+        let mut target_row_idx: Option<usize> = None;
+        let mut match_count: usize = 0;
 
-        for (arch_id, maybe_indices) in self.cached_indices.iter().enumerate() {
-            if let Some(indices) = maybe_indices {
-                if indices.is_empty() {
+        for (arch_id, maybe_arch) in self.cached_archetypes.iter().enumerate() {
+            if let Some(arch) = maybe_arch {
+                if arch.row_count == 0 {
                     continue;
                 }
 
-                if found_item.is_some() || indices.len() > 1 {
-                    return None;
-                }
+                for row_idx in 0..arch.row_count {
+                    if F::matches_row(&arch.filter_data, row_idx) {
+                        match_count += 1;
 
-                let entity_index = indices[0];
-                if let Some(fetch_state) = self.cached_fetches[arch_id].as_ref() {
-                    unsafe {
-                        found_item = Some(Q::fetch_read_only(fetch_state, entity_index));
+                        if match_count > 1 {
+                            return None;
+                        }
+
+                        target_arch_id = Some(arch_id);
+                        target_row_idx = Some(row_idx);
                     }
                 }
             }
         }
 
-        found_item
+        let arch_id = target_arch_id?;
+        let row_idx = target_row_idx?;
+
+        let fetch_state = self.cached_fetches[arch_id].as_ref()?;
+        unsafe { Some(Q::fetch_read_only(fetch_state, row_idx)) }
     }
 
     pub fn single_mut<'w>(&'w mut self) -> Option<Q::Item<'w>> {
-        let mut found_item = None;
+        let mut target_arch_id: Option<usize> = None;
+        let mut target_row_idx: Option<usize> = None;
+        let mut match_count: usize = 0;
 
-        for (arch_id, maybe_indices) in self.cached_indices.iter_mut().enumerate() {
-            if let Some(indices) = maybe_indices {
-                if indices.is_empty() {
+        for (arch_id, maybe_arch) in self.cached_archetypes.iter().enumerate() {
+            if let Some(arch) = maybe_arch {
+                if arch.row_count == 0 {
                     continue;
                 }
 
-                if found_item.is_some() || indices.len() > 1 {
-                    return None;
-                }
+                for row_idx in 0..arch.row_count {
+                    if F::matches_row(&arch.filter_data, row_idx) {
+                        match_count += 1;
 
-                let entity_index = indices[0];
-                if let Some(fetch_state) = self.cached_fetches[arch_id].as_ref() {
-                    unsafe {
-                        found_item = Some(Q::fetch_mut(fetch_state, entity_index));
+                        if match_count > 1 {
+                            return None;
+                        }
+
+                        target_arch_id = Some(arch_id);
+                        target_row_idx = Some(row_idx);
                     }
                 }
             }
         }
 
-        found_item
+        let arch_id = target_arch_id?;
+        let row_idx = target_row_idx?;
+
+        let fetch_state = self.cached_fetches[arch_id].as_ref()?;
+        unsafe { Some(Q::fetch_mut(fetch_state, row_idx)) }
     }
 
     /// Returns the total number of entity indices across all matching archetypes,
     /// fully accounting for any dynamic filters.
     pub fn total_entities(&self) -> usize {
-        self.cached_indices
-            .iter()
-            .flatten()
-            .map(|indices| indices.len())
-            .sum()
+        let mut total = 0;
+
+        for arch in self.cached_archetypes.iter().flatten() {
+            if arch.row_count == 0 {
+                continue;
+            }
+
+            for row_idx in 0..arch.row_count {
+                if F::matches_row(&arch.filter_data, row_idx) {
+                    total += 1;
+                }
+            }
+        }
+
+        total
     }
 
     pub fn iter<'b>(&'b self) -> impl Iterator<Item = Q::ReadOnlyItem<'b>> {
-        self.cached_indices
+        self.cached_archetypes
             .iter()
             .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
+            .filter_map(|(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
                 let fetch = self.cached_fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
+                Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map(|(indices, fetch)| {
-                indices
-                    .iter()
-                    .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
-            })
-    }
-
-    pub fn par_iter<'b>(&'b self) -> impl ParallelIterator<Item = Q::ReadOnlyItem<'b>> {
-        self.cached_indices
-            .par_iter()
-            .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
-                let fetch = self.cached_fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
-            })
-            .flat_map(|(indices, fetch)| {
-                indices
-                    .par_iter()
-                    .map(|&index| unsafe { Q::fetch_read_only(fetch, index) })
+            .flat_map(|(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .filter(move |&row_idx| F::matches_row(filter_data, row_idx))
+                    .map(move |row_idx| unsafe { Q::fetch_read_only(fetch, row_idx) })
             })
     }
 
     pub fn iter_mut<'b>(&'b mut self) -> impl Iterator<Item = Q::Item<'b>> {
         let fetches = &self.cached_fetches;
-        self.cached_indices
+        self.cached_archetypes
             .iter()
             .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
+            .filter_map(move |(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
+                Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map(|(indices, fetch)| {
-                indices
-                    .iter()
-                    .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
+            .flat_map(|(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .filter(move |&row_idx| F::matches_row(filter_data, row_idx))
+                    .map(move |row_idx| unsafe { Q::fetch_mut(fetch, row_idx) })
+            })
+    }
+
+    pub fn par_iter<'b>(&'b self) -> impl ParallelIterator<Item = Q::ReadOnlyItem<'b>> {
+        self.cached_archetypes
+            .par_iter()
+            .enumerate()
+            .filter_map(|(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
+                let fetch = self.cached_fetches[arch_id].as_ref()?;
+                Some((arch.row_count, fetch, &arch.filter_data))
+            })
+            .flat_map(|(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .into_par_iter()
+                    .filter(move |&row_idx| F::matches_row(filter_data, row_idx))
+                    .map(move |row_idx| unsafe { Q::fetch_read_only(fetch, row_idx) })
             })
     }
 
     pub fn par_iter_mut<'b>(&'b mut self) -> impl ParallelIterator<Item = Q::Item<'b>> {
         let fetches = &self.cached_fetches;
-        self.cached_indices
+        self.cached_archetypes
             .par_iter()
             .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
+            .filter_map(move |(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
-                Some((indices, fetch))
+                Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map(|(indices, fetch)| {
-                indices
-                    .par_iter()
-                    .map(|&index| unsafe { Q::fetch_mut(fetch, index) })
+            .flat_map(|(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .into_par_iter()
+                    .filter(move |&row_idx| F::matches_row(filter_data, row_idx))
+                    .map(move |row_idx| unsafe { Q::fetch_mut(fetch, row_idx) })
             })
     }
 
     pub fn par_chunks<'b>(
         &'b self,
         chunk_size: usize,
-    ) -> impl ParallelIterator<Item = QueryReadOnlyChunk<'b, Q>> {
-        self.cached_indices
+    ) -> impl ParallelIterator<Item = QueryReadOnlyChunk<'b, 'q, Q, F>> {
+        self.cached_archetypes
             .par_iter()
             .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
+            .filter_map(|(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
                 let fetch = self.cached_fetches[arch_id].as_ref()?;
-                Some((indices, unsafe {
-                    transmute::<&<Q as QueryData>::Fetch<'_>, &<Q as QueryData>::Fetch<'_>>(fetch)
-                }))
+                Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map(move |(indices, fetch)| {
-                indices
-                    .par_chunks(chunk_size)
-                    .map(move |chunk| QueryReadOnlyChunk {
-                        indices: chunk,
+            .flat_map_iter(move |(total_rows, fetch, filter_data)| {
+                (0..total_rows).step_by(chunk_size).map(move |start_idx| {
+                    let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
+                    QueryReadOnlyChunk {
+                        start_idx,
+                        end_idx,
                         fetch,
-                    })
+                        filter_data,
+                    }
+                })
             })
     }
 
     pub fn par_chunks_mut<'b>(
         &'b mut self,
         chunk_size: usize,
-    ) -> impl ParallelIterator<Item = QueryMutableChunk<'b, Q>> {
+    ) -> impl ParallelIterator<Item = QueryMutableChunk<'b, 'q, Q, F>> {
         let fetches = &self.cached_fetches;
-        self.cached_indices
+        self.cached_archetypes
             .par_iter()
             .enumerate()
-            .filter_map(|(arch_id, maybe_indices)| {
-                let indices = maybe_indices.as_ref()?;
+            .filter_map(move |(arch_id, maybe_arch)| {
+                let arch = maybe_arch.as_ref()?;
                 let fetch = fetches[arch_id].as_ref()?;
-                Some((indices, unsafe {
-                    transmute::<&<Q as QueryData>::Fetch<'_>, &<Q as QueryData>::Fetch<'_>>(fetch)
-                }))
+                Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map(move |(indices, fetch)| {
-                indices
-                    .par_chunks(chunk_size)
-                    .map(move |chunk| QueryMutableChunk {
-                        indices: chunk,
+            .flat_map_iter(move |(total_rows, fetch, filter_data)| {
+                (0..total_rows).step_by(chunk_size).map(move |start_idx| {
+                    let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
+                    QueryMutableChunk {
+                        start_idx,
+                        end_idx,
                         fetch,
-                    })
+                        filter_data,
+                    }
+                })
             })
     }
 
@@ -408,19 +460,30 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         &self.cached_fetches
     }
 
-    /// Returns a raw slice of the cached entity row indices vectors for each archetype.
+    /// Returns a raw slice of the cached matched archetype metadata records.
     ///
-    /// Provides raw access to the internal index maps that translate a query filter match
-    /// to the physical data offset inside the archetype tables.
+    /// Provides low-level frameworks and custom batch runners with direct access to the
+    /// structural row bounds and dynamic filter states unified inside a single array.
     ///
     /// # Safety
-    /// Bypasses standard query boundaries entirely. The caller must guarantee:
+    /// Bypasses standard query safety boundaries entirely. The caller must guarantee:
     ///
-    /// * **Concurrency Control:** You must never read these vectors while structural mutations
-    ///   are flushing. A structural flush shifts column elements via swap-remove operations,
-    ///   which will make the indices in these vectors point to out-of-bounds or incorrect memory.
-    pub unsafe fn get_indices(&self) -> &[Option<Vec<usize>>] {
-        &self.cached_indices
+    /// * **State Lifetime Invalidation:** The underlying filter records inside the matching configurations
+    ///   are transient structures valid only for the immediate frame context. You must never hold,
+    ///   cache, or propagate these references beyond the boundary of the current execution frame.
+    #[inline(always)]
+    pub unsafe fn get_matched_archetypes_metadata(&self) -> &[Option<MatchedArchetypeData<'q, F>>] {
+        &self.cached_archetypes
+    }
+
+    /// Unsafely evaluates whether a specific row index within an archetype matches the query's filters.
+    ///
+    /// # Safety
+    /// * The `filter_data` reference must be valid, initialized, and sourced directly from a matched element inside [`Self::get_matched_archetypes_metadata`].
+    /// * The `index` must be strictly less than the corresponding `row_count` exposed by that archetype's record.
+    #[inline(always)]
+    pub unsafe fn matches_row(&self, filter_data: &F::FilterData<'q>, index: usize) -> bool {
+        F::matches_row(filter_data, index)
     }
 
     /// Unsafely extracts an immutable item view from the provided fetch token at the specified dense row index.

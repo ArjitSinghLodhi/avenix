@@ -144,6 +144,11 @@ impl Archetype {
         }
     }
 
+    #[inline(always)]
+    pub fn entities(&self) -> RwLockReadGuard<'_, Vec<Entity>> {
+        self.entities.read()
+    }
+
     pub fn has_column<T: Component>(&self) -> bool {
         self.types.contains(&TypeId::of::<T>())
     }

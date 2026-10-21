@@ -291,6 +291,7 @@ impl App {
         }
         self.configuration().built();
         self.configuration().ran_startup();
+        self.world_mut().start_frame_sync();
         for schedule in self.schedules.iter_mut() {
             schedule.run(&mut self.world);
         }
@@ -311,6 +312,10 @@ impl App {
         self
     }
 
+    pub fn init_resource<T: Resource + Send + Sync + Default>(&mut self) -> &mut Self {
+        self.insert_resource(T::default())
+    }
+
     pub fn insert_resource<T: Resource + Send + Sync>(&mut self, resource: T) -> &mut Self {
         self.world.insert_resource(resource);
         self
@@ -319,6 +324,10 @@ impl App {
     pub fn remove_resource<T: Resource + Send + Sync>(&mut self) -> &mut Self {
         self.world.remove_resource::<T>();
         self
+    }
+
+    pub fn init_non_send_resource<T: Resource + Default>(&mut self) -> &mut Self {
+        self.insert_non_send_resource(T::default())
     }
 
     pub fn insert_non_send_resource<T: Resource>(&mut self, resource: T) -> &mut Self {
@@ -332,7 +341,7 @@ impl App {
     }
 
     fn configuration<'w>(&'w self) -> ResMut<'w, ConfigurationContext> {
-        self.world().get_resource_mut::<ConfigurationContext>()
+        self.world().resource_mut::<ConfigurationContext>()
     }
 }
 

@@ -78,6 +78,7 @@ pub mod prelude {
 }
 
 pub mod extensions {
+    pub use crate::query::MatchedArchetypeData;
     pub use crate::system::system_storage::{FunctionData, SystemData, SystemExt};
     pub use crate::system::{
         AccessHashSet, AccessVec, FunctionSystem, IntoSystem, System, SystemMeta, SystemParam,

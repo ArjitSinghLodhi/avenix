@@ -90,19 +90,13 @@ impl ScheduleLabel for PostUpdate {
 /// schedule manage. Ultimately, this guarantees that every cleanup system observes all pending
 /// despawns before they are finalized and applied.
 ///
-/// See the `hierarchy_cleanup` example for guidance on how to effectively use it.
+/// See all examples in `examples/despawn_cleanup` folder for guidance on how to effectively use it.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct CleanupHandles;
 
 impl ScheduleLabel for CleanupHandles {
     fn default_executor(&mut self) -> Box<dyn SystemExecutor> {
-        Box::new(CleanupHandlesExecutor {
-            despawn_buffer: FxHashSet::default(),
-            historical_seen: FxHashSet::default(),
-            iteration_batch: Vec::new(),
-            duplicate_batch: Vec::new(),
-            multi_threaded_executor: MultiThreadedExecutor::new(),
-        })
+        Box::new(CleanupHandlesExecutor::default())
     }
 
     fn clone_box(&self) -> Box<dyn ScheduleLabel> {
@@ -110,9 +104,10 @@ impl ScheduleLabel for CleanupHandles {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct CleanupHandlesExecutor {
     despawn_buffer: FxHashSet<Entity>,
-    historical_seen: FxHashSet<u32>,
+    historical_seen_bits: Vec<u64>,
     iteration_batch: Vec<Entity>,
     duplicate_batch: Vec<Entity>,
     multi_threaded_executor: MultiThreadedExecutor,
@@ -125,7 +120,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
     fn run(&mut self, schedule: &mut SystemsSchedule, world: &mut World) {
         world.apply_queue_commands();
 
-        self.historical_seen.clear();
+        self.historical_seen_bits.fill(0);
         self.iteration_batch.clear();
         self.duplicate_batch.clear();
         let despawns_arc = world.commands.despawns.clone();
@@ -135,8 +130,13 @@ impl SystemExecutor for CleanupHandlesExecutor {
                 for shard in despawn_guard.shards() {
                     let mut lock = shard.write();
                     for (entity, _) in lock.drain() {
-                        let idx = entity.registry_index();
-                        self.historical_seen.insert(idx);
+                        let idx = entity.registry_index() as usize;
+                        let word_idx = idx / 64;
+                        let bit_idx = idx % 64;
+                        if word_idx >= self.historical_seen_bits.len() {
+                            self.historical_seen_bits.resize(word_idx + 1, 0);
+                        }
+                        self.historical_seen_bits[word_idx] |= 1 << bit_idx;
                         self.iteration_batch.push(entity);
                     }
                 }
@@ -165,8 +165,15 @@ impl SystemExecutor for CleanupHandlesExecutor {
                     let mut lock = shard.write();
 
                     for (entity, _) in lock.drain() {
-                        let idx = entity.registry_index();
-                        if self.historical_seen.insert(idx) {
+                        let idx = entity.registry_index() as usize;
+                        let word_idx = idx / 64;
+                        let bit_idx = idx % 64;
+                        if word_idx >= self.historical_seen_bits.len() {
+                            self.historical_seen_bits.resize(word_idx + 1, 0);
+                        }
+                        let mask = 1 << bit_idx;
+                        if (self.historical_seen_bits[word_idx] & mask) == 0 {
+                            self.historical_seen_bits[word_idx] |= mask;
                             self.iteration_batch.push(entity);
                             found_new_unique_despawn = true;
                         } else {
@@ -181,7 +188,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
             }
             despawns_guard.extend(self.despawn_buffer.drain());
             despawns_guard.extend(self.duplicate_batch.drain(..));
-            self.historical_seen.clear();
+            self.historical_seen_bits.fill(0);
             self.iteration_batch.clear();
             self.duplicate_batch.clear();
             apply_despawns(world, &mut despawns_guard);

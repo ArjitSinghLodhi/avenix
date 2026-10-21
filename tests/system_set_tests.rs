@@ -89,7 +89,7 @@ fn test_system_sets() {
 
     let mut app = App::new();
 
-    let flat_accessor = app.world().get_par_resource_accessor::<SetConditionFlag>();
+    let flat_accessor = app.world().par_resource_accessor::<SetConditionFlag>();
     app.insert_resource(ExecutionHistory::default())
         .insert_resource(SetConditionFlag { counter: 0 })
         .configure_sets(
@@ -137,7 +137,7 @@ fn test_system_sets() {
     app.update();
 
     {
-        let history = app.world().get_resource::<ExecutionHistory>();
+        let history = app.world().resource::<ExecutionHistory>();
         println!("First Frame Trace Sequence: {:?}", history.steps);
 
         assert_eq!(history.steps[0], ExecutionStep::GatherInput);
@@ -197,7 +197,7 @@ fn test_system_sets() {
     app.update();
 
     {
-        let history = app.world().get_resource::<ExecutionHistory>();
+        let history = app.world().resource::<ExecutionHistory>();
         println!("Aggregated Trace Sequence: {:?}", history.steps);
     }
 
@@ -240,7 +240,7 @@ fn test_system_sets_tuple_level_orderings() {
     app.run_startup();
     app.update();
 
-    let history = app.world().get_resource::<ExecutionHistory>();
+    let history = app.world().resource::<ExecutionHistory>();
     println!("Tuple Orderings Trace Sequence: {:?}", history.steps);
 
     assert_eq!(history.steps[0], ExecutionStep::GatherInput);
@@ -325,7 +325,7 @@ fn test_system_ordered_strictly_before_guard_node() {
     app.run_startup();
     app.update();
 
-    let history = app.world().get_resource::<ExecutionHistory>();
+    let history = app.world().resource::<ExecutionHistory>();
     println!("Evaluated execution trace sequence: {:?}", history.steps);
 
     assert!(

@@ -48,23 +48,21 @@ fn register_removal_tracking_comp<T: Component>() {
                 });
             },
             swap_and_clear_buffer: |world| {
-                let removed_tracking_buffer =
-                    world.get_resource_mut::<RemovedComponentsBuffer<T>>();
+                let removed_tracking_buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
                 let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
                 let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
                 read_queue_guard.clear();
                 std::mem::swap(read_queue_guard, write_queue_guard);
             },
             clear_dead_entities: |world, despawn_guard| {
-                let removed_tracking_buffer =
-                    world.get_resource_mut::<RemovedComponentsBuffer<T>>();
+                let removed_tracking_buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
                 let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
                 let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
                 read_queue_guard.retain(|entity| !despawn_guard.contains(entity));
                 write_queue_guard.retain(|entity| !despawn_guard.contains(entity));
             },
             push_to_write_queue: |world, entity| {
-                let buffer = world.get_resource_mut::<RemovedComponentsBuffer<T>>();
+                let buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
                 buffer.write_queue.write().push(entity);
             },
         },
@@ -123,7 +121,7 @@ impl<'w, T: Component> SystemParam for RemovedComponents<'w, T> {
         register_removal_tracking_comp::<T>();
     }
     fn get_param(world: &World) -> Self {
-        let removed_comp_buffer = world.get_resource::<RemovedComponentsBuffer<T>>();
+        let removed_comp_buffer = world.resource::<RemovedComponentsBuffer<T>>();
         let reader = removed_comp_buffer.read_queue.read();
         let reader = unsafe {
             std::mem::transmute::<RwLockReadGuard<Vec<Entity>>, RwLockReadGuard<Vec<Entity>>>(

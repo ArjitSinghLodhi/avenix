@@ -31,13 +31,13 @@ fn test_parallel_query_accessor_mixed_workload() {
 
     let par_reader = app
         .world()
-        .get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
     let par_writer = app
         .world()
-        .get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
     let par_reactive = app
         .world()
-        .get_par_query_accessor::<&Position, Changed<Position>>();
+        .par_query_accessor::<&Position, Changed<Position>>();
 
     app.add_systems(Startup, setup_simulation_entities)
         .add_systems(Update, multi_query_in_band_system);
@@ -105,10 +105,10 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
 
     let par_reader = app
         .world()
-        .get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
     let par_writer = app
         .world()
-        .get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
 
     app.add_systems(Startup, setup_simulation_entities)
         .add_systems(Update, dynamic_chaos_mutator_system);
@@ -196,10 +196,11 @@ fn dynamic_chaos_mutator_system(
     sync_ctx.barrier.wait();
     let mut i = 0;
     for entity in query.iter() {
+        let entity_cmd = commands.entity(entity);
         if i % 2 == 0 {
-            commands.entity(entity.clone()).add(IsFollower);
+            entity_cmd.add(IsFollower);
         } else {
-            commands.entity(entity.clone()).remove::<Velocity>();
+            entity_cmd.remove::<Velocity>();
         }
         i += 1;
     }

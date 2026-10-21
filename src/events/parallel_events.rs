@@ -12,11 +12,11 @@ use crate::{
 ///
 /// `ParallelEventWriter` can be passed to external or background worker threads, allowing them to
 /// concurrently dispatch events outside the main execution path. It can be obtained directly from
-/// the world layer via [`.get_par_event_writer()`].
+/// the world layer via [`.par_event_writer()`].
 ///
 /// Also usable as a system param.
 ///
-/// [`.get_par_event_writer()`]: crate::world::storage::World::get_par_event_writer
+/// [`.par_event_writer()`]: crate::world::storage::World::par_event_writer
 pub struct ParallelEventWriter<T: Event> {
     pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
 }
@@ -49,7 +49,7 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &World) -> Self {
-        let queue = world.get_resource::<EventBuffer<T>>().write_queue.clone();
+        let queue = world.resource::<EventBuffer<T>>().write_queue.clone();
         Self { write_queue: queue }
     }
 }
@@ -62,7 +62,7 @@ unsafe impl<T: Event> ParallelSystemParam for ParallelEventWriter<T> {}
 ///
 /// `ParallelEventReader` can be passed to external or background worker threads, allowing them to
 /// concurrently inspect dispatched events outside the main execution path. It can be obtained directly
-/// from the world layer via [`.get_par_event_reader()`].
+/// from the world layer via [`.par_event_reader()`].
 ///
 /// # Critical Synchronization Warning
 ///
@@ -75,7 +75,7 @@ unsafe impl<T: Event> ParallelSystemParam for ParallelEventWriter<T> {}
 ///
 /// Also usable as a system param.
 ///
-/// [`.get_par_event_reader()`]: crate::world::storage::World::get_par_event_reader
+/// [`.par_event_reader()`]: crate::world::storage::World::par_event_reader
 pub struct ParallelEventReader<T: Event> {
     pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
 }
@@ -108,7 +108,7 @@ impl<T: Event> SystemParam for ParallelEventReader<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param(world: &World) -> Self {
-        let queue = world.get_resource::<EventBuffer<T>>().read_queue.clone();
+        let queue = world.resource::<EventBuffer<T>>().read_queue.clone();
         Self { read_queue: queue }
     }
 }

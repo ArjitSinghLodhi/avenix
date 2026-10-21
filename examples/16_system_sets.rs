@@ -89,7 +89,7 @@ fn main() {
     println!("=======================================================\n");
 
     let mut app = App::new();
-    let flat_accessor = app.world().get_par_resource_accessor::<MatchState>();
+    let flat_accessor = app.world().par_resource_accessor::<MatchState>();
 
     app.insert_resource(ExecutionLogger::default())
         .insert_resource(MatchState { tick_paused: 0 })
@@ -152,7 +152,7 @@ fn main() {
 }
 
 fn verify_active_frame_graph(app: &App) {
-    let logger = app.world().get_resource::<ExecutionLogger>();
+    let logger = app.world().resource::<ExecutionLogger>();
 
     assert_eq!(logger.history[0], GameTickStep::PollInput);
 
@@ -215,7 +215,7 @@ fn verify_active_frame_graph(app: &App) {
 }
 
 fn verify_paused_frame_graph(app: &App) {
-    let logger = app.world().get_resource::<ExecutionLogger>();
+    let logger = app.world().resource::<ExecutionLogger>();
 
     assert_eq!(logger.history[0], GameTickStep::PollInput);
     assert!(
@@ -255,7 +255,7 @@ fn verify_paused_frame_graph(app: &App) {
 }
 
 fn print_logs(app: &mut App) {
-    let mut logger = app.world().get_resource_mut::<ExecutionLogger>();
+    let mut logger = app.world().resource_mut::<ExecutionLogger>();
     for trace in logger.history.drain(..) {
         println!("{:?}", trace);
     }

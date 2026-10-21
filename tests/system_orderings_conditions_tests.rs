@@ -72,7 +72,7 @@ fn test_complex_scheduling_and_conditions() {
     app.run_startup();
     app.update();
 
-    let tracker = app.world().get_resource::<RunTracker>();
+    let tracker = app.world().resource::<RunTracker>();
 
     assert_eq!(
         tracker.history,

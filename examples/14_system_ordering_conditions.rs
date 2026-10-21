@@ -103,7 +103,7 @@ fn main() {
     println!("Running frame update step...");
     app.update();
 
-    let tracker = app.world().get_resource::<RunTracker>();
+    let tracker = app.world().resource::<RunTracker>();
     println!("\nFinal System Execution History: {:?}", tracker.history);
 
     assert_eq!(

@@ -9,7 +9,7 @@ pub use parallel_commands::ParallelCommands;
 use std::{marker::PhantomData, sync::Arc};
 
 use dashmap::DashSet;
-use parking_lot::{RawRwLock, RwLock, lock_api::RwLockReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -48,7 +48,7 @@ impl CommandBuffer {
 
 pub struct Commands<'a> {
     pub(crate) queue: parking_lot::RwLockReadGuard<'a, CommandQueue>,
-    pub(crate) despawns: RwLockReadGuard<'a, RawRwLock, DashSet<Entity, FxBuildHasher>>,
+    pub(crate) despawns: RwLockReadGuard<'a, DashSet<Entity, FxBuildHasher>>,
 }
 
 impl<'a> Commands<'a> {
@@ -78,7 +78,7 @@ impl<'a> Commands<'a> {
         });
     }
 
-    pub fn entity<'b>(&'b self, entity: Entity) -> EntityCommands<'a, 'b> {
+    pub fn entity<'b>(&'b self, entity: &'b Entity) -> EntityCommands<'a, 'b> {
         EntityCommands {
             entity_id: entity,
             commands: self,
@@ -163,7 +163,7 @@ impl<'a> Commands<'a> {
 }
 
 pub struct EntityCommands<'a, 'b> {
-    entity_id: Entity,
+    entity_id: &'b Entity,
     commands: &'b Commands<'a>,
 }
 
@@ -176,7 +176,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     ///   `true`, but the `Changed<T>` filter is **not** notified.
     /// * **If the component already exists:** The command is ignored and the data is **not** overwritten.
     ///   Neither the `Added<T>` nor `Changed<T>` filters are notified.
-    pub fn add<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
+    pub fn add<C: ComponentBundle + Send>(&self, components: C) -> &Self {
         self.commands.queue(AddComponentsCommand {
             entity: self.entity_id.clone(),
             components,
@@ -192,7 +192,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     ///   `true`, but the `Changed<T>` filter is **not** notified.
     /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. Neither the
     ///   `Added<T>` nor `Changed<T>` filters are notified.
-    pub fn insert<C: ComponentBundle + Send>(&mut self, components: C) -> &mut Self {
+    pub fn insert<C: ComponentBundle + Send>(&self, components: C) -> &Self {
         self.commands.queue(InsertComponentsCommand {
             entity: self.entity_id.clone(),
             components,
@@ -207,7 +207,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// The specified component types are queued for removal and will be removed from the entity
     /// during command execution. If a component type in the bundle is not present on
     /// the entity, the engine handles it gracefully and silently does nothing.
-    pub fn remove<C: ComponentBundle + Send>(&mut self) -> &mut Self {
+    pub fn remove<C: ComponentBundle + Send>(&self) -> &Self {
         self.commands.queue(RemoveComponentsCommand::<C> {
             entity: self.entity_id.clone(),
             _marker: PhantomData,
@@ -234,13 +234,13 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     /// [`for_each_despawn`]: Commands::for_each_despawn
     /// [`will_despawn`]: Commands::will_despawn
-    pub fn despawn(&mut self) -> &mut Self {
+    pub fn despawn(&self) -> &Self {
         self.commands.despawns.insert(self.entity_id.clone());
         self
     }
 
     pub fn entity_id(&self) -> &Entity {
-        &self.entity_id
+        self.entity_id
     }
 }
 
@@ -251,12 +251,12 @@ impl<'a> SystemParam for Commands<'a> {
         let despawns_local = world.commands.despawns.read();
         unsafe {
             let queue = std::mem::transmute::<
-                RwLockReadGuard<'_, RawRwLock, CommandQueue>,
-                RwLockReadGuard<'_, RawRwLock, CommandQueue>,
+                RwLockReadGuard<'_, CommandQueue>,
+                RwLockReadGuard<'_, CommandQueue>,
             >(queue_local);
             let despawns = std::mem::transmute::<
-                RwLockReadGuard<'_, RawRwLock, DashSet<Entity, FxBuildHasher>>,
-                RwLockReadGuard<'_, RawRwLock, DashSet<Entity, FxBuildHasher>>,
+                RwLockReadGuard<'_, DashSet<Entity, FxBuildHasher>>,
+                RwLockReadGuard<'_, DashSet<Entity, FxBuildHasher>>,
             >(despawns_local);
             Self { queue, despawns }
         }

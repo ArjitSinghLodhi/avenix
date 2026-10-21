@@ -27,13 +27,13 @@ fn main() {
 
     let par_reader = app
         .world()
-        .get_par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
     let par_writer = app
         .world()
-        .get_par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
     let par_reactive = app
         .world()
-        .get_par_query_accessor::<&Position, Changed<Position>>();
+        .par_query_accessor::<&Position, Changed<Position>>();
 
     app.add_systems(Startup, setup_simulation_entities)
         .add_systems(Update, multi_query_in_band_system);

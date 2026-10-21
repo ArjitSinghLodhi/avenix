@@ -73,12 +73,12 @@ pub(crate) fn setup_states_schedules_and_systems<T: States>(app: &mut App, state
             systems: vec![new_sys],
         });
     } else {
-        let mut systems = app.world().get_resource_mut::<StateTransitionSystems>();
+        let mut systems = app.world().resource_mut::<StateTransitionSystems>();
         let new_identity = new_sys.system().identity();
         if systems
             .systems
             .iter()
-            .all(|sys| !sys.system().identity().dyn_system_eq(new_identity.as_ref()))
+            .all(|sys| !sys.system().identity().dyn_system_eq(&*new_identity))
         {
             systems.systems.push(new_sys);
         }

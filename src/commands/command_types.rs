@@ -100,6 +100,8 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
     }
 }
 
+const ENTITY_HANDLE_VIOLATION_ERR: &str = "AvenixEntityHandleViolation";
+
 pub(crate) struct DespawnCommand {
     pub(crate) entity: Entity,
 }
@@ -117,11 +119,11 @@ impl DespawnCommand {
                 let types_names = &lock.type_names;
                 panic!(
                     "\n\
-                    Avenix Handle Violation: Cloned handles for an entity were not dropped before despawn execution!\n\
+                    {}\nCloned handles for an entity were not dropped before despawn execution!\n\
                     Entity Archetype Component Names: \n{:#?}\n\
                     Refer to the `CleanupHandles` schedule and `EntityCommands::despawn` documentation to understand how to coordinate handle cleanup.\n\
                     ",
-                    types_names
+                    ENTITY_HANDLE_VIOLATION_ERR, types_names
                 );
             }
 
@@ -608,8 +610,6 @@ unsafe fn migrate_addition_markers(
 ) {
     let tracked = TRACKED_COMPONENTS.lock();
 
-    // Performance Win: Instead of scanning all global trackers, only iterate
-    // over the explicit subset of components being introduced to the entity.
     for &comp_id in incoming_ids {
         if let Some(meta_list) = tracked.get(&comp_id) {
             for meta in meta_list {

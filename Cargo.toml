@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.22.0"
+version = "0.23.1"
 edition = "2024"
 description = "A rust ecs engine."
 readme = "README.md"
@@ -75,6 +75,10 @@ path = "tests/system_set_tests.rs"
 name = "schedule_tests"
 path = "tests/schedule_tests.rs"
 
+[[test]]
+name = "entity_handle_leak_panic_tests"
+path = "tests/entity_handle_leak_panic_tests.rs"
+
 [[example]]
 name = "hello_world"
 path = "examples/01_hello_world.rs"
@@ -143,8 +147,25 @@ name = "system_sets"
 path = "examples/16_system_sets.rs"
 
 [[example]]
+name = "basic_cleanup"
+path = "examples/despawn_cleanup/01_basic_cleanup.rs"
+
+
+[[example]]
+name = "intermediate_cleanup"
+path = "examples/despawn_cleanup/02_intermediate_cleanup.rs"
+
+[[example]]
+name = "parallel_cleanup"
+path = "examples/despawn_cleanup/03_parallel_cleanup.rs"
+
+[[example]]
 name = "hierarchy_cleanup"
-path = "examples/despawning/hierarchy_cleanup.rs"
+path = "examples/despawn_cleanup/04_hierarchy_cleanup.rs"
+
+[[example]]
+name = "entity_handle_violation"
+path = "examples/despawn_cleanup/entity_handle_violation.rs"
 
 [[bench]]
 name = "query_lookups_fragmented"

@@ -15,7 +15,7 @@ use crate::{
 ///
 /// `ParallelQueryAccessor` can be passed to external or background worker threads, allowing them to
 /// concurrently read or modify component data arrays outside the main execution path. It can be obtained
-/// directly from the world layer via [`.get_par_query_accessor()`] before building the app.
+/// directly from the world layer via [`.par_query_accessor()`] before building the app.
 ///
 /// # Initialization Requirement
 /// Unlike other parallel handles, this handle must be initialized prior to app compilation. This ensures the
@@ -34,7 +34,7 @@ use crate::{
 /// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
 ///   targets overlapping components on that same thread will trigger a deadlock.
 ///
-/// [`.get_par_query_accessor()`]: crate::world::storage::World::get_par_query_accessor
+/// [`.par_query_accessor()`]: crate::world::storage::World::par_query_accessor
 /// [`Entity`]: crate::entity::Entity
 /// [`query.get()`]: crate::query::Query::get
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
