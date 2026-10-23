@@ -1,22 +1,26 @@
 #![cfg(feature = "reactivity")]
 
-use crate::{app_impl::APP_BUILT, extensions::ComponentColumn};
+use crate::{app_impl::APP_BUILT, world::archetypes::ComponentColumn};
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLockReadGuard};
 use rustc_hash::FxBuildHasher;
 use std::any::{Any, TypeId};
 
-mod added;
-mod changed;
-mod removed;
+pub(crate) mod added;
+pub(crate) mod changed;
+pub(crate) mod removed;
 
-fn verify_app_not_build_yet<'a>() -> RwLockReadGuard<'a, bool> {
+pub(crate) fn verify_app_not_built_yet<'a>(context: &str) -> RwLockReadGuard<'a, bool> {
     let built = APP_BUILT.read();
     if *built {
-        panic!("App already built when trying to register a tracked component");
-    } else {
-        built
+        panic!(
+            "AvenixLazyReactivityViolation\n\
+            -> App was already built when trying to register a tracked component pipeline.\n\
+            -> Context: {}",
+            context
+        );
     }
+    built
 }
 
 pub(crate) struct TrackedComponentMeta {

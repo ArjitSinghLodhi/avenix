@@ -4,9 +4,8 @@ pub use plugin::{Plugin, PluginsBuildAll};
 use rustc_hash::FxHashSet;
 
 use crate::{
-    app::system::condition::RunConditionsList,
-    extensions::SystemExt,
-    resources::{ResMut, Resource},
+    app::system::{SystemExt, condition::RunConditionsList},
+    resources::Resource,
     schedule::{
         CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
         Startup,
@@ -14,8 +13,12 @@ use crate::{
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
     states::{States, setup_states_schedules_and_systems},
-    system::{System, system_set_traits::IntoSystemSetConfigs, system_traits::IntoSystemConfigs},
-    world::storage::World,
+    system::{
+        System, SystemMeta,
+        system_set_traits::IntoSystemSetConfigs,
+        system_traits::{IntoSystemConfigs, SystemOrderings},
+    },
+    world::World,
 };
 use crate::{schedule::SystemNode, system::system_set::SetRegistration};
 use std::{
@@ -27,7 +30,7 @@ use crate::events::{Event, EventBuffer, register_event};
 use std::any::type_name;
 
 #[cfg(feature = "reactivity")]
-use crate::reactivity::register_removal_tracking_buffers;
+use crate::{ecs::Component, reactivity::register_removal_tracking_buffers};
 
 static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -40,8 +43,6 @@ pub(crate) struct ConfigurationContext {
     built: bool,
     ran_startup: bool,
 }
-
-impl Resource for ConfigurationContext {}
 
 impl ConfigurationContext {
     fn new() -> Self {
@@ -114,6 +115,7 @@ pub struct App {
     pub(crate) schedule_order_constraints: Vec<ScheduleConstraint>,
     pub(crate) set_registrations: Vec<SetRegistration>,
     runner_fn: RunnerFn,
+    configuration_context: ConfigurationContext,
 }
 
 impl App {
@@ -131,11 +133,8 @@ impl App {
             );
         }
 
-        let world = World::new();
-        world.insert_resource(ConfigurationContext::new());
-
         Self {
-            world,
+            world: World::new(),
             registered_plugins: FxHashSet::default(),
             startup_schedule: Schedule::new(Startup),
             cleanup_schedule: Schedule::new(CleanupHandles),
@@ -144,6 +143,7 @@ impl App {
             schedule_order_constraints: Vec::new(),
             set_registrations: Vec::new(),
             runner_fn: Box::new(runner_once),
+            configuration_context: ConfigurationContext::new(),
         }
     }
 
@@ -268,6 +268,7 @@ impl App {
         self.configuration().not_ready();
         self.build_everything();
         *APP_BUILT.write() = true;
+        self.cleanup_build();
         self.configuration().built = true;
         self
     }
@@ -340,8 +341,26 @@ impl App {
         self
     }
 
-    fn configuration<'w>(&'w self) -> ResMut<'w, ConfigurationContext> {
-        self.world().resource_mut::<ConfigurationContext>()
+    #[cfg(feature = "reactivity")]
+    pub fn register_changed_trackers<T: Component>(&mut self) -> &mut Self {
+        self.world().register_changed_trackers::<T>();
+        self
+    }
+
+    #[cfg(feature = "reactivity")]
+    pub fn register_added_trackers<T: Component>(&mut self) -> &mut Self {
+        self.world().register_added_trackers::<T>();
+        self
+    }
+
+    #[cfg(feature = "reactivity")]
+    pub fn register_removal_trackers<T: Component>(&mut self) -> &mut Self {
+        self.world().register_removal_trackers::<T>();
+        self
+    }
+
+    fn configuration(&mut self) -> &mut ConfigurationContext {
+        &mut self.configuration_context
     }
 }
 
@@ -366,7 +385,7 @@ impl App {
         self.cleanup_schedule.init_executor();
         self.configuration().schedules_processed = true;
         #[cfg(feature = "reactivity")]
-        register_removal_tracking_buffers(self);
+        register_removal_tracking_buffers(self.world_mut());
     }
 
     fn configure_systems(&mut self) {
@@ -496,7 +515,43 @@ impl App {
             std::mem::take(&mut self.schedules),
             &self.schedule_order_constraints,
         );
+    }
+
+    fn cleanup_build(&mut self) {
+        self.set_registrations.clear();
+        self.registered_plugins.clear();
+        self.systems_blocks.clear();
+        self.systems_blocks.shrink_to_fit();
         self.schedule_order_constraints.clear();
+        self.startup_schedule
+            .systems_schedule_mut()
+            .systems_mut()
+            .iter_mut()
+            .for_each(|node| {
+                let system = node.system_mut();
+                system.remove::<SystemMeta>();
+                system.remove::<SystemOrderings>();
+            });
+        self.cleanup_schedule
+            .systems_schedule_mut()
+            .systems_mut()
+            .iter_mut()
+            .for_each(|node| {
+                let system = node.system_mut();
+                system.remove::<SystemMeta>();
+                system.remove::<SystemOrderings>();
+            });
+        self.schedules.iter_mut().for_each(|schedule| {
+            schedule
+                .systems_schedule_mut()
+                .systems_mut()
+                .iter_mut()
+                .for_each(|node| {
+                    let system = node.system_mut();
+                    system.remove::<SystemMeta>();
+                    system.remove::<SystemOrderings>();
+                });
+        });
     }
 }
 

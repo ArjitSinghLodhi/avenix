@@ -1,11 +1,10 @@
 use rustc_hash::FxHashSet;
 
 use crate::{
-    app::schedule::MultiThreadedExecutor,
+    app::{schedule::MultiThreadedExecutor, system::SystemExt},
     entity::Entity,
-    extensions::SystemExt,
     schedule::{RunConditionsList, ScheduleLabel, SystemExecutor, SystemsSchedule},
-    world::storage::{World, apply_despawns},
+    world::{World, apply_despawns},
 };
 
 /// A schedule where queue commands are applied between each system that runs registered in this schedule.

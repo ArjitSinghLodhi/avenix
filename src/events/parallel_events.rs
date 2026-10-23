@@ -4,8 +4,8 @@ use parking_lot::RwLock;
 
 use crate::{
     events::{Event, EventBuffer, EventQueue, EventReader, EventWriter},
-    extensions::{SystemMeta, SystemParam, World},
-    system::ParallelSystemParam,
+    system::{ParallelSystemParam, SystemMeta, SystemParam},
+    world::World,
 };
 
 /// A thread-safe lock-free, thread-clonable handle that acts as a detached remote input for dispatching events.
@@ -16,7 +16,7 @@ use crate::{
 ///
 /// Also usable as a system param.
 ///
-/// [`.par_event_writer()`]: crate::world::storage::World::par_event_writer
+/// [`.par_event_writer()`]: crate::world::World::par_event_writer
 pub struct ParallelEventWriter<T: Event> {
     pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
 }
@@ -75,7 +75,7 @@ unsafe impl<T: Event> ParallelSystemParam for ParallelEventWriter<T> {}
 ///
 /// Also usable as a system param.
 ///
-/// [`.par_event_reader()`]: crate::world::storage::World::par_event_reader
+/// [`.par_event_reader()`]: crate::world::World::par_event_reader
 pub struct ParallelEventReader<T: Event> {
     pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
 }

@@ -1,4 +1,7 @@
-use crate::{extensions::SystemParam, system::SystemMeta, world::storage::World};
+use crate::{
+    system::{SystemMeta, SystemParam},
+    world::World,
+};
 use dashmap::{DashMap, mapref::one::Ref};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;

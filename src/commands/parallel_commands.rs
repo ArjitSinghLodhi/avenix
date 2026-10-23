@@ -7,8 +7,8 @@ use rustc_hash::FxBuildHasher;
 use crate::commands::Commands;
 use crate::commands::command_queue::CommandQueue;
 use crate::entity::Entity;
-use crate::extensions::{SystemMeta, SystemParam, World};
-use crate::system::ParallelSystemParam;
+use crate::system::{ParallelSystemParam, SystemMeta, SystemParam};
+use crate::world::World;
 
 /// A thread-safe, thread-clonable handle that acts as a detached remote input into the ECS engine.
 ///
@@ -16,7 +16,7 @@ use crate::system::ParallelSystemParam;
 /// concurrently queue up structural modifications and despawn targets outside the main execution
 /// path. It can be obtained directly from the world layer via [`.par_commands()`] using `app.world().par_commands()`.
 ///
-/// [`.par_commands()`]: crate::world::storage::World::par_commands
+/// [`.par_commands()`]: crate::world::World::par_commands
 pub struct ParallelCommands {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
     pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,

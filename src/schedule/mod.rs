@@ -1,7 +1,8 @@
 use crate::{
     app::{App, plugin::Plugin},
     schedule::{dyn_eq::DynEq, executors::multi_threaded::MultiThreadedExecutor},
-    system::condition::RunConditionsList,
+    system::{System, condition::RunConditionsList},
+    world::World,
 };
 
 pub(crate) mod dyn_eq;
@@ -11,8 +12,6 @@ mod schedules_list;
 pub(crate) mod system_sorter;
 
 pub use schedules_list::{CleanupHandles, First, Last, PostUpdate, PreUpdate, Startup, Update};
-
-use crate::extensions::{System, World};
 
 use std::{any::Any, fmt::Debug};
 

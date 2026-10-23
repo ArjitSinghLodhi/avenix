@@ -1,7 +1,7 @@
 use crate::{
-    extensions::World,
     resources::{ParallelResourceAccessor, Resource},
-    system::ParallelSystemParam,
+    system::{ParallelSystemParam, SystemMeta},
+    world::World,
 };
 
 pub type ConditionBuilder = Box<dyn FnOnce(&mut World) -> ConditionFn + Send + Sync>;
@@ -56,6 +56,7 @@ where
 {
     type ConditionData = P;
     fn init_condition_data(&self, world: &World) -> Self::ConditionData {
+        P::init_access(&mut SystemMeta::new("ConditionBuilder".to_string()));
         P::get_param(world)
     }
 

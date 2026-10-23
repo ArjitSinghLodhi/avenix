@@ -91,7 +91,7 @@ fn main() {
     });
 
     par_reactive.scope(|query| {
-        let total_reactive_catch = query.total_entities();
+        let total_reactive_catch = query.filtered_entities();
         println!("[Main Thread Reactive Sweep] Caught {} mutably modified leaders via Changed<T> filter.", total_reactive_catch);
         assert_eq!(total_reactive_catch, 500);
     });
@@ -131,7 +131,7 @@ fn multi_query_in_band_system(
 ) {
     sync_ctx.barrier.wait();
 
-    let system_read_count = query_read.total_entities();
+    let system_read_count = query_read.filtered_entities();
     assert_eq!(system_read_count, 500);
 
     for (mut pos, vel) in query_write.iter_mut() {

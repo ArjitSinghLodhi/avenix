@@ -3,8 +3,8 @@ use std::any::TypeId;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    app::system::SystemExt,
     app_impl::SystemsBlock,
-    extensions::SystemExt,
     schedule::{CleanupHandles, Schedule, Startup, SystemNode},
     system::{SystemMeta, system_traits::SystemOrderings},
 };

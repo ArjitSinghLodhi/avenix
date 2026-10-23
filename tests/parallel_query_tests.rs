@@ -79,7 +79,7 @@ fn test_parallel_query_accessor_mixed_workload() {
     });
 
     par_reactive.scope(|query| {
-        let total_reactive_catch = query.total_entities();
+        let total_reactive_catch = query.filtered_entities();
         assert_eq!(total_reactive_catch, 1000);
     });
 }
@@ -91,7 +91,7 @@ fn multi_query_in_band_system(
 ) {
     sync_ctx.barrier.wait();
 
-    let system_read_count = query_read.total_entities();
+    let system_read_count = query_read.filtered_entities();
     assert_eq!(system_read_count, 500);
 
     for (mut pos, vel) in query_write.iter_mut() {
@@ -134,7 +134,7 @@ fn test_parallel_query_accessor_heavy_mutation_chaos() {
             b1.wait();
             while !done1.load(Ordering::Acquire) {
                 par_reader.scope(|query| {
-                    let count = query.total_entities();
+                    let count = query.filtered_entities();
                     for (pos, vel) in query.iter() {
                         assert!(pos.x >= 0.0 || pos.x < 0.0);
                         assert_eq!(vel.x, 2.0);

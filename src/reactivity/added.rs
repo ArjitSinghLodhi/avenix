@@ -1,15 +1,18 @@
 use parking_lot::RwLock;
-use std::{any::TypeId, marker::PhantomData};
+use std::{
+    any::{TypeId, type_name},
+    marker::PhantomData,
+};
 
 use crate::{
     ecs::Component,
-    extensions::{Archetype, ComponentColumn, ComponentColumnRead},
     query::{QueryData, QueryFilter},
-    reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta, verify_app_not_build_yet},
+    reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta, verify_app_not_built_yet},
+    system::AccessVec,
+    world::archetypes::{Archetype, ComponentColumn, ComponentColumnRead},
 };
 
 pub(crate) fn register_added_tracked_component<T: Component>() {
-    let _lock = verify_app_not_build_yet();
     let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<AddedMarker<T>>();
@@ -20,6 +23,7 @@ pub(crate) fn register_added_tracked_component<T: Component>() {
         return;
     }
 
+    let _lock = verify_app_not_built_yet(type_name::<AddedMarker<T>>());
     meta_list.push(TrackedComponentMeta {
         marker_id,
         create_marker_column: || ComponentColumn {
@@ -79,11 +83,15 @@ impl<T: Component> QueryFilter for Added<T> {
         unsafe { (*filter_data.as_ptr().add(row_idx)).read }
     }
     fn collect_filter(
-        withs: &mut crate::extensions::AccessVec<std::any::TypeId>,
-        _withouts: &mut crate::extensions::AccessVec<std::any::TypeId>,
+        withs: &mut AccessVec<std::any::TypeId>,
+        _withouts: &mut AccessVec<std::any::TypeId>,
     ) {
         withs.push(TypeId::of::<AddedMarker<T>>());
         register_added_tracked_component::<T>();
+    }
+
+    fn collect_filter_access(reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {
+        reads.push(TypeId::of::<AddedMarker<T>>());
     }
 }
 
@@ -120,8 +128,8 @@ impl<T: Component> QueryData for AddedTracker<T> {
     type ReadOnlyItem<'w> = AddedTracker<T>;
     type Fetch<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
     fn collect_access(
-        reads: &mut crate::extensions::AccessVec<std::any::TypeId>,
-        _writes: &mut crate::extensions::AccessVec<std::any::TypeId>,
+        reads: &mut AccessVec<std::any::TypeId>,
+        _writes: &mut AccessVec<std::any::TypeId>,
     ) {
         reads.push(TypeId::of::<AddedMarker<T>>());
         register_added_tracked_component::<T>();

@@ -1,4 +1,4 @@
-use crate::{commands::WorldCommand, world::storage::World};
+use crate::{commands::WorldCommand, world::World};
 use orx_concurrent_bag::ConcurrentBag;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
 

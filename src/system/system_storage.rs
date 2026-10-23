@@ -10,6 +10,8 @@ pub trait SystemData {
     fn get_raw_mut(&mut self, id: TypeId) -> Option<&mut Box<dyn Any + Send + Sync>>;
     #[doc(hidden)]
     fn insert_raw(&mut self, id: TypeId, value: Box<dyn Any + Send + Sync>);
+    #[doc(hidden)]
+    fn remove_raw(&mut self, id: TypeId) -> Option<Box<dyn Any + Send + Sync + 'static>>;
 }
 
 pub trait SystemExt {
@@ -18,6 +20,7 @@ pub trait SystemExt {
     fn insert<T: 'static + Send + Sync>(&mut self, value: T);
     fn get_or_init<T: 'static + Send + Sync>(&mut self, init: impl FnOnce() -> T) -> &T;
     fn get_or_init_mut<T: 'static + Send + Sync>(&mut self, init: impl FnOnce() -> T) -> &mut T;
+    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<Box<dyn Any + Send + Sync + 'static>>;
 }
 
 impl<S: SystemData + ?Sized> SystemExt for S {
@@ -56,10 +59,14 @@ impl<S: SystemData + ?Sized> SystemExt for S {
         }
         self.get_data_mut::<T>().unwrap()
     }
+
+    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<Box<dyn Any + Send + Sync + 'static>> {
+        self.remove_raw(TypeId::of::<T>())
+    }
 }
 
 #[doc(hidden)]
-pub struct FunctionData {
+pub(crate) struct FunctionData {
     data: FxHashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }
 
@@ -76,36 +83,6 @@ impl FunctionData {
         }
     }
 
-    pub fn get_data<T: 'static>(&self) -> Option<&T> {
-        self.data
-            .get(&TypeId::of::<T>())
-            .and_then(|any| any.downcast_ref::<T>())
-    }
-
-    pub fn get_data_mut<T: 'static>(&mut self) -> Option<&mut T> {
-        self.data
-            .get_mut(&TypeId::of::<T>())
-            .and_then(|any| any.downcast_mut::<T>())
-    }
-    pub fn get_or_init<T: 'static + Send + Sync>(&mut self, init: impl FnOnce() -> T) -> &T {
-        let id = TypeId::of::<T>();
-        let entry = self.data.entry(id).or_insert_with(|| Box::new(init()));
-        entry.downcast_ref::<T>().unwrap()
-    }
-
-    pub fn get_or_init_mut<T: 'static + Send + Sync>(
-        &mut self,
-        init: impl FnOnce() -> T,
-    ) -> &mut T {
-        let id = TypeId::of::<T>();
-        let entry = self.data.entry(id).or_insert_with(|| Box::new(init()));
-        entry.downcast_mut::<T>().unwrap()
-    }
-    pub fn insert<T: 'static + Send + Sync>(&mut self, value: T) {
-        let id = std::any::TypeId::of::<T>();
-        self.data.insert(id, Box::new(value));
-    }
-
     pub(crate) fn get_raw_data(&self, type_id: &TypeId) -> Option<&Box<dyn Any + Send + Sync>> {
         self.data.get(type_id)
     }
@@ -118,5 +95,12 @@ impl FunctionData {
     }
     pub(crate) fn insert_raw_data(&mut self, type_id: &TypeId, value: Box<dyn Any + Send + Sync>) {
         self.data.insert(*type_id, value);
+    }
+
+    pub(crate) fn remove_raw(
+        &mut self,
+        id: TypeId,
+    ) -> Option<Box<dyn Any + Send + Sync + 'static>> {
+        self.data.remove(&id)
     }
 }

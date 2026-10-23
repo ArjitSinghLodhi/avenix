@@ -12,8 +12,10 @@ use crate::{
     commands::{WorldCommand, bundle::ComponentBundle},
     entity::Entity,
     entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
-    extensions::{Archetype, ComponentColumn, World},
-    world::archetypes::{AnyColumn, ArchetypeId},
+    world::{
+        World,
+        archetypes::{AnyColumn, Archetype, ArchetypeId, ComponentColumn},
+    },
 };
 
 pub(crate) struct SpawnCommand<T: ComponentBundle> {

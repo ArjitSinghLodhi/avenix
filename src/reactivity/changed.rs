@@ -1,17 +1,17 @@
 use crate::ecs::Component;
-use crate::extensions::ComponentColumnRead;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
-use crate::reactivity::verify_app_not_build_yet;
+use crate::reactivity::verify_app_not_built_yet;
 use crate::reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta};
 use crate::system::AccessVec;
+use crate::world::archetypes::ComponentColumnRead;
 use crate::world::archetypes::{Archetype, ComponentColumn};
 use parking_lot::RwLock;
 use std::any::TypeId;
+use std::any::type_name;
 use std::marker::PhantomData;
 
 pub(crate) fn register_changed_tracked_component<T: Component>() {
-    let _lock = verify_app_not_build_yet();
     let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
     let marker_id = TypeId::of::<ChangedMarker<T>>();
@@ -21,7 +21,7 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
     if meta_list.iter().any(|m| m.marker_id == marker_id) {
         return;
     }
-
+    let _lock = verify_app_not_built_yet(type_name::<ChangedMarker<T>>());
     meta_list.push(TrackedComponentMeta {
         marker_id,
         create_marker_column: || ComponentColumn {
@@ -202,15 +202,13 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
     }
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        unsafe {
-            <&mut T as QueryData>::init_fetch(archetype)
-        }
+        unsafe { <&mut T as QueryData>::init_fetch(archetype) }
     }
 
     #[inline(always)]
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
-        let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(&fetch, index) };
-        let changed =  unsafe { (&*mut_item.marker).read };
+        let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(fetch, index) };
+        let changed = unsafe { (&*mut_item.marker).read };
         ChangedRefMut {
             value: mut_item,
             changed,
@@ -221,7 +219,7 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
         fetch: &Self::Fetch<'b>,
         index: usize,
     ) -> Self::ReadOnlyItem<'w> {
-        let read_only_item = unsafe { <&mut T as QueryData>::fetch_read_only(&fetch, index) };
+        let read_only_item = unsafe { <&mut T as QueryData>::fetch_read_only(fetch, index) };
         let changed = unsafe { (&*fetch.1.as_ref().unwrap().as_ptr().add(index)).read };
         let tracker = ChangedTracker::<T> {
             changed,
@@ -266,6 +264,10 @@ impl<T: Component> QueryFilter for Changed<T> {
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {
         withs.push(TypeId::of::<ChangedMarker<T>>());
         register_changed_tracked_component::<T>();
+    }
+
+    fn collect_filter_access(reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {
+        reads.push(TypeId::of::<ChangedMarker<T>>());
     }
 }
 

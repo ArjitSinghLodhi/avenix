@@ -132,7 +132,7 @@ fn verify_logical_queries(
     or_query: Query<&Position, Or<(With<TagA>, With<TagB>)>>,
     not_query: Query<&Position, (With<TagA>, Not<With<TagB>>)>,
 ) {
-    let or_count = or_query.total_entities();
+    let or_count = or_query.filtered_entities();
     assert_eq!(or_count, 3);
 
     let mut not_count = 0;

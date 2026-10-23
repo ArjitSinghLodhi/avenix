@@ -12,9 +12,9 @@ A deterministic, concurrent Entity Component System (ECS) written in Rust, featu
   Engineered with memory safety layout guarantees. Core pathways protect against undefined behavior without introducing overhead or sacrificing raw pointer iteration performance.
 * **Multi-Threading**  
   Integrates a native Rayon worker pool to automatically chunk, partition, and process archetype arrays concurrently across all available CPU cores.
-* **Race-Free Structural Isolation**  
-  Prevents iterator invalidation by deferring entity mutations (spawning, component insertions, and despawning) into synchronized command buffers flushed exclusively at frame boundaries.
-* **Advanced SystemSets Execution**  
+* **Parallel System Execution**
+  Runs systems in parallel natively using Rayon, allowing independent systems to execute simultaneously across multiple threads without manual thread management. It also natively handles thread-unsafe NonSend systems, automatically routing them to the main thread to ensure safe execution alongside parallel tasks.
+* **SystemSets Execution**  
   Groups systems into functional blocks that share operational bounds. Attaching a run condition to a SystemSet evaluates that condition **exactly once** for the entire group, removing the overhead of individual system evaluations.
 * **Integrated States Pipeline**  
   Features a built-in Finite State Machine supporting edge-triggered transitions (`entered_state`, `exited_state`) and ongoing execution filters (`in_state`).
@@ -54,7 +54,7 @@ Avenix isolates out-of-band coordination into thread-safe, thread-clonable handl
           ▼                          ▼                          ▼
 ┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
 │  Worker Thread   │       │  Network Thread  │       │  Async Task Pool │
-│ ParallelCommands │       │ ParallelEvents   │       │ ParallelQueries  │
+│ Parallel Commands│       │ Parallel Events  │       │ Parallel Queries │
 └──────────────────┘       └──────────────────┘       └──────────────────┘
 ```
 
@@ -70,9 +70,9 @@ Avenix isolates out-of-band coordination into thread-safe, thread-clonable handl
   - **Extraction:** Sourced using `world.par_resource_accessor::<T>()`.
   - **Capabilities:** Provides `.scope()`, `.scope_mut()`, `.scope_opt()`, and `.scope_mut_opt()` windows into global values. Supports direct structural management via `.insert_resource()` and `.remove_resource()`, and presence checks via `.is_present()`. Clone-safe.
 * **`ParallelQueryAccessor<Q, F>`**
-  - **Extraction:** Sourced using `world.par_query_accessor::<Q, F>()` **before** calling `app.build()`.
+  - **Extraction:** Sourced using `world.par_query_accessor::<Q, F>()`. If the accessor is used to interact with any tracking data (e.g., `Changed<T>`, `Added<T>`, `ChangedRefMut<T>`, `AddedTracker<T>`), it must be called either before `app.build()` so the engine can automatically pre-register it by itself, or explicitly registered using the tracking registerers on App or World.
   - **Capabilities:** Opens read/write component data matrix structures (`Q: QueryData`) matching criteria filters (`F: QueryFilter`) for detached processing workers.
-  
+
 ---
 
 ## Examples
@@ -106,7 +106,7 @@ Hidden From Active Queries       Caught Natively By Readers      Space Reclaimed
 ---
 
 ### 32-Bit Generationless Entity Recyclability
-Avenix enforces an explicit design invariant: **All cloned handles referencing a specific entity must be completely dropped before that entity's queued despawn command is processed.**
+Avenix enforces an explicit design invariant: **All cloned entity handles referencing a specific entity must be completely dropped before that entity's queued despawn command is processed.**
 
 * **The Benefit:** By requiring clear lifecycle termination boundaries, Avenix completely eliminates the need for integer generation numbers or tracking ticks inside entity keys. The engine safely packs full entity addresses into a compact **32-bit slot**, minimizing memory consumption and eliminating integer overflow errors during long uptime operations.
 * **Handling Cleanup:** The engine will invoke a diagnostic panic during the structural flush phase if a handle leak occurs, printing a detailed map of the component layout archetypes involved to help you isolate where the handle leak occurred. To satisfy this requirement cleanly, the engine provides dedicated stage lifecycles (`CleanupHandles`) and state-interception tools within the `Commands` to inspect scheduled despawns before the memory flush executes. Complete verification layouts can be observed directly within the all example blueprints inside the `examples/despawn_cleanup` folder.
@@ -117,7 +117,8 @@ Avenix enforces an explicit design invariant: **All cloned handles referencing a
 When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
 
 * **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`, `Changed<T>`).
-* **Stripped Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps entirely, keeping untracked data paths unburdened by default.
+* **Optimized Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps and tracking management entirely, keeping untracked data paths completely unburdened by default.
+* **Automated Static Discovery:** During the conversion into systems before finalizing the `App`, the engine automatically analyzes all system parameters, parameters inside `ParallelQueryAccessor` (when registered before `app.build()`), and `RemovedComponents<T>` parameters. It then auto-registers all necessary trackers by itself without requiring any manual initialization. For any tracking data requirements introduced dynamically post-build, explicit tracker registerers are provided on both `App` and `World`.
 
 ---
 

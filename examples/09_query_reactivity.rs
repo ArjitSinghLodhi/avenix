@@ -93,7 +93,7 @@ fn reactive_changed_filter_frame_2(changed_scores: Query<&Score, Changed<Score>>
 }
 
 fn reactive_changed_filter_frame_4(changed_scores: Query<&Score, Changed<Score>>) {
-    let count = changed_scores.total_entities();
+    let count = changed_scores.filtered_entities();
     println!(
         "[Lifecycle Decay] Frame 4 Changed<Score> item count: {} (State safely decayed to normal).",
         count
@@ -112,7 +112,7 @@ fn complex_combinator_filter_frame_1(
         );
     }
 
-    let stable_count = stable_entities_query.total_entities();
+    let stable_count = stable_entities_query.filtered_entities();
     if stable_count > 0 {
         println!(
             "[Not Modifier] Frame 1 - Not<Added<StatusEffect>> matched {} stable entity/entities.",
@@ -140,7 +140,7 @@ fn complex_combinator_filter_frame_2(
         );
     }
 
-    let stable_count = stable_entities_query.total_entities();
+    let stable_count = stable_entities_query.filtered_entities();
     if stable_count > 0 {
         println!(
             "[Not Modifier] Frame 2 - Not<Added<StatusEffect>> matched {} stable entity/entities.",

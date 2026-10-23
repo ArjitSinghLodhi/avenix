@@ -11,10 +11,7 @@ use std::{
 use indexmap::IndexSet;
 use rustc_hash::FxBuildHasher;
 
-use crate::{
-    extensions::{FunctionData, SystemData},
-    world::storage::World,
-};
+use crate::{app::system::SystemData, system::system_storage::FunctionData, world::World};
 
 /// # Safety
 ///
@@ -255,19 +252,20 @@ impl<Marker, F> FunctionSystem<Marker, F> {
 }
 
 impl<Marker, F> SystemData for FunctionSystem<Marker, F> {
-    #[doc(hidden)]
     fn get_raw(&self, id: TypeId) -> Option<&Box<dyn Any + Send + Sync>> {
         self.data.get_raw_data(&id)
     }
 
-    #[doc(hidden)]
     fn get_raw_mut(&mut self, id: TypeId) -> Option<&mut Box<dyn Any + Send + Sync>> {
         self.data.get_raw_data_mut(&id)
     }
 
-    #[doc(hidden)]
     fn insert_raw(&mut self, id: TypeId, value: Box<dyn Any + Send + Sync>) {
         self.data.insert_raw_data(&id, value);
+    }
+
+    fn remove_raw(&mut self, id: TypeId) -> Option<Box<dyn Any + Send + Sync + 'static>> {
+        self.data.remove_raw(id)
     }
 }
 

@@ -22,10 +22,9 @@ use crate::{
         },
     },
     entity::Entity,
-    extensions::SystemMeta,
     resources::Resource,
-    system::SystemParam,
-    world::storage::World,
+    system::{SystemMeta, SystemParam},
+    world::World,
 };
 
 pub(crate) trait WorldCommand: 'static + Send {

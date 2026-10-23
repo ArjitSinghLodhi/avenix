@@ -1,7 +1,7 @@
 use crate::{
-    extensions::World,
     resources::{ConcurrentResourceRegistry, Res, ResMut, Resource},
     system::{ParallelSystemParam, SystemMeta, SystemParam},
+    world::World,
 };
 use std::{marker::PhantomData, sync::Arc};
 
@@ -21,7 +21,7 @@ use std::{marker::PhantomData, sync::Arc};
 /// * **Overlapping Access:** Attempting to open a mutable scope while another active scope (mutable or immutable)
 ///   targets that same resource on the same thread will trigger a deadlock.
 ///
-/// [`.par_resource_accessor()`]: crate::world::storage::World::par_resource_accessor
+/// [`.par_resource_accessor()`]: crate::world::World::par_resource_accessor
 pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {
     pub(crate) resources: Arc<ConcurrentResourceRegistry>,
     pub(crate) _marker: PhantomData<T>,

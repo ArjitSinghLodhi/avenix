@@ -206,33 +206,28 @@ fn build_generation_hierarchy(
     test_parent_query: Query<Entity, With<AlphaTestParent>>,
     test_child_query: Query<Entity, With<BetaTestChild>>,
 ) {
-    let alpha_ent = alpha_query.single();
-    let beta_ent = beta_query.single();
-    let minion_ent = minion_query.single();
-    let test_parent_ent = test_parent_query.single();
-    let test_child_ent = test_child_query.single();
+    let alpha = alpha_query.single();
+    let beta = beta_query.single();
+    let minion = minion_query.single();
+    let parent = test_parent_query.single();
+    let child = test_child_query.single();
 
-    if let (Some(alpha), Some(beta), Some(minion)) = (alpha_ent, beta_ent, minion_ent) {
-        commands.entity(beta).set_parent(alpha.clone());
-        commands.entity(minion).set_parent(beta.clone());
-        commands.entity(alpha).set_parent(minion.clone());
-        println!("Linked hierarchy");
-    }
+    commands.entity(beta).set_parent(alpha.clone());
+    commands.entity(minion).set_parent(beta.clone());
+    commands.entity(alpha).set_parent(minion.clone());
+    println!("Linked hierarchy");
 
-    if let (Some(parent), Some(child)) = (test_parent_ent, test_child_ent) {
-        commands.entity(child).set_parent(parent.clone());
-        println!("Linked clean test hierarchy for normal unlink validation");
-    }
+    commands.entity(child).set_parent(parent.clone());
+    println!("Linked clean test hierarchy for normal unlink validation");
 }
 
 fn trigger_runtime_lifecycle_stage_1(
     commands: Commands,
     alpha_query: Query<Entity, With<AlphaCommander>>,
 ) {
-    if let Some(alpha_entity) = alpha_query.single() {
-        println!("System (Update Frame 1): Despawning root AlphaCommander!");
-        commands.entity(alpha_entity).despawn();
-    }
+    let alpha_entity = alpha_query.single();
+    println!("System (Update Frame 1): Despawning root AlphaCommander!");
+    commands.entity(alpha_entity).despawn();
 }
 
 fn test_unlink_edge_cases_frame_2(
@@ -240,10 +235,9 @@ fn test_unlink_edge_cases_frame_2(
     test_child_query: Query<Entity, With<BetaTestChild>>,
 ) {
     let test_child_ent = test_child_query.single();
-    if let Some(child) = test_child_ent {
-        println!("Unlink System (Frame 2): Requesting normal unlink_child on BetaTestChild.");
-        commands.entity(child).remove_parent();
-    }
+    let child = test_child_ent;
+    println!("Unlink System (Frame 2): Requesting normal unlink_child on BetaTestChild.");
+    commands.entity(child).remove_parent();
 }
 
 fn test_unlink_edge_cases_frame_3(commands: Commands) {
@@ -259,25 +253,21 @@ fn test_unlink_edge_cases_frame_4(
     minion_query: Query<Entity, With<MinionSubUnit>>,
     orphan_query: Query<Entity, With<TestOrphanMarker>>,
 ) {
-    let orphan_ent = orphan_query.single();
-    if let Some(orphan) = orphan_ent {
-        println!(
-            "Unlink System (Frame 4) [EDGE CASE]: Requesting unlink on an orphan (no parent)."
-        );
-        commands.entity(orphan).remove_parent();
-    }
+    let orphan = orphan_query.single();
+    println!("Unlink System (Frame 4) [EDGE CASE]: Requesting unlink on an orphan (no parent).");
+    commands.entity(orphan).remove_parent();
 
-    let minion_ent = minion_query.single();
-    let beta_ent = beta_query.single();
+    let minion_ent = minion_query.get_single();
+    let beta_ent = beta_query.get_single();
 
-    if let (Some(minion), Some(beta)) = (minion_ent, beta_ent) {
-        println!(
-            "Unlink System (Frame 4) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit."
-        );
-        commands
-            .entity(minion)
-            .set_parent(beta.clone())
-            .remove_parent();
+    if let (Ok(minion), Ok(beta)) = (minion_ent, beta_ent) {
+    println!(
+        "Unlink System (Frame 4) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit."
+    );
+    commands
+        .entity(minion)
+        .set_parent(beta.clone())
+        .remove_parent();
     }
 }
 

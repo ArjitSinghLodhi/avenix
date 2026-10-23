@@ -51,10 +51,6 @@ pub mod prelude {
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
         ScheduleLabel, States, SystemParam, SystemSet,
     };
-    pub use crate::ecs::events::{
-        EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
-        ParallelEventWriter,
-    };
     #[cfg(feature = "reactivity")]
     pub use crate::ecs::reactivity::{
         added::{Added, AddedTracker},
@@ -65,8 +61,12 @@ pub mod prelude {
         Component,
         commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
         entity::Entity,
+        events::{
+            EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
+            ParallelEventWriter,
+        },
         query::{
-            Has, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk,
+            Has, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk, QuerySingleError,
             filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without},
             parallel_query::ParallelQueryAccessor,
         },
@@ -75,17 +75,6 @@ pub mod prelude {
     };
 
     pub use crate::rayon::prelude::*;
-}
-
-pub mod extensions {
-    pub use crate::query::MatchedArchetypeData;
-    pub use crate::system::system_storage::{FunctionData, SystemData, SystemExt};
-    pub use crate::system::{
-        AccessHashSet, AccessVec, FunctionSystem, IntoSystem, System, SystemMeta, SystemParam,
-    };
-    pub use crate::world::archetypes::{Archetype, ComponentColumn};
-    pub use crate::world::archetypes::{ComponentColumnRead, ComponentColumnWrite};
-    pub use crate::world::storage::World;
 }
 
 pub mod ecs {
@@ -102,7 +91,10 @@ pub mod ecs {
         };
     }
     pub mod query {
-        pub use crate::query::{Has, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk};
+        pub use crate::query::{
+            Has, MatchedArchetypeData, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk,
+            QuerySingleError,
+        };
         pub mod filter {
             pub use crate::query::filter::{EmptyQueryFilter, Not, Or, QueryFilter, With, Without};
         }
@@ -129,7 +121,12 @@ pub mod ecs {
         }
     }
     pub mod world {
-        pub use crate::world::storage::World;
+        pub use crate::world::World;
+        pub mod archetypes {
+            pub use crate::world::archetypes::{
+                Archetype, ComponentColumn, ComponentColumnRead, ComponentColumnWrite,
+            };
+        }
     }
     pub mod entity {
         pub use crate::entity::Entity;
@@ -140,8 +137,9 @@ pub mod app {
     pub use crate::app_impl::App;
     pub mod system {
         pub use crate::system::{
-            FunctionIdentity, IntoSystem, ParallelSystemParam, System, SystemIdentity, SystemMeta,
-            SystemParam,
+            AccessHashSet, AccessVec, FunctionIdentity, FunctionSystem, IntoSystem,
+            ParallelSystemParam, System, SystemIdentity, SystemMeta, SystemParam,
+            system_storage::{SystemData, SystemExt},
         };
         pub mod condition {
             pub use crate::system::condition::{
@@ -157,7 +155,7 @@ pub mod app {
 
         pub mod system_set {
             pub use crate::system::{
-                system_set::{GuardNode, SetConditionBuilder, SystemSet},
+                system_set::{GuardIdentity, GuardNode, SetConditionBuilder, SystemSet},
                 system_set_traits::{
                     IntoSystemSetConfig, IntoSystemSetConfigs, SetConfig, SystemSetConfigsExt,
                     SystemSetExt,

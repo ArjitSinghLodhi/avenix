@@ -5,10 +5,12 @@ use parking_lot::Mutex;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    extensions::{Archetype, World},
     query::{EmptyQueryFilter, Query, QueryData, QueryFilter},
     system::{SystemMeta, SystemParam},
-    world::archetypes::ArchetypeId,
+    world::{
+        World,
+        archetypes::{Archetype, ArchetypeId},
+    },
 };
 
 /// A thread-safe, clonable handle providing detached remote access to the engine's archetype data blocks.
@@ -34,7 +36,7 @@ use crate::{
 /// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
 ///   targets overlapping components on that same thread will trigger a deadlock.
 ///
-/// [`.par_query_accessor()`]: crate::world::storage::World::par_query_accessor
+/// [`.par_query_accessor()`]: crate::world::World::par_query_accessor
 /// [`Entity`]: crate::entity::Entity
 /// [`query.get()`]: crate::query::Query::get
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {

@@ -1,7 +1,8 @@
 use crate::{
-    extensions::{SystemExt, World},
+    app::system::SystemExt,
     schedule::{SystemExecutor, SystemsSchedule},
     system::condition::RunConditionsList,
+    world::World,
 };
 
 #[derive(Default)]

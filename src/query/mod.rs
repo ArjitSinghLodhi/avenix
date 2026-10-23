@@ -12,15 +12,18 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
-use std::{any::TypeId, sync::Arc};
+use std::{
+    any::{TypeId, type_name},
+    sync::Arc,
+};
 
 use crate::{
     entity::Entity,
     entity_registry::REGISTRY,
-    extensions::{AccessVec, SystemMeta, SystemParam},
+    system::{AccessVec, SystemMeta, SystemParam},
     world::{
+        World,
         archetypes::{Archetype, ArchetypeId},
-        storage::World,
     },
 };
 
@@ -117,6 +120,12 @@ impl<'q, F: QueryFilter> MatchedArchetypeData<'q, F> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuerySingleError {
+    NoMatches,
+    MultipleMatches,
+}
+
 pub struct Query<'q, 'a, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     cached_fetches: Vec<Option<Q::Fetch<'q>>>,
     cached_archetypes: Vec<Option<MatchedArchetypeData<'q, F>>>,
@@ -168,7 +177,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         }
     }
 
-    pub fn single<'w>(&'w self) -> Option<Q::ReadOnlyItem<'w>> {
+    pub fn get_single<'w>(&'w self) -> Result<Q::ReadOnlyItem<'w>, QuerySingleError> {
         let mut target_arch_id: Option<usize> = None;
         let mut target_row_idx: Option<usize> = None;
         let mut match_count: usize = 0;
@@ -184,7 +193,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
                         match_count += 1;
 
                         if match_count > 1 {
-                            return None;
+                            return Err(QuerySingleError::MultipleMatches);
                         }
 
                         target_arch_id = Some(arch_id);
@@ -194,14 +203,16 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             }
         }
 
-        let arch_id = target_arch_id?;
-        let row_idx = target_row_idx?;
+        let arch_id = target_arch_id.ok_or(QuerySingleError::NoMatches)?;
+        let row_idx = target_row_idx.ok_or(QuerySingleError::NoMatches)?;
 
-        let fetch_state = self.cached_fetches[arch_id].as_ref()?;
-        unsafe { Some(Q::fetch_read_only(fetch_state, row_idx)) }
+        let fetch_state = self.cached_fetches[arch_id]
+            .as_ref()
+            .ok_or(QuerySingleError::NoMatches)?;
+        unsafe { Ok(Q::fetch_read_only(fetch_state, row_idx)) }
     }
 
-    pub fn single_mut<'w>(&'w mut self) -> Option<Q::Item<'w>> {
+    pub fn get_single_mut<'w>(&'w mut self) -> Result<Q::Item<'w>, QuerySingleError> {
         let mut target_arch_id: Option<usize> = None;
         let mut target_row_idx: Option<usize> = None;
         let mut match_count: usize = 0;
@@ -217,7 +228,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
                         match_count += 1;
 
                         if match_count > 1 {
-                            return None;
+                            return Err(QuerySingleError::MultipleMatches);
                         }
 
                         target_arch_id = Some(arch_id);
@@ -227,31 +238,50 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
             }
         }
 
-        let arch_id = target_arch_id?;
-        let row_idx = target_row_idx?;
+        let arch_id = target_arch_id.ok_or(QuerySingleError::NoMatches)?;
+        let row_idx = target_row_idx.ok_or(QuerySingleError::NoMatches)?;
 
-        let fetch_state = self.cached_fetches[arch_id].as_ref()?;
-        unsafe { Some(Q::fetch_mut(fetch_state, row_idx)) }
+        let fetch_state = self.cached_fetches[arch_id]
+            .as_ref()
+            .ok_or(QuerySingleError::NoMatches)?;
+        unsafe { Ok(Q::fetch_mut(fetch_state, row_idx)) }
+    }
+
+    pub fn single<'w>(&'w self) -> Q::ReadOnlyItem<'w> {
+        self.get_single().unwrap_or_else(|err| {
+            panic!("QuerySingleError::{:?}", err);
+        })
+    }
+
+    pub fn single_mut<'w>(&'w mut self) -> Q::Item<'w> {
+        self.get_single_mut().unwrap_or_else(|err| {
+            panic!("QuerySingleError::{:?}", err);
+        })
     }
 
     /// Returns the total number of entity indices across all matching archetypes,
     /// fully accounting for any dynamic filters.
-    pub fn total_entities(&self) -> usize {
-        let mut total = 0;
-
+    pub fn filtered_entities(&self) -> usize {
+        let mut count = 0;
         for arch in self.cached_archetypes.iter().flatten() {
             if arch.row_count == 0 {
                 continue;
             }
-
             for row_idx in 0..arch.row_count {
                 if F::matches_row(&arch.filter_data, row_idx) {
-                    total += 1;
+                    count += 1;
                 }
             }
         }
+        count
+    }
 
-        total
+    pub fn base_entities(&self) -> usize {
+        self.cached_archetypes
+            .iter()
+            .flatten()
+            .map(|arch| arch.row_count)
+            .sum()
     }
 
     pub fn iter<'b>(&'b self) -> impl Iterator<Item = Q::ReadOnlyItem<'b>> {
@@ -522,17 +552,18 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, 'a, Q, F> {
         let mut local_without = AccessVec::new();
 
         Q::collect_access(&mut local_reads, &mut local_writes);
+        F::collect_filter_access(&mut local_reads, &mut local_writes);
         F::collect_filter(&mut local_with, &mut local_without);
+
         let has_intra_conflict = local_writes.iter().any(|w| local_reads.contains(w));
         let mut unique_writes = FxHashSet::default();
         let has_duplicate_writes = local_writes.iter().any(|w| !unique_writes.insert(w));
 
         if has_intra_conflict || has_duplicate_writes {
             panic!(
-                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in '{}': Query<{}, {}> contains internal overlaps!",
+                "❌ ECS INTRA-QUERY ARGUMENT CONFLICT in '{}': {} contains internal overlaps!",
                 system_meta.get_func_name(),
-                std::any::type_name::<Q>(),
-                std::any::type_name::<F>()
+                type_name::<Self>()
             );
         }
         let mut has_inter_conflict = false;
@@ -561,10 +592,9 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, 'a, Q, F> {
             if !is_disjoint {
                 panic!(
                     "❌ ECS SYSTEM ARGUMENT CONFLICT in '{}': Overlapping queries break aliasing rules without disjoint QueryFilters!\n\
-                    -> Error triggered by parameter: Query<{}, {}>",
+                -> Error triggered by parameter: {}",
                     system_meta.get_func_name(),
-                    std::any::type_name::<Q>(),
-                    std::any::type_name::<F>()
+                    type_name::<Self>()
                 );
             }
         }

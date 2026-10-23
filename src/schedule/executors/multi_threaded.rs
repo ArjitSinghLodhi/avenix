@@ -1,9 +1,10 @@
 use std::any::TypeId;
 
 use crate::{
-    extensions::{SystemExt, World},
+    app::system::SystemExt,
     schedule::{SystemExecutor, SystemsSchedule},
     system::{SystemMeta, condition::RunConditionsList, system_traits::SystemOrderings},
+    world::World,
 };
 
 pub struct MultiThreadedExecutor {

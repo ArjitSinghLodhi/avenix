@@ -68,7 +68,7 @@ fn setup_macro_entities(commands: Commands) {
 
 fn verify_and_mutate_macros(mut tools: CompositeSystemParam) {
     tools.tracker.points += 500;
-    let matched_entities = tools.query.total_entities();
+    let matched_entities = tools.query.filtered_entities();
     #[allow(unused_mut)]
     for mut entity in tools.query.iter_mut() {
         println!("entity: {:?}", entity);

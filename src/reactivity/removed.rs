@@ -1,4 +1,8 @@
-use std::{any::TypeId, marker::PhantomData, sync::Arc};
+use std::{
+    any::{TypeId, type_name},
+    marker::PhantomData,
+    sync::Arc,
+};
 
 use dashmap::DashSet;
 use indexmap::IndexMap;
@@ -6,23 +10,22 @@ use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    app::App,
     ecs::Component,
     entity::Entity,
-    extensions::World,
-    reactivity::verify_app_not_build_yet,
+    reactivity::verify_app_not_built_yet,
     resources::Resource,
     system::{SystemMeta, SystemParam},
+    world::World,
 };
 
-pub(crate) fn register_removal_tracking_buffers(app: &mut App) {
+pub(crate) fn register_removal_tracking_buffers(world: &World) {
     for meta in REMOVAL_TRACKED_COMPS.lock().values() {
-        (meta.register_buffer)(app.world_mut())
+        (meta.register_buffer)(world)
     }
 }
 
 pub(crate) struct RemovalTrackedMeta {
-    pub(crate) register_buffer: fn(&mut World),
+    pub(crate) register_buffer: fn(&World),
     pub(crate) swap_and_clear_buffer: fn(&mut World),
     pub(crate) clear_dead_entities:
         fn(&mut World, &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>),
@@ -35,10 +38,14 @@ pub(crate) static REMOVAL_TRACKED_COMPS: Mutex<
 > = Mutex::new(IndexMap::with_hasher(FxBuildHasher));
 
 fn register_removal_tracking_comp<T: Component>() {
-    let _lock = verify_app_not_build_yet();
     let mut tracked = REMOVAL_TRACKED_COMPS.lock();
+    let component_id = TypeId::of::<T>();
+    if tracked.contains_key(&component_id) {
+        return;
+    }
+    let _lock = verify_app_not_built_yet(type_name::<RemovedComponents<T>>());
     tracked.insert(
-        TypeId::of::<T>(),
+        component_id,
         RemovalTrackedMeta {
             register_buffer: |world| {
                 world.insert_resource(RemovedComponentsBuffer::<T> {

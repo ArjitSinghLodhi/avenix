@@ -4,12 +4,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::app::schedule::DynEq;
-use crate::extensions::{FunctionData, SystemData, SystemExt};
+use crate::app::system::{SystemData, SystemExt};
 use crate::schedule::{ScheduleLabel, SystemNode};
 use crate::system::condition::{ConditionFn, RunConditionsList};
+use crate::system::system_storage::FunctionData;
 use crate::system::system_traits::SystemOrderings;
 use crate::system::{System, SystemIdentity};
-use crate::world::storage::World;
+use crate::world::World;
 use std::fmt::Debug;
 
 pub trait SystemSet: Debug + DynEq + Send + Sync + 'static {
@@ -57,6 +58,10 @@ impl<S: SystemSet> SystemData for GuardNode<S> {
     fn insert_raw(&mut self, id: std::any::TypeId, value: Box<dyn std::any::Any + Send + Sync>) {
         self.storage.insert_raw_data(&id, value)
     }
+
+    fn remove_raw(&mut self, id: std::any::TypeId) -> Option<Box<dyn Any + Send + Sync + 'static>> {
+        self.storage.remove_raw(id)
+    }
 }
 
 impl<S: SystemSet> System for GuardNode<S> {
@@ -90,7 +95,13 @@ impl<S: SystemSet> GuardNode<S> {
 }
 
 pub struct GuardIdentity {
-    pub set: Box<dyn SystemSet>,
+    set: Box<dyn SystemSet>,
+}
+
+impl GuardIdentity {
+    pub fn system_set(&self) -> &dyn SystemSet {
+        &*self.set
+    }
 }
 
 impl SystemIdentity for GuardIdentity {
@@ -283,7 +294,7 @@ pub(crate) fn preprocess_system_sets(
         if !matching_flags.is_empty() {
             let list = sys.get_or_init_mut::<RunConditionsList>(RunConditionsList::default);
             for flag in matching_flags {
-                let gate: ConditionFn = Box::new(move || flag.load(Ordering::Relaxed));
+                let gate: ConditionFn = Box::new(move || flag.load(Ordering::Acquire));
                 list.conditions_mut().push(gate);
             }
         }

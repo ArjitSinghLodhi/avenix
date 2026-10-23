@@ -12,8 +12,9 @@ use orx_concurrent_bag::ConcurrentBag;
 use parking_lot::{RwLock, RwLockReadGuard};
 
 use crate::{
-    extensions::{SystemMeta, SystemParam, World},
     resources::Resource,
+    system::{SystemMeta, SystemParam},
+    world::World,
 };
 
 pub use orx_parallel::{EnumeratePar, Par};

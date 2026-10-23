@@ -33,8 +33,8 @@ fn pre_mutation_verify_system(
     pos_tracker_query: Query<ChangedTracker<Position>>,
     vel_tracker_query: Query<ChangedTracker<Velocity>>,
 ) {
-    let pos_changes = pos_changed_query.total_entities();
-    let vel_changes = vel_changed_query.total_entities();
+    let pos_changes = pos_changed_query.filtered_entities();
+    let vel_changes = vel_changed_query.filtered_entities();
 
     let mut pos_tracker_changes = 0;
     for tracker in pos_tracker_query.iter() {
@@ -147,8 +147,8 @@ fn post_mutation_verify_system(
     pos_tracker_query: Query<ChangedTracker<Position>>,
     vel_tracker_query: Query<ChangedTracker<Velocity>>,
 ) {
-    let pos_changes = pos_changed_query.total_entities();
-    let vel_changes = vel_changed_query.total_entities();
+    let pos_changes = pos_changed_query.filtered_entities();
+    let vel_changes = vel_changed_query.filtered_entities();
 
     let mut pos_tracker_changes = 0;
     for tracker in pos_tracker_query.iter() {
@@ -346,17 +346,17 @@ fn complex_filter_verify_frame_1(
     or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
 ) {
     assert_eq!(
-        not_changed_q.total_entities(),
+        not_changed_q.filtered_entities(),
         1,
         "❌ Not<Changed> failed on frame 1 baseline!"
     );
     assert_eq!(
-        not_or_q.total_entities(),
+        not_or_q.filtered_entities(),
         1,
         "❌ Not<Or<...>> failed on frame 1 baseline!"
     );
     assert_eq!(
-        or_mixed_q.total_entities(),
+        or_mixed_q.filtered_entities(),
         1,
         "❌ Or<Changed, With> structural arm failed on frame 1 baseline!"
     );
@@ -368,17 +368,17 @@ fn complex_filter_verify_frame_3(
     or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
 ) {
     assert_eq!(
-        not_changed_q.total_entities(),
+        not_changed_q.filtered_entities(),
         0,
         "❌ Not<Changed> failed to filter out mutated entity on frame 3!"
     );
     assert_eq!(
-        not_or_q.total_entities(),
+        not_or_q.filtered_entities(),
         0,
         "❌ Not<Or<...>> failed to filter out mutated entity on frame 3!"
     );
     assert_eq!(
-        or_mixed_q.total_entities(),
+        or_mixed_q.filtered_entities(),
         1,
         "❌ Or<Changed, With> dynamic arm failed to catch matching entity on frame 3!"
     );
@@ -390,17 +390,17 @@ fn complex_filter_verify_frame_4(
     or_mixed_q: Query<&Position, Or<(Changed<Position>, With<Velocity>)>>,
 ) {
     assert_eq!(
-        not_changed_q.total_entities(),
+        not_changed_q.filtered_entities(),
         1,
         "❌ Not<Changed> failed to reset after change stagnation on frame 4!"
     );
     assert_eq!(
-        not_or_q.total_entities(),
+        not_or_q.filtered_entities(),
         1,
         "❌ Not<Or<...>> failed to reset after change stagnation on frame 4!"
     );
     assert_eq!(
-        or_mixed_q.total_entities(),
+        or_mixed_q.filtered_entities(),
         1,
         "❌ Or<Changed, With> dropped evaluation via structural arm on frame 4!"
     );
