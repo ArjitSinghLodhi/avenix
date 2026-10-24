@@ -200,44 +200,43 @@ fn setup_scene_graph(commands: Commands) {
 
 fn build_generation_hierarchy(
     commands: Commands,
-    alpha_query: Query<Entity, With<AlphaCommander>>,
-    beta_query: Query<Entity, With<BetaCommander>>,
-    minion_query: Query<Entity, With<MinionSubUnit>>,
-    test_parent_query: Query<Entity, With<AlphaTestParent>>,
-    test_child_query: Query<Entity, With<BetaTestChild>>,
+    alpha_entity: Single<Entity, With<AlphaCommander>>,
+    beta_entity: Single<Entity, With<BetaCommander>>,
+    minion_entity: Single<Entity, With<MinionSubUnit>>,
+    test_parent_entity: Single<Entity, With<AlphaTestParent>>,
+    test_child_entity: Single<Entity, With<BetaTestChild>>,
 ) {
-    let alpha = alpha_query.single();
-    let beta = beta_query.single();
-    let minion = minion_query.single();
-    let parent = test_parent_query.single();
-    let child = test_child_query.single();
-
-    commands.entity(beta).set_parent(alpha.clone());
-    commands.entity(minion).set_parent(beta.clone());
-    commands.entity(alpha).set_parent(minion.clone());
+    commands
+        .entity(&beta_entity)
+        .set_parent(alpha_entity.clone());
+    commands
+        .entity(&minion_entity)
+        .set_parent(beta_entity.clone());
+    commands
+        .entity(&alpha_entity)
+        .set_parent(minion_entity.clone());
     println!("Linked hierarchy");
 
-    commands.entity(child).set_parent(parent.clone());
+    commands
+        .entity(&test_child_entity)
+        .set_parent(test_parent_entity.clone());
     println!("Linked clean test hierarchy for normal unlink validation");
 }
 
 fn trigger_runtime_lifecycle_stage_1(
     commands: Commands,
-    alpha_query: Query<Entity, With<AlphaCommander>>,
+    alpha_entity: Single<Entity, With<AlphaCommander>>,
 ) {
-    let alpha_entity = alpha_query.single();
     println!("System (Update Frame 1): Despawning root AlphaCommander!");
-    commands.entity(alpha_entity).despawn();
+    commands.entity(&alpha_entity).despawn();
 }
 
 fn test_unlink_edge_cases_frame_2(
     commands: Commands,
-    test_child_query: Query<Entity, With<BetaTestChild>>,
+    test_child_entity: Single<Entity, With<BetaTestChild>>,
 ) {
-    let test_child_ent = test_child_query.single();
-    let child = test_child_ent;
     println!("Unlink System (Frame 2): Requesting normal unlink_child on BetaTestChild.");
-    commands.entity(child).remove_parent();
+    commands.entity(&test_child_entity).remove_parent();
 }
 
 fn test_unlink_edge_cases_frame_3(commands: Commands) {
@@ -249,26 +248,20 @@ fn test_unlink_edge_cases_frame_3(commands: Commands) {
 
 fn test_unlink_edge_cases_frame_4(
     commands: Commands,
-    beta_query: Query<Entity, With<BetaCommander>>,
-    minion_query: Query<Entity, With<MinionSubUnit>>,
-    orphan_query: Query<Entity, With<TestOrphanMarker>>,
+    beta_entity: Single<Entity, With<BetaCommander>>,
+    minion_entity: Single<Entity, With<MinionSubUnit>>,
+    orphan_entity: Single<Entity, With<TestOrphanMarker>>,
 ) {
-    let orphan = orphan_query.single();
     println!("Unlink System (Frame 4) [EDGE CASE]: Requesting unlink on an orphan (no parent).");
-    commands.entity(orphan).remove_parent();
+    commands.entity(&orphan_entity).remove_parent();
 
-    let minion_ent = minion_query.get_single();
-    let beta_ent = beta_query.get_single();
-
-    if let (Ok(minion), Ok(beta)) = (minion_ent, beta_ent) {
     println!(
         "Unlink System (Frame 4) [EDGE CASE]: Staging a LinkTo and UnlinkChild simultaneously on MinionSubUnit."
     );
     commands
-        .entity(minion)
-        .set_parent(beta.clone())
+        .entity(&minion_entity)
+        .set_parent(beta_entity.clone())
         .remove_parent();
-    }
 }
 
 fn run_test_frames(app: &mut App) {
@@ -310,22 +303,22 @@ fn main() {
             (
                 increment_frame,
                 trigger_runtime_lifecycle_stage_1.run_if(
-                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                    |stepper: ParallelResourceAccessor<FrameStepper>| {
                         stepper.scope(|s| s.current_frame == 1)
                     },
                 ),
                 test_unlink_edge_cases_frame_2.run_if(
-                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                    |stepper: ParallelResourceAccessor<FrameStepper>| {
                         stepper.scope(|s| s.current_frame == 2)
                     },
                 ),
                 test_unlink_edge_cases_frame_3.run_if(
-                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                    |stepper: ParallelResourceAccessor<FrameStepper>| {
                         stepper.scope(|s| s.current_frame == 3)
                     },
                 ),
                 test_unlink_edge_cases_frame_4.run_if(
-                    |stepper: &ParallelResourceAccessor<FrameStepper>| {
+                    |stepper: ParallelResourceAccessor<FrameStepper>| {
                         stepper.scope(|s| s.current_frame == 4)
                     },
                 ),

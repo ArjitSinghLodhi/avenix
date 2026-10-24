@@ -6,7 +6,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     query::{EmptyQueryFilter, Query, QueryData, QueryFilter},
-    system::{SystemMeta, SystemParam},
+    system::{ParallelSystemParam, SystemMeta, SystemParam},
     world::{
         World,
         archetypes::{Archetype, ArchetypeId},
@@ -56,7 +56,7 @@ impl<Q: QueryData, F: QueryFilter> Clone for ParallelQueryAccessor<Q, F> {
 impl<Q: QueryData, F: QueryFilter> ParallelQueryAccessor<Q, F> {
     pub fn scope<Func, R>(&self, f: Func) -> R
     where
-        Func: for<'q, 'a> FnOnce(Query<'q, 'a, Q, F>) -> R,
+        Func: for<'q> FnOnce(Query<'q, Q, F>) -> R,
     {
         let query = Query::new(&self.archetypes_map);
         f(query)
@@ -65,15 +65,19 @@ impl<Q: QueryData, F: QueryFilter> ParallelQueryAccessor<Q, F> {
 
 unsafe impl<Q: QueryData, F: QueryFilter> Send for ParallelQueryAccessor<Q, F> {}
 unsafe impl<Q: QueryData, F: QueryFilter> Sync for ParallelQueryAccessor<Q, F> {}
+unsafe impl<Q: QueryData, F: QueryFilter> ParallelSystemParam for ParallelQueryAccessor<Q, F> {}
 
 impl<Q: QueryData, F: QueryFilter> SystemParam for ParallelQueryAccessor<Q, F> {
+    type Item<'world> = ParallelQueryAccessor<Q, F>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         Query::<Q, F>::init_access(&mut SystemMeta::new(system_meta.get_func_name()));
     }
-    fn get_param(world: &World) -> Self {
-        ParallelQueryAccessor {
+
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(ParallelQueryAccessor {
             archetypes_map: world.archetypes_manager.archetypes.clone(),
             _marker: PhantomData,
-        }
+        })
     }
 }

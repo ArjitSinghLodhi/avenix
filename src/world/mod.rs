@@ -269,7 +269,7 @@ impl World {
     /// safe remote input into the engine's command pipeline, manageable by external or
     /// parallel background worker threads.
     pub fn par_commands(&self) -> ParallelCommands {
-        ParallelCommands::get_param(self)
+        ParallelCommands::get_param(self).unwrap()
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelEventWriter`] handle.
@@ -278,7 +278,7 @@ impl World {
     /// safe remote output channel into the engine's event queue, manageable by external
     /// or parallel background worker threads.
     pub fn par_event_writer<T: Event>(&self) -> ParallelEventWriter<T> {
-        ParallelEventWriter::get_param(self)
+        ParallelEventWriter::get_param(self).unwrap()
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelEventReader`] handle.
@@ -287,7 +287,7 @@ impl World {
     /// safe remote input channel to inspect the engine's event queue from external or
     /// parallel background worker threads.
     pub fn par_event_reader<T: Event>(&self) -> ParallelEventReader<T> {
-        ParallelEventReader::get_param(self)
+        ParallelEventReader::get_param(self).unwrap()
     }
 
     /// Returns a thread-safe, thread-clonable [`ParallelResourceAccessor`] handle.
@@ -296,14 +296,14 @@ impl World {
     /// safe remote accessor into the engine's resource tables manageable by external or
     /// parallel background threads.
     pub fn par_resource_accessor<T: Resource + Send + Sync>(&self) -> ParallelResourceAccessor<T> {
-        ParallelResourceAccessor::get_param(self)
+        ParallelResourceAccessor::get_param(self).unwrap()
     }
 
     pub fn par_query_accessor<Q: QueryData, F: QueryFilter>(&self) -> ParallelQueryAccessor<Q, F> {
         ParallelQueryAccessor::<Q, F>::init_access(&mut SystemMeta::new(
             "par_query_accessor".to_string(),
         ));
-        ParallelQueryAccessor::<Q, F>::get_param(self)
+        ParallelQueryAccessor::<Q, F>::get_param(self).unwrap()
     }
 }
 

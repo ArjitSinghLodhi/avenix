@@ -99,33 +99,24 @@ impl Resource for StateTransitionSystems {}
 
 pub fn in_state<T: States>(
     expected: T,
-) -> impl Condition<
-    ParallelResourceAccessor<State<T>>,
-    ConditionData = ParallelResourceAccessor<State<T>>,
-> + Clone {
-    move |state_accessor: &ParallelResourceAccessor<State<T>>| {
+) -> impl Condition<ParallelResourceAccessor<State<T>>> + Clone {
+    move |state_accessor: ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|state| *state.current() == expected)
     }
 }
 
 pub fn entered_state<T: States>(
     state: T,
-) -> impl Condition<
-    ParallelResourceAccessor<State<T>>,
-    ConditionData = ParallelResourceAccessor<State<T>>,
-> + Clone {
-    move |state_accessor: &ParallelResourceAccessor<State<T>>| {
+) -> impl Condition<ParallelResourceAccessor<State<T>>> + Clone {
+    move |state_accessor: ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|res_state| *res_state.current() == state && res_state.just_changed())
     }
 }
 
 pub fn exited_state<T: States>(
     state: T,
-) -> impl Condition<
-    ParallelResourceAccessor<State<T>>,
-    ConditionData = ParallelResourceAccessor<State<T>>,
-> + Clone {
-    move |state_accessor: &ParallelResourceAccessor<State<T>>| {
+) -> impl Condition<ParallelResourceAccessor<State<T>>> + Clone {
+    move |state_accessor: ParallelResourceAccessor<State<T>>| {
         state_accessor.scope(|res_state| *res_state.last() == state && res_state.just_changed())
     }
 }

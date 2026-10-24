@@ -123,21 +123,27 @@ impl<'w, T: Component> RemovedComponents<'w, T> {
 }
 
 impl<'w, T: Component> SystemParam for RemovedComponents<'w, T> {
+    type Item<'world> = RemovedComponents<'world, T>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         system_meta.add_resource_read(TypeId::of::<RemovedComponentsBuffer<T>>());
         register_removal_tracking_comp::<T>();
     }
-    fn get_param(world: &World) -> Self {
-        let removed_comp_buffer = world.resource::<RemovedComponentsBuffer<T>>();
+
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        let removed_comp_buffer = world.get_resource::<RemovedComponentsBuffer<T>>()?;
         let reader = removed_comp_buffer.read_queue.read();
+
         let reader = unsafe {
-            std::mem::transmute::<RwLockReadGuard<Vec<Entity>>, RwLockReadGuard<Vec<Entity>>>(
-                reader,
-            )
+            std::mem::transmute::<
+                RwLockReadGuard<'_, Vec<Entity>>,
+                RwLockReadGuard<'world, Vec<Entity>>,
+            >(reader)
         };
-        Self {
+
+        Some(RemovedComponents {
             read_buffer: reader,
             _marker: PhantomData,
-        }
+        })
     }
 }

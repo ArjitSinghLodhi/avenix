@@ -1,15 +1,13 @@
 use crate::{
     resources::{ParallelResourceAccessor, Resource},
-    system::{ParallelSystemParam, SystemMeta},
+    system::{ParallelSystemParam, SystemMeta, SystemParam},
     world::World,
 };
 
-pub type ConditionBuilder = Box<dyn FnOnce(&mut World) -> ConditionFn + Send + Sync>;
-pub type ConditionFn = Box<dyn Fn() -> bool + Send + Sync>;
+pub type ConditionFn = Box<dyn Fn(&World) -> bool + Send + Sync>;
 
 #[derive(Default)]
 pub struct RunConditionsList {
-    builders: Vec<ConditionBuilder>,
     runtime_gates: Vec<ConditionFn>,
 }
 
@@ -18,64 +16,72 @@ impl RunConditionsList {
         &self.runtime_gates
     }
 
-    pub fn conditions_mut(&mut self) -> &mut Vec<ConditionFn> {
-        &mut self.runtime_gates
+    pub fn insert(&mut self, index: usize, condition: ConditionFn) {
+        self.runtime_gates.insert(index, condition);
     }
 
     pub fn add_condition<C, T>(&mut self, cond: C)
     where
         C: Condition<T> + Send + Sync + 'static,
     {
-        let builder = Box::new(move |world: &mut World| {
-            let typed_data = cond.init_condition_data(world);
-            let run_gate: ConditionFn = Box::new(move || cond.run(&typed_data));
-            run_gate
-        });
-
-        self.builders.push(builder);
-    }
-
-    pub fn build_conditions(&mut self, world: &mut World) {
-        for builder in self.builders.drain(..) {
-            let compiled_gate = (builder)(world);
-            self.runtime_gates.push(compiled_gate);
-        }
+        C::init_condition_access();
+        let run_gate: ConditionFn = Box::new(move |world: &World| cond.run(world));
+        self.runtime_gates.push(run_gate);
     }
 }
 
+/// A trait for runtime evaluation gates that filter system execution.
+///
+/// Unlike standard systems, conditions are completely decoupled from traditional scheduling
+/// constraints. They are treated as pure, out-of-band evaluation flags that can be executed
+/// concurrently across multiple threads at any arbitrary time. Because the scheduler provides
+/// no order-of-execution or isolation guarantees for conditions, they should rely strictly
+/// on thread-safe, non-blocking parallel parameter lookups.
 pub trait Condition<T>: Send + Sync + 'static {
-    type ConditionData: Send + Sync + 'static;
-    fn init_condition_data(&self, world: &World) -> Self::ConditionData;
-    fn run(&self, data: &Self::ConditionData) -> bool;
+    fn init_condition_access();
+    fn run(&self, world: &World) -> bool;
 }
 
 impl<F, P> Condition<P> for F
 where
-    F: Fn(&P) -> bool + Send + Sync + 'static,
-    P: ParallelSystemParam,
+    F: Send + Sync + 'static,
+    for<'world> P: SystemParam<Item<'world> = P> + ParallelSystemParam,
+    for<'world> P::Item<'world>: ParallelSystemParam,
+    for<'world> F: Fn(P) -> bool,
 {
-    type ConditionData = P;
-    fn init_condition_data(&self, world: &World) -> Self::ConditionData {
-        P::init_access(&mut SystemMeta::new("ConditionBuilder".to_string()));
-        P::get_param(world)
+    fn init_condition_access() {
+        let mut meta = SystemMeta::new("ConditionAccess".to_string());
+        P::init_access(&mut meta);
     }
 
-    fn run(&self, data: &Self::ConditionData) -> bool {
-        (self)(data)
+    fn run(&self, world: &World) -> bool {
+        if let Some(param_data) = P::get_param(world) {
+            (self)(param_data)
+        } else {
+            false
+        }
     }
 }
 
-pub fn not<P, C>(condition: C) -> impl Fn(&P) -> bool + Clone
+pub fn not<P, C>(condition: C) -> impl Fn(&World) -> bool + Clone + Send + Sync
 where
     P: 'static,
-    C: Condition<P, ConditionData = P> + 'static + Clone,
+    C: Condition<P> + 'static + Clone,
 {
-    move |param: &P| !condition.run(param)
+    move |world: &World| !condition.run(world)
 }
 
-pub fn resource_exists<R>() -> impl Fn(&ParallelResourceAccessor<R>) -> bool + Clone
+pub fn resource_exists<R>() -> impl Fn(&World) -> bool + Clone + Send + Sync
 where
     R: Resource + Send + Sync,
 {
-    move |resource_accessor: &ParallelResourceAccessor<R>| resource_accessor.is_present()
+    move |world: &World| {
+        if let Some(resource_accessor) =
+            <ParallelResourceAccessor<R> as SystemParam>::get_param(world)
+        {
+            resource_accessor.is_present()
+        } else {
+            false
+        }
+    }
 }

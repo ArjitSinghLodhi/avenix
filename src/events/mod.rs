@@ -122,20 +122,21 @@ impl<'a, T: Event> EventWriter<'a, T> {
 }
 
 impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
+    type Item<'world> = EventWriter<'world, T>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         unsafe {
-            let buffer = world.resource::<EventBuffer<T>>();
-
+            let buffer = world.get_resource::<EventBuffer<T>>()?;
             let queue = buffer.write_queue.read();
 
             let queue = std::mem::transmute::<
                 RwLockReadGuard<'_, EventQueue<T>>,
-                RwLockReadGuard<'_, EventQueue<T>>,
+                RwLockReadGuard<'world, EventQueue<T>>,
             >(queue);
 
-            Self { write_queue: queue }
+            Some(EventWriter { write_queue: queue })
         }
     }
 }
@@ -173,20 +174,21 @@ impl<'w, T: Event> EventReader<'w, T> {
 }
 
 impl<'w, T: Event> SystemParam for EventReader<'w, T> {
+    type Item<'world> = EventReader<'world, T>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         unsafe {
-            let buffer = world.resource::<EventBuffer<T>>();
-
+            let buffer = world.get_resource::<EventBuffer<T>>()?;
             let queue = buffer.read_queue.read();
 
             let queue = std::mem::transmute::<
                 RwLockReadGuard<'_, EventQueue<T>>,
-                RwLockReadGuard<'_, EventQueue<T>>,
+                RwLockReadGuard<'world, EventQueue<T>>,
             >(queue);
 
-            Self { read_queue: queue }
+            Some(EventReader { read_queue: queue })
         }
     }
 }

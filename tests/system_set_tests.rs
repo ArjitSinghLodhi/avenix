@@ -98,7 +98,7 @@ fn test_system_sets() {
                 (
                     GameplayStage::Input,
                     GameplayStage::Simulation.run_if(
-                        |flag: &ParallelResourceAccessor<SetConditionFlag>| {
+                        |flag: ParallelResourceAccessor<SetConditionFlag>| {
                             flag.scope(|f| f.counter == 0)
                         },
                     ),
@@ -108,7 +108,7 @@ fn test_system_sets() {
                 (NetworkingSet, PhysicsSet).chain(),
                 (PhysicsSet, NetworkingSet)
                     .in_set(GameplayStage::Simulation)
-                    .run_if(|flat: &ParallelResourceAccessor<SetConditionFlag>| {
+                    .run_if(|flat: ParallelResourceAccessor<SetConditionFlag>| {
                         flat.scope(|f| f.counter != 999)
                     }),
                 AudioSet.after(resolve_colliders),
@@ -309,7 +309,7 @@ fn test_system_ordered_strictly_before_guard_node() {
         .insert_resource(RunPermissionFlag::default())
         .configure_sets(
             Update,
-            GuardValidationSet.run_if(|perm: &ParallelResourceAccessor<RunPermissionFlag>| {
+            GuardValidationSet.run_if(|perm: ParallelResourceAccessor<RunPermissionFlag>| {
                 perm.scope(|p| p.allowed)
             }),
         )

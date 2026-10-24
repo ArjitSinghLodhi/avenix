@@ -4,7 +4,7 @@ pub(crate) mod system_set_traits;
 pub(crate) mod system_storage;
 pub(crate) mod system_traits;
 use std::{
-    any::{Any, TypeId},
+    any::{Any, TypeId, type_name},
     hash::Hash,
 };
 
@@ -12,11 +12,6 @@ use indexmap::IndexSet;
 use rustc_hash::FxBuildHasher;
 
 use crate::{app::system::SystemData, system::system_storage::FunctionData, world::World};
-
-/// # Safety
-///
-/// Anything implementing this trait must guarantee it can be used concurrently from any thread.
-pub unsafe trait ParallelSystemParam: SystemParam + Send + Sync + 'static {}
 
 pub struct AccessHashSet<T: Eq + Hash> {
     pub(crate) set: IndexSet<T, FxBuildHasher>,
@@ -224,28 +219,43 @@ impl SystemMeta {
     }
 }
 
+/// # Safety
+///
+/// Anything implementing this trait must guarantee it can be used concurrently from any thread.
+pub unsafe trait ParallelSystemParam: SystemParam + Send + Sync {}
+
 pub trait SystemParam {
+    type Item<'world>: SystemParam;
     fn init_access(system_meta: &mut SystemMeta);
-    fn get_param(world: &World) -> Self;
+    /// Returning `Some(Item)` provides the system function with its validated input data.
+    /// Returning `None` signals that a required condition or layout constraint was not met at
+    /// the specific time execution was attempted, causing the host system to safely skip
+    /// execution entirely.
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>>;
 }
 
-pub trait System: SystemData + 'static {
+pub trait System: SystemData {
     fn run(&mut self, world: &World);
-    fn identity(&self) -> Box<dyn SystemIdentity>;
+    fn identity(&self) -> &dyn SystemIdentity;
 }
 
 #[doc(hidden)]
 pub struct FunctionSystem<Marker, F> {
     pub(crate) func: F,
     pub(crate) data: FunctionData,
+    pub(crate) identity: FunctionIdentity,
     pub(crate) _marker: std::marker::PhantomData<Marker>,
 }
 
-impl<Marker, F> FunctionSystem<Marker, F> {
+impl<Marker, F: 'static> FunctionSystem<Marker, F> {
     pub(crate) fn new(func: F) -> Self {
         Self {
             func,
             data: FunctionData::new(),
+            identity: FunctionIdentity {
+                type_id: TypeId::of::<F>(),
+                name: type_name::<Self>().to_string(),
+            },
             _marker: std::marker::PhantomData,
         }
     }
@@ -272,7 +282,7 @@ impl<Marker, F> SystemData for FunctionSystem<Marker, F> {
 #[doc(hidden)]
 pub trait IntoSystem<Marker> {
     #[doc(hidden)]
-    type SystemType: System + 'static;
+    type SystemType: System;
     #[doc(hidden)]
     fn into_system(self) -> Self::SystemType;
 }
@@ -280,8 +290,8 @@ pub trait IntoSystem<Marker> {
 pub trait SystemIdentity: Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
     fn dyn_system_eq(&self, other: &dyn SystemIdentity) -> bool;
-    fn clone_box(&self) -> Box<dyn SystemIdentity>;
-    fn display_name(&self) -> String;
+    fn dyn_clone(&self) -> Box<dyn SystemIdentity>;
+    fn display_name(&self) -> &str;
 }
 
 pub struct FunctionIdentity {
@@ -300,13 +310,13 @@ impl SystemIdentity for FunctionIdentity {
             false
         }
     }
-    fn clone_box(&self) -> Box<dyn SystemIdentity> {
+    fn dyn_clone(&self) -> Box<dyn SystemIdentity> {
         Box::new(FunctionIdentity {
             type_id: self.type_id,
             name: self.name.clone(),
         })
     }
-    fn display_name(&self) -> String {
-        self.name.clone()
+    fn display_name(&self) -> &str {
+        &self.name
     }
 }

@@ -43,11 +43,11 @@ fn test_complex_scheduling_and_conditions() {
             Update,
             (
                 first_system.after(second_system).before(third_system),
-                second_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                second_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value == 10)
                 }),
             )
-                .run_if(|accessor: &ParallelMultiParam| {
+                .run_if(|accessor: ParallelMultiParam| {
                     accessor.counter_access.scope_mut(|mut counter| {
                         counter.value += 1;
                         counter.value -= 1;
@@ -58,10 +58,10 @@ fn test_complex_scheduling_and_conditions() {
         .add_systems(
             Update,
             (
-                third_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                third_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value > 5)
                 }),
-                fourth_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                fourth_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value == 999)
                 }),
             )

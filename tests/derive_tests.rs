@@ -48,9 +48,9 @@ struct TagAFilter {
 }
 
 #[derive(SystemParam)]
-struct CompositeSystemParam<'q, 'a> {
-    query: Query<'q, 'a, PhysicsQuery, TagAFilter>,
-    tracker: ResMut<'a, ScoreTracker>,
+struct CompositeSystemParam<'q> {
+    query: Query<'q, PhysicsQuery, TagAFilter>,
+    tracker: ResMut<'q, ScoreTracker>,
 }
 
 fn setup_macro_entities(commands: Commands) {

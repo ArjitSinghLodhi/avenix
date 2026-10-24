@@ -112,8 +112,8 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
     let mut meta_list = Vec::with_capacity(n);
     for node in schedule_systems.iter_mut() {
         let system_mut_ref = node.system_mut();
-        let sys_identity = system_mut_ref.identity();
-        let sys_name = system_mut_ref.identity().display_name();
+        let sys_identity = system_mut_ref.identity().dyn_clone();
+        let sys_name = system_mut_ref.identity().display_name().to_string();
 
         let meta = system_mut_ref.get_or_init(SystemMeta::default);
         let is_send = meta.is_send();
@@ -128,12 +128,12 @@ pub(crate) fn sort_schedule_systems(schedule_systems: &mut Vec<SystemNode>) {
         let run_after_systems = orderings
             .run_after_systems
             .iter()
-            .map(|id| id.clone_box())
+            .map(|id| id.dyn_clone())
             .collect();
         let run_before_systems = orderings
             .run_before_systems
             .iter()
-            .map(|id| id.clone_box())
+            .map(|id| id.dyn_clone())
             .collect();
 
         meta_list.push(SortingMeta {

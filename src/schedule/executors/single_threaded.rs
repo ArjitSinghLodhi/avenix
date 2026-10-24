@@ -17,7 +17,7 @@ impl SystemExecutor for SingleThreadedExecutor {
                 .get_or_init(RunConditionsList::default)
                 .conditions()
                 .iter()
-                .all(|cond| cond());
+                .all(|cond| cond(world));
 
             if should_run {
                 node.system.run(world);

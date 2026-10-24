@@ -66,11 +66,11 @@ fn main() {
             Update,
             (
                 first_system.after(second_system).before(third_system),
-                second_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                second_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value == 10)
                 }),
             )
-                .run_if(|accessor: &ParallelMultiParam| {
+                .run_if(|accessor: ParallelMultiParam| {
                     accessor.metrics.diagnostics_access.scope(|diag| {
                         println!("Evaluating conditions at frame: {}", diag.frame_count);
                     });
@@ -86,10 +86,10 @@ fn main() {
         .add_systems(
             Update,
             (
-                third_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                third_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value > 5)
                 }),
-                fourth_system.run_if(|counter_access: &ParallelResourceAccessor<Counter>| {
+                fourth_system.run_if(|counter_access: ParallelResourceAccessor<Counter>| {
                     counter_access.scope(|counter| counter.value == 999)
                 }),
             )

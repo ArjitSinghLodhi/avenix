@@ -53,12 +53,14 @@ unsafe impl Sync for ParallelCommands {}
 unsafe impl ParallelSystemParam for ParallelCommands {}
 
 impl SystemParam for ParallelCommands {
+    type Item<'world> = ParallelCommands;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
-        Self {
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(ParallelCommands {
             queue: world.commands.queue.clone(),
             despawns: world.commands.despawns.clone(),
-        }
+        })
     }
 }

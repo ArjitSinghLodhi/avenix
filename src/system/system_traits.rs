@@ -1,6 +1,3 @@
-use std::any::type_name;
-use std::marker::PhantomData;
-
 use crate::app::system::SystemMeta;
 use crate::app::system::SystemParam;
 use crate::ecs::world::World;
@@ -13,6 +10,7 @@ use crate::system::condition::{Condition, RunConditionsList};
 use crate::system::system_set::SystemSet;
 use crate::system::system_storage::SystemExt;
 use std::any::TypeId;
+use std::marker::PhantomData;
 
 #[doc(hidden)]
 pub struct SystemConfigs<Marker> {
@@ -63,7 +61,7 @@ impl<T: SystemSet + Clone> AsSchedulingTarget<()> for T {
 #[doc(hidden)]
 pub trait ConfigureSystem<Marker> {
     #[doc(hidden)]
-    type SystemType: System + 'static;
+    type SystemType: System;
 
     fn before<T>(self, target: impl AsSchedulingTarget<T>) -> Self::SystemType;
     fn after<T>(self, target: impl AsSchedulingTarget<T>) -> Self::SystemType;
@@ -92,39 +90,46 @@ pub trait TrackHierarchyEdges<MarkerGroup> {
 impl<Marker> TrackHierarchyEdges<Marker> for SystemConfigs<Marker> {
     fn collect_edge_ids(&self, ids: &mut Vec<Box<dyn SystemIdentity>>) {
         for sys in &self.systems {
-            ids.push(sys.identity());
+            ids.push(sys.identity().dyn_clone());
         }
     }
 }
 
 macro_rules! impl_system_for_functions {
     ($($param:ident),*) => {
-        impl<$($param,)* F> System for FunctionSystem<($($param,)*), F>
+        impl<$($param,)* F: 'static> System for FunctionSystem<($($param,)*), F>
         where
-            $( $param: SystemParam + 'static, )*
-            F: Fn($($param),*) + 'static,
+            $( $param: SystemParam, )*
+            F: Fn($($param),*),
+            for<'world> F: Fn($($param::Item<'world>),*),
         {
             fn run(&mut self, world: &World) {
                 $(
                     #[allow(non_snake_case)]
                     let $param = <$param>::get_param(world);
                 )*
+
+                $(
+                    #[allow(non_snake_case)]
+                    let Some($param) = $param else {
+                        return;
+                    };
+                )*
+
                 #[allow(non_snake_case)]
                 (self.func)($($param),*);
             }
 
-            fn identity(&self) -> Box<dyn SystemIdentity> {
-                Box::new(FunctionIdentity {
-                    type_id: TypeId::of::<F>(),
-                    name: type_name::<Self>().to_string(),
-                })
+            fn identity(&self) -> &dyn SystemIdentity {
+                &self.identity
             }
         }
 
-        impl<$($param,)* F> IntoSystem<($($param,)*)> for F
+        impl<$($param,)* F: 'static> IntoSystem<($($param,)*)> for F
         where
-            $( $param: SystemParam + 'static, )*
-            F: Fn($($param),*) + 'static,
+            $( $param: SystemParam, )*
+            F: Fn($($param),*),
+            for<'world> F: Fn($($param::Item<'world>),*),
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
             fn into_system(self) -> Self::SystemType {
@@ -140,10 +145,11 @@ macro_rules! impl_system_for_functions {
             }
         }
 
-        impl<$($param,)* F> IntoSystem<($($param,)*)> for FunctionSystem<($($param,)*), F>
+        impl<$($param,)* F: 'static> IntoSystem<($($param,)*)> for FunctionSystem<($($param,)*), F>
         where
-            $( $param: SystemParam + 'static, )*
-            F: Fn($($param),*) + 'static,
+            $( $param: SystemParam, )*
+            F: Fn($($param),*),
+            for<'world> F: Fn($($param::Item<'world>),*),
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
             fn into_system(self) -> Self::SystemType {
@@ -171,10 +177,11 @@ macro_rules! impl_system_for_functions {
             }
         }
 
-        impl<$($param,)* F> ConfigureSystem<($($param,)*)> for F
+        impl<$($param,)* F: 'static> ConfigureSystem<($($param,)*)> for F
         where
-            $( $param: SystemParam + 'static, )*
-            F: Fn($($param),*) + 'static,
+            $( $param: SystemParam, )*
+            F: Fn($($param),*),
+            for<'world> F: Fn($($param::Item<'world>),*),
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
 
@@ -195,10 +202,11 @@ macro_rules! impl_system_for_functions {
             }
         }
 
-        impl<$($param,)* F> ConfigureSystem<($($param,)*)> for FunctionSystem<($($param,)*), F>
+        impl<$($param,)* F: 'static> ConfigureSystem<($($param,)*)> for FunctionSystem<($($param,)*), F>
         where
-            $( $param: SystemParam + 'static, )*
-            F: Fn($($param),*) + 'static,
+            $( $param: SystemParam, )*
+            F: Fn($($param),*),
+            for<'world> F: Fn($($param::Item<'world>),*),
         {
             type SystemType = FunctionSystem<($($param,)*), F>;
 
@@ -276,11 +284,8 @@ where
         (self.func)();
     }
 
-    fn identity(&self) -> Box<dyn SystemIdentity> {
-        Box::new(FunctionIdentity {
-            type_id: TypeId::of::<F>(),
-            name: type_name::<Self>().to_string(),
-        })
+    fn identity(&self) -> &dyn SystemIdentity {
+        &self.identity
     }
 }
 
@@ -410,7 +415,7 @@ where
 
 macro_rules! impl_system_configs_for_tuples {
     ($($sys:ident),* ; $($marker:ident),*) => {
-        impl<$($sys,)* $($marker,)*> IntoSystemConfigs<($($marker,)*)> for ($($sys,)*)
+        impl<$($sys,)* $($marker: 'static,)*> IntoSystemConfigs<($($marker,)*)> for ($($sys,)*)
         where
             $( $sys: IntoSystemConfigs<$marker> + 'static ),*
         {
@@ -437,7 +442,7 @@ macro_rules! impl_system_configs_for_tuples {
             }
         }
 
-        impl<$($sys,)* $($marker,)*> ConfigureSystemConfigs<($($marker,)*)> for ($($sys,)*)
+        impl<$($sys,)* $($marker: 'static,)*> ConfigureSystemConfigs<($($marker,)*)> for ($($sys,)*)
         where
             $( $sys: IntoSystemConfigs<$marker> + TrackHierarchyEdges<$marker> + 'static ),*
         {
@@ -476,7 +481,7 @@ macro_rules! impl_system_configs_for_tuples {
                             let orderings = sys_item.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
                             for prev_id in previous_edges.iter() {
                                 if !orderings.run_after_systems.iter().any(|id| id.dyn_system_eq(prev_id.as_ref())) {
-                                    orderings.run_after_systems.push(prev_id.clone_box());
+                                    orderings.run_after_systems.push(prev_id.dyn_clone());
                                 }
                             }
                         }
@@ -533,7 +538,7 @@ macro_rules! impl_system_configs_for_tuples {
             fn chain(mut self) -> SystemConfigs<($($marker,)*)> {
                 let n = self.systems.len();
                 for idx in 1..n {
-                    let prev_identity = self.systems[idx - 1].identity();
+                    let prev_identity = self.systems[idx - 1].identity().dyn_clone();
                     let sys_mut = &mut self.systems[idx];
                     sys_mut
                         .get_or_init_mut::<SystemOrderings>(SystemOrderings::default)
@@ -576,7 +581,7 @@ impl_system_configs_for_tuples!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10; M1, M2,
 impl_system_configs_for_tuples!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11; M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11);
 impl_system_configs_for_tuples!(S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12; M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12);
 
-impl<S, Marker> IntoSystemConfigs<Marker> for S
+impl<S, Marker: 'static> IntoSystemConfigs<Marker> for S
 where
     S: IntoSystem<Marker> + 'static,
 {

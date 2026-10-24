@@ -20,7 +20,7 @@ pub trait SystemExt {
     fn insert<T: 'static + Send + Sync>(&mut self, value: T);
     fn get_or_init<T: 'static + Send + Sync>(&mut self, init: impl FnOnce() -> T) -> &T;
     fn get_or_init_mut<T: 'static + Send + Sync>(&mut self, init: impl FnOnce() -> T) -> &mut T;
-    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<Box<dyn Any + Send + Sync + 'static>>;
+    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<T>;
 }
 
 impl<S: SystemData + ?Sized> SystemExt for S {
@@ -60,8 +60,9 @@ impl<S: SystemData + ?Sized> SystemExt for S {
         self.get_data_mut::<T>().unwrap()
     }
 
-    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<Box<dyn Any + Send + Sync + 'static>> {
-        self.remove_raw(TypeId::of::<T>())
+    fn remove<T: 'static + Send + Sync>(&mut self) -> Option<T> {
+        let untyped_opt = self.remove_raw(TypeId::of::<T>());
+        untyped_opt.map(|untyped| *untyped.downcast::<T>().expect("type mismatch"))
     }
 }
 

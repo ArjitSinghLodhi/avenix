@@ -44,9 +44,9 @@ struct PlayerFilter {
 }
 
 #[derive(SystemParam)]
-struct CompositeSystemParam<'q, 'a> {
-    query: Query<'q, 'a, PhysicsQuery, PlayerFilter>,
-    tracker: ResMut<'a, ScoreTracker>,
+struct CompositeSystemParam<'q> {
+    query: Query<'q, PhysicsQuery, PlayerFilter>,
+    tracker: ResMut<'q, ScoreTracker>,
     #[avenix(system_param(ignore))]
     // Initialized with Default::default() every frame, it does not persist accross frames
     counter: usize,

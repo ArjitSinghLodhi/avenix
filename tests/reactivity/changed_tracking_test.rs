@@ -263,7 +263,7 @@ fn test_multiple_changed_filters_lifecycle() {
         (
             increment_frame_system,
             pre_mutation_verify_system,
-            midstream_mutator_system.run_if(|counter: &ParallelResourceAccessor<FrameCounter>| {
+            midstream_mutator_system.run_if(|counter: ParallelResourceAccessor<FrameCounter>| {
                 counter.scope(|c| c.current_frame == 2)
             }),
             post_mutation_verify_system,
@@ -416,22 +416,22 @@ fn test_complex_changed_combinator_filters() {
             (
                 increment_frame_system,
                 midstream_mutator_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 complex_filter_verify_frame_1.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 complex_filter_verify_frame_3.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),
                 complex_filter_verify_frame_4.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 4)
                     },
                 ),

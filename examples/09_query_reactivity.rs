@@ -199,52 +199,52 @@ fn main() {
         (
             game_loop_driver,
             simulate_gameplay_mutations_frame_1.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 1)
                 },
             ),
             simulate_gameplay_mutations_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 2)
                 },
             ),
             reactive_added_filter_frame_1.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 1)
                 },
             ),
             reactive_added_filter_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 2)
                 },
             ),
             reactive_changed_filter_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 2)
                 },
             ),
             reactive_changed_filter_frame_4.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 4)
                 },
             ),
             complex_combinator_filter_frame_1.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 1)
                 },
             ),
             complex_combinator_filter_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 2)
                 },
             ),
             granular_tracker_inspection_frame_1.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 1)
                 },
             ),
             granular_tracker_inspection_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<GameLoopCounter>| {
+                |counter: ParallelResourceAccessor<GameLoopCounter>| {
                     counter.scope(|c| c.frame == 2)
                 },
             ),

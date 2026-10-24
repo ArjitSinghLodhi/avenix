@@ -105,35 +105,35 @@ fn test_events_multi_frame_lifecycle() {
             (
                 increment_frame_system,
                 pre_emit_verify_frame_1.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 pre_emit_verify_frame_2.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 pre_emit_verify_frame_3.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),
-                emitter_system.run_if(|counter: &ParallelResourceAccessor<FrameCounter>| {
+                emitter_system.run_if(|counter: ParallelResourceAccessor<FrameCounter>| {
                     counter.scope(|c| c.current_frame == 1)
                 }),
                 post_emit_verify_frame_1.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 post_emit_verify_frame_2.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 post_emit_verify_frame_3.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),
@@ -278,17 +278,17 @@ fn test_events_parallel_lifecycle() {
             (
                 increment_frame_system,
                 parallel_execution_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 parallel_verification_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 empty_verification_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),

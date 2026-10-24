@@ -8,7 +8,6 @@ use rustc_hash::FxBuildHasher;
 use std::{
     any::{Any, TypeId, type_name},
     marker::PhantomData,
-    mem::transmute,
 };
 
 mod parallel_resources;
@@ -128,12 +127,6 @@ pub struct Res<'w, T: Resource + Send + Sync> {
     res_ptr: *const T,
 }
 
-impl<'w, T: Resource + Send + Sync> Res<'w, T> {
-    pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<Res<'_, T>, Res<'_, T>>(world.resource::<T>()) }
-    }
-}
-
 impl<'w, T: Resource + Send + Sync> std::ops::Deref for Res<'w, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -145,6 +138,8 @@ unsafe impl<'w, T: Resource + Send + Sync> Send for Res<'w, T> {}
 unsafe impl<'w, T: Resource + Send + Sync> Sync for Res<'w, T> {}
 
 impl<'w, T: Resource + Send + Sync> SystemParam for Res<'w, T> {
+    type Item<'world> = Res<'world, T>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.has_resource_write(&res_id) {
@@ -156,8 +151,8 @@ impl<'w, T: Resource + Send + Sync> SystemParam for Res<'w, T> {
         system_meta.add_resource_read(res_id);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe { Self::new(world) }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        world.get_resource::<T>()
     }
 }
 
@@ -165,12 +160,6 @@ pub struct ResMut<'w, T: Resource + Send + Sync> {
     _guard: RwLockWriteGuard<'w, Box<dyn Any>>,
     _ref_guard: Ref<'w, TypeId, RwLock<Box<dyn Any>>>,
     res_ptr: *mut T,
-}
-
-impl<'w, T: Resource + Send + Sync> ResMut<'w, T> {
-    pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<ResMut<'_, T>, ResMut<'_, T>>(world.resource_mut::<T>()) }
-    }
 }
 
 impl<'w, T: Resource + Send + Sync> std::ops::Deref for ResMut<'w, T> {
@@ -190,6 +179,7 @@ unsafe impl<'w, T: Resource + Send + Sync> Send for ResMut<'w, T> {}
 unsafe impl<'w, T: Resource + Send + Sync> Sync for ResMut<'w, T> {}
 
 impl<'w, T: Resource + Send + Sync> SystemParam for ResMut<'w, T> {
+    type Item<'world> = ResMut<'world, T>;
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
@@ -201,30 +191,32 @@ impl<'w, T: Resource + Send + Sync> SystemParam for ResMut<'w, T> {
         system_meta.add_resource_write(res_id);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe { Self::new(world) }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(world.resource_mut::<T>())
     }
 }
 
 impl<'w, T: Resource + Send + Sync> SystemParam for Option<Res<'w, T>> {
+    type Item<'world> = Option<Res<'world, T>>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         Res::<T>::init_access(system_meta);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe { transmute::<Option<Res<'_, T>>, Option<Res<'_, T>>>(world.get_resource::<T>()) }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(world.get_resource::<T>())
     }
 }
 
 impl<'w, T: Resource + Send + Sync> SystemParam for Option<ResMut<'w, T>> {
+    type Item<'world> = Option<ResMut<'world, T>>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         ResMut::<T>::init_access(system_meta);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe {
-            transmute::<Option<ResMut<'_, T>>, Option<ResMut<'_, T>>>(world.get_resource_mut::<T>())
-        }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(world.get_resource_mut::<T>())
     }
 }
 
@@ -233,24 +225,16 @@ pub struct NonSend<'w, T: Resource> {
     pub(crate) _marker: PhantomData<&'w T>,
 }
 
-impl<'w, T: Resource> NonSend<'w, T> {
-    pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe { transmute::<NonSend<'_, T>, NonSend<'_, T>>(world.non_send_resource::<T>()) }
-    }
-
-    pub fn get(&self) -> &T {
-        unsafe { &*self.val_ptr }
-    }
-}
-
 impl<'w, T: Resource> std::ops::Deref for NonSend<'w, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        self.get()
+        unsafe { &(*self.val_ptr) }
     }
 }
 
 impl<'w, T: Resource> SystemParam for NonSend<'w, T> {
+    type Item<'world> = NonSend<'world, T>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.has_resource_write(&res_id) {
@@ -263,24 +247,14 @@ impl<'w, T: Resource> SystemParam for NonSend<'w, T> {
         system_meta.set_non_send();
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe { Self::new(world) }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(world.non_send_resource::<T>())
     }
 }
 
 pub struct NonSendMut<'w, T: Resource> {
     pub(crate) val_ptr: *mut T,
     pub(crate) _marker: PhantomData<&'w mut T>,
-}
-
-impl<'w, T: Resource> NonSendMut<'w, T> {
-    pub(crate) unsafe fn new(world: &World) -> Self {
-        unsafe {
-            transmute::<NonSendMut<'_, T>, NonSendMut<'_, T>>(
-                world.non_send_resource_mut_unsafe::<T>(),
-            )
-        }
-    }
 }
 
 impl<'w, T: Resource> std::ops::Deref for NonSendMut<'w, T> {
@@ -297,6 +271,8 @@ impl<'w, T: Resource> std::ops::DerefMut for NonSendMut<'w, T> {
 }
 
 impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
+    type Item<'world> = NonSendMut<'world, T>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         let res_id = TypeId::of::<T>();
         if system_meta.has_resource_write(&res_id) || system_meta.has_resource_read(&res_id) {
@@ -309,35 +285,31 @@ impl<'w, T: Resource> SystemParam for NonSendMut<'w, T> {
         system_meta.set_non_send();
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe { Self::new(world) }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(unsafe { world.non_send_resource_mut_unsafe::<T>() })
     }
 }
 
 impl<'w, T: Resource> SystemParam for Option<NonSend<'w, T>> {
+    type Item<'world> = Option<NonSend<'world, T>>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         NonSend::<T>::init_access(system_meta);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe {
-            transmute::<Option<NonSend<'_, T>>, Option<NonSend<'_, T>>>(
-                world.get_non_send_resource::<T>(),
-            )
-        }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(world.get_non_send_resource::<T>())
     }
 }
 
 impl<'w, T: Resource> SystemParam for Option<NonSendMut<'w, T>> {
+    type Item<'world> = Option<NonSendMut<'world, T>>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         NonSendMut::<T>::init_access(system_meta);
     }
 
-    fn get_param(world: &World) -> Self {
-        unsafe {
-            transmute::<Option<NonSendMut<'_, T>>, Option<NonSendMut<'_, T>>>(
-                world.get_non_send_resource_mut_unsafe::<T>(),
-            )
-        }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(unsafe { world.get_non_send_resource_mut_unsafe::<T>() })
     }
 }

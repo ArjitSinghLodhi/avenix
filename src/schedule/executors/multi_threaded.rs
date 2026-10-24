@@ -63,7 +63,7 @@ impl SystemExecutor for MultiThreadedExecutor {
         let mut cached_meta_list = Vec::with_capacity(n);
         for sys_node in systems {
             let system_mut_ref = sys_node.system_mut();
-            let sys_identity = system_mut_ref.identity();
+            let sys_identity = system_mut_ref.identity().dyn_clone();
 
             let (
                 is_send,
@@ -93,12 +93,12 @@ impl SystemExecutor for MultiThreadedExecutor {
                     orderings
                         .run_after_systems
                         .iter()
-                        .map(|id| id.clone_box())
+                        .map(|id| id.dyn_clone())
                         .collect(),
                     orderings
                         .run_before_systems
                         .iter()
-                        .map(|id| id.clone_box())
+                        .map(|id| id.dyn_clone())
                         .collect(),
                 )
             };
@@ -316,7 +316,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                             .get_or_init(RunConditionsList::default)
                             .conditions()
                             .iter()
-                            .all(|cond| cond());
+                            .all(|cond| cond(world));
 
                         if should_run {
                             node.run(world);
@@ -330,7 +330,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                             .get_or_init(RunConditionsList::default)
                             .conditions()
                             .iter()
-                            .all(|cond| cond());
+                            .all(|cond| cond(world));
 
                         if should_run {
                             node.run(world);

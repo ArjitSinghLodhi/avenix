@@ -37,13 +37,7 @@ pub trait ScheduleLabel: Any + Send + Sync + DynEq + Debug {
         Box::new(MultiThreadedExecutor::new())
     }
 
-    fn clone_box(&self) -> Box<dyn ScheduleLabel>;
-}
-
-impl Clone for Box<dyn ScheduleLabel> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel>;
 }
 
 pub struct SystemNode {
@@ -54,7 +48,7 @@ unsafe impl Send for SystemNode {}
 unsafe impl Sync for SystemNode {}
 
 impl SystemNode {
-    pub fn new(system: impl System) -> Self {
+    pub fn new(system: impl System + 'static) -> Self {
         Self {
             system: Box::new(system),
         }

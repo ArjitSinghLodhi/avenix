@@ -167,27 +167,27 @@ fn test_double_buffered_add_and_insert() {
             (
                 increment_frame_system,
                 apply_frame_1_mutations.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 verify_frame_1_buffering_isolation.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 verify_frame_2_buffered_reads.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 apply_frame_2_redundant_insert.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 verify_frame_3_decay_and_overwrites.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),
@@ -309,21 +309,21 @@ fn test_complex_added_combinator_filters() {
         Update,
         (
             increment_frame_system,
-            apply_frame_1_mutations.run_if(|counter: &ParallelResourceAccessor<FrameCounter>| {
+            apply_frame_1_mutations.run_if(|counter: ParallelResourceAccessor<FrameCounter>| {
                 counter.scope(|c| c.current_frame == 1)
             }),
             complex_added_filter_verify_frame_1.run_if(
-                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                |counter: ParallelResourceAccessor<FrameCounter>| {
                     counter.scope(|c| c.current_frame == 1)
                 },
             ),
             complex_added_filter_verify_frame_2.run_if(
-                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                |counter: ParallelResourceAccessor<FrameCounter>| {
                     counter.scope(|c| c.current_frame == 2)
                 },
             ),
             complex_added_filter_verify_frame_3.run_if(
-                |counter: &ParallelResourceAccessor<FrameCounter>| {
+                |counter: ParallelResourceAccessor<FrameCounter>| {
                     counter.scope(|c| c.current_frame == 3)
                 },
             ),

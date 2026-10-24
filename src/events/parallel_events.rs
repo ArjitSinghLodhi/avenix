@@ -46,11 +46,13 @@ impl<T: Event> ParallelEventWriter<T> {
 }
 
 impl<T: Event> SystemParam for ParallelEventWriter<T> {
+    type Item<'world> = ParallelEventWriter<T>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
-        let queue = world.resource::<EventBuffer<T>>().write_queue.clone();
-        Self { write_queue: queue }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        let queue = world.get_resource::<EventBuffer<T>>()?.write_queue.clone();
+        Some(ParallelEventWriter { write_queue: queue })
     }
 }
 
@@ -105,11 +107,13 @@ impl<T: Event> ParallelEventReader<T> {
 }
 
 impl<T: Event> SystemParam for ParallelEventReader<T> {
+    type Item<'world> = ParallelEventReader<T>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
-        let queue = world.resource::<EventBuffer<T>>().read_queue.clone();
-        Self { read_queue: queue }
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        let queue = world.get_resource::<EventBuffer<T>>()?.read_queue.clone();
+        Some(ParallelEventReader { read_queue: queue })
     }
 }
 

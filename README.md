@@ -1,6 +1,6 @@
-# Avenix ECS Engine
+# Avenix
 
-A deterministic, concurrent Entity Component System (ECS) written in Rust, featuring high-performance parallel workloads, out-of-band remote coordination, native **States**, and **SystemSets** grouping.
+A deterministic, concurrent Entity Component System (ECS) application framework written in Rust, featuring high-performance parallel workloads, out-of-band remote parallel handles, native **States**, and **SystemSets** grouping.
 
 ---
 
@@ -43,7 +43,7 @@ fn hello_world_system() {
 
 Avenix isolates out-of-band coordination into thread-safe, thread-clonable handles extracted directly from the application layer. Sourced via `app.world()`, these handles act as detached remotes sent into background tasks, network loops, or worker threads to execute safely outside the main schedule thread.
 
-```
+```text
                   ┌─────────────────────────────────────┐
                   │          Main App Thread            │
                   └──────────────────┬──────────────────┘
@@ -93,7 +93,7 @@ Avenix isolates core systems into optional build targets to keep untracked execu
 ### System Timing & The 3-Frame Buffer Rule
 Avenix implements a deterministic, double-buffered tracking infrastructure for all component reactivity (`Added<T>`, `Changed<T>`) and system event broadcast layers. This mechanics operates on a strict, predictable **3-Frame Buffer Timeline** that ensures the system can run infinitely without memory spikes or drifting track footprints.
 
-```
+```text
  [ Frame N: Staging ]      ➔    [ Frame N+1: Visible ]    ➔     [ Frame N+2: Reset ]
 Mutations / Sends Occur          Buffers Swapped Globally        Mutation State Cleared
 Hidden From Active Queries       Caught Natively By Readers      Space Reclaimed
@@ -116,13 +116,15 @@ Avenix enforces an explicit design invariant: **All cloned entity handles refere
 ### Component Reactivity Architecture
 When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
 
-* **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`, `Changed<T>`).
+* **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`, `Changed<T>`, `ChangedRefMut<T>`, `Added<T>`) or a parallel handle (e.g., `ParallelQueryAccessor`) requests it in its parameters before `app.build()`, or they are manually registered through `World` or `App`.
 * **Optimized Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps and tracking management entirely, keeping untracked data paths completely unburdened by default.
-* **Automated Static Discovery:** During the conversion into systems before finalizing the `App`, the engine automatically analyzes all system parameters, parameters inside `ParallelQueryAccessor` (when registered before `app.build()`), and `RemovedComponents<T>` parameters. It then auto-registers all necessary trackers by itself without requiring any manual initialization. For any tracking data requirements introduced dynamically post-build, explicit tracker registerers are provided on both `App` and `World`.
+* **Automated Static Discovery:** During the conversion into systems before finalizing the `App`, the engine automatically analyzes all system parameters, parameters inside `ParallelQueryAccessor` (when registered before `app.build()`), and `RemovedComponents<T>` parameters. It then auto-registers all necessary trackers by itself without requiring any manual initialization. 
+
+For any tracking data requirements introduced dynamically post-build, explicit tracker registerers are provided on both `App` and `World` to be called before `app.build()`.
 
 ---
 
-## 📜 License
+## License
 
 Avenix is dual-licensed under either:
 * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))

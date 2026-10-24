@@ -16,7 +16,7 @@ impl ScheduleLabel for Startup {
         Box::new(StartupExecutor)
     }
 
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -32,7 +32,7 @@ impl SystemExecutor for StartupExecutor {
                 .get_or_init(RunConditionsList::default)
                 .conditions()
                 .iter()
-                .all(|cond| cond());
+                .all(|cond| cond(world));
             if should_run {
                 system.run(world);
             }
@@ -45,7 +45,7 @@ impl SystemExecutor for StartupExecutor {
 pub struct First;
 
 impl ScheduleLabel for First {
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -54,7 +54,7 @@ impl ScheduleLabel for First {
 pub struct PreUpdate;
 
 impl ScheduleLabel for PreUpdate {
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -63,7 +63,7 @@ impl ScheduleLabel for PreUpdate {
 pub struct Update;
 
 impl ScheduleLabel for Update {
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -72,7 +72,7 @@ impl ScheduleLabel for Update {
 pub struct PostUpdate;
 
 impl ScheduleLabel for PostUpdate {
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -98,7 +98,7 @@ impl ScheduleLabel for CleanupHandles {
         Box::new(CleanupHandlesExecutor::default())
     }
 
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }
@@ -200,7 +200,7 @@ impl SystemExecutor for CleanupHandlesExecutor {
 pub struct Last;
 
 impl ScheduleLabel for Last {
-    fn clone_box(&self) -> Box<dyn ScheduleLabel> {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(self.clone())
     }
 }

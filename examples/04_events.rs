@@ -20,18 +20,16 @@ fn main() {
             Update,
             (
                 increment_frame_system,
-                event_execution_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
-                        counter.scope(|c| c.current_frame == 1)
-                    },
-                ),
+                event_execution_system.run_if(|counter: ParallelResourceAccessor<FrameCounter>| {
+                    counter.scope(|c| c.current_frame == 1)
+                }),
                 event_verification_frame_2.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 event_verification_frame_3.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),

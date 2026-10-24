@@ -2,8 +2,8 @@ use crate::{
     ecs::world::World,
     system::{
         ParallelSystemParam, SystemIdentity,
-        condition::Condition,
-        system_set::{SetConditionBuilder, SystemSet},
+        condition::{Condition, ConditionFn},
+        system_set::SystemSet,
         system_traits::{AsSchedulingTarget, SystemOrderings},
     },
 };
@@ -16,7 +16,7 @@ pub struct SetConfig {
     pub(crate) run_after_systems: Vec<Box<dyn SystemIdentity>>,
     pub(crate) run_before_systems: Vec<Box<dyn SystemIdentity>>,
     pub(crate) member_of: Vec<Box<dyn SystemSet>>,
-    pub(crate) condition_builders: Vec<SetConditionBuilder>,
+    pub(crate) condition_gates: Vec<ConditionFn>,
 }
 
 #[doc(hidden)]
@@ -40,7 +40,7 @@ impl<T: SystemSet> IntoSystemSetConfig for T {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: Vec::new(),
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         }
     }
 }
@@ -54,7 +54,7 @@ impl IntoSystemSetConfig for Box<dyn SystemSet> {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: Vec::new(),
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         }
     }
 }
@@ -79,21 +79,21 @@ pub trait TrackSetHierarchyEdges {
 
 impl TrackSetHierarchyEdges for SetConfig {
     fn collect_set_edge_ids(&self, sets: &mut Vec<Box<dyn SystemSet>>) {
-        sets.push(self.set.clone_box());
+        sets.push(self.set.dyn_clone());
     }
 }
 
 impl TrackSetHierarchyEdges for SystemSetConfigs {
     fn collect_set_edge_ids(&self, sets: &mut Vec<Box<dyn SystemSet>>) {
         for config in &self.configs {
-            sets.push(config.set.clone_box());
+            sets.push(config.set.dyn_clone());
         }
     }
 }
 
 impl<T: SystemSet> TrackSetHierarchyEdges for T {
     fn collect_set_edge_ids(&self, sets: &mut Vec<Box<dyn SystemSet>>) {
-        sets.push(self.clone_box());
+        sets.push(self.dyn_clone());
     }
 }
 
@@ -107,13 +107,13 @@ pub trait SystemSetExt: SystemSet + Sized {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: Vec::new(),
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         };
         let mut orderings = SystemOrderings::default();
         target.populate_after(&mut orderings);
         config.run_after_sets = orderings.run_after_sets;
         for sys_id in orderings.run_after_systems {
-            config.run_after_systems.push(sys_id.clone_box());
+            config.run_after_systems.push(sys_id.dyn_clone());
         }
         config
     }
@@ -126,13 +126,13 @@ pub trait SystemSetExt: SystemSet + Sized {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: Vec::new(),
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         };
         let mut orderings = SystemOrderings::default();
         target.populate_before(&mut orderings);
         config.run_before_sets = orderings.run_before_sets;
         for sys_id in orderings.run_before_systems {
-            config.run_before_systems.push(sys_id.clone_box());
+            config.run_before_systems.push(sys_id.dyn_clone());
         }
         config
     }
@@ -145,13 +145,13 @@ pub trait SystemSetExt: SystemSet + Sized {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: vec![Box::new(parent)],
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         }
     }
 
     fn run_if<P, C>(self, cond: C) -> SetConfig
     where
-        P: crate::system::ParallelSystemParam + 'static,
+        P: 'static,
         C: crate::system::condition::Condition<P> + Send + Sync + Clone + 'static,
     {
         let mut config = SetConfig {
@@ -161,14 +161,10 @@ pub trait SystemSetExt: SystemSet + Sized {
             run_after_systems: Vec::new(),
             run_before_systems: Vec::new(),
             member_of: Vec::new(),
-            condition_builders: Vec::new(),
+            condition_gates: Vec::new(),
         };
-        let builder = Box::new(move |world: &mut World| {
-            let typed_data = cond.init_condition_data(world);
-            let gate: Box<dyn Fn() -> bool + Send + Sync> = Box::new(move || cond.run(&typed_data));
-            gate
-        });
-        config.condition_builders.push(builder);
+        let gate: ConditionFn = Box::new(move |w: &World| cond.run(w));
+        config.condition_gates.push(gate);
         config
     }
 }
@@ -181,7 +177,7 @@ impl SetConfig {
         target.populate_after(&mut orderings);
         self.run_after_sets.extend(orderings.run_after_sets);
         for sys_id in orderings.run_after_systems {
-            self.run_after_systems.push(sys_id.clone_box());
+            self.run_after_systems.push(sys_id.dyn_clone());
         }
         self
     }
@@ -191,7 +187,7 @@ impl SetConfig {
         target.populate_before(&mut orderings);
         self.run_before_sets.extend(orderings.run_before_sets);
         for sys_id in orderings.run_before_systems {
-            self.run_before_systems.push(sys_id.clone_box());
+            self.run_before_systems.push(sys_id.dyn_clone());
         }
         self
     }
@@ -203,15 +199,11 @@ impl SetConfig {
 
     pub fn run_if<P, C>(mut self, cond: C) -> Self
     where
-        P: crate::system::ParallelSystemParam + 'static,
+        P: 'static,
         C: crate::system::condition::Condition<P> + Send + Sync + Clone + 'static,
     {
-        let builder = Box::new(move |world: &mut World| {
-            let typed_data = cond.init_condition_data(world);
-            let gate: Box<dyn Fn() -> bool + Send + Sync> = Box::new(move || cond.run(&typed_data));
-            gate
-        });
-        self.condition_builders.push(builder);
+        let gate: ConditionFn = Box::new(move |w: &World| cond.run(w));
+        self.condition_gates.push(gate);
         self
     }
 }
@@ -257,9 +249,9 @@ impl SystemSetConfigsExt for SystemSetConfigs {
         for config in self.configs.iter_mut() {
             config
                 .run_after_sets
-                .extend(orderings.run_after_sets.iter().map(|s| s.clone_box()));
+                .extend(orderings.run_after_sets.iter().map(|s| s.dyn_clone()));
             for sys_id in &orderings.run_after_systems {
-                config.run_after_systems.push(sys_id.clone_box());
+                config.run_after_systems.push(sys_id.dyn_clone());
             }
         }
         self
@@ -271,9 +263,9 @@ impl SystemSetConfigsExt for SystemSetConfigs {
         for config in self.configs.iter_mut() {
             config
                 .run_before_sets
-                .extend(orderings.run_before_sets.iter().map(|s| s.clone_box()));
+                .extend(orderings.run_before_sets.iter().map(|s| s.dyn_clone()));
             for sys_id in &orderings.run_before_systems {
-                config.run_before_systems.push(sys_id.clone_box());
+                config.run_before_systems.push(sys_id.dyn_clone());
             }
         }
         self
@@ -289,7 +281,7 @@ impl SystemSetConfigsExt for SystemSetConfigs {
     fn chain(mut self) -> SystemSetConfigs {
         let n = self.configs.len();
         for idx in 1..n {
-            let prev_set = self.configs[idx - 1].set.clone_box();
+            let prev_set = self.configs[idx - 1].set.dyn_clone();
             let config_mut = &mut self.configs[idx];
             if !config_mut
                 .run_after_sets
@@ -304,18 +296,13 @@ impl SystemSetConfigsExt for SystemSetConfigs {
 
     fn run_if<P, Cond>(mut self, condition: Cond) -> SystemSetConfigs
     where
-        P: ParallelSystemParam + 'static,
+        P: 'static,
         Cond: Condition<P> + Send + Sync + Clone + 'static,
     {
         for config in self.configs.iter_mut() {
             let cond_clone = condition.clone();
-            let builder = Box::new(move |world: &mut World| {
-                let typed_data = cond_clone.init_condition_data(world);
-                let gate: Box<dyn Fn() -> bool + Send + Sync> =
-                    Box::new(move || cond_clone.run(&typed_data));
-                gate
-            });
-            config.condition_builders.push(builder);
+            let gate: ConditionFn = Box::new(move |w: &World| cond_clone.run(w));
+            config.condition_gates.push(gate);
         }
         self
     }
@@ -371,7 +358,7 @@ macro_rules! impl_system_set_configs_for_tuples {
                         for config_item in current_config.iter_mut() {
                             for prev_set in previous_edges.iter() {
                                 if !config_item.run_after_sets.iter().any(|s| s.dyn_eq(&**prev_set)) {
-                                    config_item.run_after_sets.push(prev_set.clone_box());
+                                    config_item.run_after_sets.push(prev_set.dyn_clone());
                                 }
                             }
                         }

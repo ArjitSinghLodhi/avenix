@@ -21,17 +21,17 @@ fn main() {
             (
                 increment_frame_system,
                 parallel_execution_system.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 1)
                     },
                 ),
                 parallel_verification_frame_2.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 2)
                     },
                 ),
                 parallel_verification_frame_3.run_if(
-                    |counter: &ParallelResourceAccessor<FrameCounter>| {
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
                         counter.scope(|c| c.current_frame == 3)
                     },
                 ),

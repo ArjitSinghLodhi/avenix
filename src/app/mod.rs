@@ -4,7 +4,7 @@ pub use plugin::{Plugin, PluginsBuildAll};
 use rustc_hash::FxHashSet;
 
 use crate::{
-    app::system::{SystemExt, condition::RunConditionsList},
+    app::system::SystemExt,
     resources::Resource,
     schedule::{
         CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
@@ -44,6 +44,15 @@ pub(crate) struct ConfigurationContext {
     ran_startup: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AvenixAppConfigurationError {
+    SchedulesNotInitialized,
+    SystemsNotConfigured,
+    CriticalEngineBuildMismatch,
+    StartupNotProcessed,
+    AppAlreadyBuilt,
+}
+
 impl ConfigurationContext {
     fn new() -> Self {
         Self {
@@ -61,13 +70,13 @@ impl ConfigurationContext {
 
     fn schedules_processed(&self) {
         if !self.schedules_processed {
-            panic!("Schedules not added and processed when expected");
+            panic!("{:?}", AvenixAppConfigurationError::SchedulesNotInitialized);
         }
     }
 
     fn systems_processed(&self) {
         if !self.systems_processed {
-            panic!("Systems not Added and Configured when expected");
+            panic!("{:?}", AvenixAppConfigurationError::SystemsNotConfigured);
         }
     }
 
@@ -75,19 +84,22 @@ impl ConfigurationContext {
         self.schedules_processed();
         self.systems_processed();
         if !self.built {
-            panic!("Configuration Somehow Not Built even After All Check: Engine problem Likely!");
+            panic!(
+                "{:?}",
+                AvenixAppConfigurationError::CriticalEngineBuildMismatch
+            );
         }
     }
 
     fn ran_startup(&self) {
         if !self.ran_startup {
-            panic!("Startup not processed already when expected");
+            panic!("{:?}", AvenixAppConfigurationError::StartupNotProcessed);
         }
     }
 
-    pub(crate) fn not_ready(&self) {
+    fn not_ready(&self) {
         if self.built || self.ran_startup || *APP_BUILT.read() {
-            panic!("App already built when expected not");
+            panic!("{:?}", AvenixAppConfigurationError::AppAlreadyBuilt);
         }
     }
 }
@@ -129,7 +141,8 @@ impl App {
     pub fn empty() -> Self {
         if APP_INITIALIZED.swap(true, Ordering::SeqCst) {
             panic!(
-                "❌ AVENIX ARCHITECTURE VIOLATION: Multiple App instances detected!\nEnsure you only instantiate exactly one App::new() across your entire binary runtime."
+                "AvenixMultipleAppInstancesError\n\
+                ❌ AVENIX ARCHITECTURE VIOLATION: Multiple App instances detected!\nEnsure you only instantiate exactly one App::new() across your entire binary runtime."
             );
         }
 
@@ -188,14 +201,14 @@ impl App {
 
         for config in set_configs.into_configs() {
             let registration = SetRegistration {
-                schedule: schedule_box.clone_box(),
+                schedule: schedule_box.dyn_clone(),
                 set: config.set,
                 run_after_sets: config.run_after_sets,
                 run_before_sets: config.run_before_sets,
                 run_after_systems: config.run_after_systems,
                 run_before_systems: config.run_before_systems,
                 member_of: config.member_of,
-                condition_builders: config.condition_builders,
+                condition_gates: config.condition_gates,
             };
             self.set_registrations.push(registration);
         }
@@ -418,7 +431,6 @@ impl App {
             crate::system::system_set::preprocess_system_sets(
                 &mut borrowed_systems,
                 &mut schedule_registrations,
-                &mut self.world,
                 &mut generated_guards,
             );
             systems.extend(generated_guards);
@@ -442,7 +454,6 @@ impl App {
             crate::system::system_set::preprocess_system_sets(
                 &mut borrowed_systems,
                 &mut schedule_registrations,
-                &mut self.world,
                 &mut generated_guards,
             );
             systems.extend(generated_guards);
@@ -467,44 +478,18 @@ impl App {
             crate::system::system_set::preprocess_system_sets(
                 &mut borrowed_systems,
                 &mut schedule_registrations,
-                &mut self.world,
                 &mut generated_guards,
             );
             systems.extend(generated_guards);
         }
 
         sort_schedule_systems(self.startup_schedule.systems_schedule_mut().systems_mut());
-        for node in self
-            .startup_schedule
-            .systems_schedule_mut()
-            .systems_mut()
-            .iter_mut()
-        {
-            node.system_mut()
-                .get_or_init_mut(RunConditionsList::default)
-                .build_conditions(&mut self.world);
-        }
 
         sort_schedule_systems(self.cleanup_schedule.systems_schedule_mut().systems_mut());
-        for node in self
-            .cleanup_schedule
-            .systems_schedule_mut()
-            .systems_mut()
-            .iter_mut()
-        {
-            node.system_mut()
-                .get_or_init_mut(RunConditionsList::default)
-                .build_conditions(&mut self.world);
-        }
 
         for schedule in &mut self.schedules {
             let systems = schedule.systems_schedule_mut().systems_mut();
             sort_schedule_systems(systems);
-            for node in systems.iter_mut() {
-                node.system_mut()
-                    .get_or_init_mut(RunConditionsList::default)
-                    .build_conditions(&mut self.world);
-            }
         }
 
         self.configuration().systems_processed = true;

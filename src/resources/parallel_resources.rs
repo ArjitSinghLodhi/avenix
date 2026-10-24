@@ -103,12 +103,14 @@ impl<T: Resource + Send + Sync> ParallelResourceAccessor<T> {
 }
 
 impl<T: Resource + Send + Sync> SystemParam for ParallelResourceAccessor<T> {
+    type Item<'world> = ParallelResourceAccessor<T>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
 
-    fn get_param(world: &World) -> Self {
-        ParallelResourceAccessor {
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
+        Some(ParallelResourceAccessor {
             resources: world.resources.clone(),
             _marker: PhantomData,
-        }
+        })
     }
 }

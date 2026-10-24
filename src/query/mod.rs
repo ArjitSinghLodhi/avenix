@@ -1,6 +1,7 @@
 pub mod filter;
 pub(crate) mod parallel_query;
 mod params;
+pub(crate) mod single;
 
 use dashmap::DashMap;
 pub use params::Has;
@@ -126,15 +127,14 @@ pub enum QuerySingleError {
     MultipleMatches,
 }
 
-pub struct Query<'q, 'a, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
+pub struct Query<'q, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     cached_fetches: Vec<Option<Q::Fetch<'q>>>,
     cached_archetypes: Vec<Option<MatchedArchetypeData<'q, F>>>,
-    _marker: std::marker::PhantomData<(&'q (), &'a (), F)>,
 }
 
-unsafe impl<'q, 'a, Q: QueryData, F: QueryFilter> Sync for Query<'q, 'a, Q, F> {}
+unsafe impl<'q, Q: QueryData, F: QueryFilter> Sync for Query<'q, Q, F> {}
 
-impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
+impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     pub(crate) fn new(
         archetypes_map: &'q Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     ) -> Self {
@@ -173,7 +173,6 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         Self {
             cached_fetches,
             cached_archetypes,
-            _marker: std::marker::PhantomData,
         }
     }
 
@@ -276,6 +275,8 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
         count
     }
 
+    /// Returns the total number of entities across all matched archetypes,
+    /// without accounting for dynamic filters.
     pub fn base_entities(&self) -> usize {
         self.cached_archetypes
             .iter()
@@ -364,16 +365,19 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
                 let fetch = self.cached_fetches[arch_id].as_ref()?;
                 Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map_iter(move |(total_rows, fetch, filter_data)| {
-                (0..total_rows).step_by(chunk_size).map(move |start_idx| {
-                    let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
-                    QueryReadOnlyChunk {
-                        start_idx,
-                        end_idx,
-                        fetch,
-                        filter_data,
-                    }
-                })
+            .flat_map(move |(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .into_par_iter()
+                    .step_by(chunk_size)
+                    .map(move |start_idx| {
+                        let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
+                        QueryReadOnlyChunk {
+                            start_idx,
+                            end_idx,
+                            fetch,
+                            filter_data,
+                        }
+                    })
             })
     }
 
@@ -390,16 +394,19 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
                 let fetch = fetches[arch_id].as_ref()?;
                 Some((arch.row_count, fetch, &arch.filter_data))
             })
-            .flat_map_iter(move |(total_rows, fetch, filter_data)| {
-                (0..total_rows).step_by(chunk_size).map(move |start_idx| {
-                    let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
-                    QueryMutableChunk {
-                        start_idx,
-                        end_idx,
-                        fetch,
-                        filter_data,
-                    }
-                })
+            .flat_map(move |(total_rows, fetch, filter_data)| {
+                (0..total_rows)
+                    .into_par_iter()
+                    .step_by(chunk_size)
+                    .map(move |start_idx| {
+                        let end_idx = std::cmp::min(start_idx + chunk_size, total_rows);
+                        QueryMutableChunk {
+                            start_idx,
+                            end_idx,
+                            fetch,
+                            filter_data,
+                        }
+                    })
             })
     }
 
@@ -525,7 +532,7 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     #[inline(always)]
     pub unsafe fn fetch_read_only(
         &self,
-        fetch: &Q::Fetch<'a>,
+        fetch: &Q::Fetch<'q>,
         index: usize,
     ) -> Q::ReadOnlyItem<'q> {
         unsafe { Q::fetch_read_only(fetch, index) }
@@ -539,12 +546,14 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> Query<'q, 'a, Q, F> {
     /// * **Strict Aliasing Rule:** You must guarantee absolute exclusive access to this row. No other
     ///   thread or task may hold a read-only or mutable reference to this exact element simultaneously.
     #[inline(always)]
-    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'a>, index: usize) -> Q::Item<'q> {
+    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'q>, index: usize) -> Q::Item<'q> {
         unsafe { Q::fetch_mut(fetch, index) }
     }
 }
 
-impl<'q, 'a, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, 'a, Q, F> {
+impl<'q, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, Q, F> {
+    type Item<'world> = Query<'world, Q, F>;
+
     fn init_access(system_meta: &mut SystemMeta) {
         let mut local_reads = AccessVec::new();
         let mut local_writes = AccessVec::new();
@@ -613,9 +622,8 @@ impl<'q, 'a, Q: QueryData, F: QueryFilter> SystemParam for Query<'q, 'a, Q, F> {
         }
     }
 
-    fn get_param(world: &World) -> Self {
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         let query = Query::<Q, F>::new(&world.archetypes_manager.archetypes);
-
-        unsafe { std::mem::transmute::<Query<'_, '_, Q, F>, Query<'_, '_, Q, F>>(query) }
+        Some(query)
     }
 }

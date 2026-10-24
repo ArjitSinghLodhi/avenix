@@ -15,7 +15,7 @@ use std::fmt::Debug;
 
 pub trait SystemSet: Debug + DynEq + Send + Sync + 'static {
     #[doc(hidden)]
-    fn clone_box(&self) -> Box<dyn SystemSet>;
+    fn dyn_clone(&self) -> Box<dyn SystemSet>;
     #[doc(hidden)]
     fn create_guard_node(
         &self,
@@ -24,23 +24,13 @@ pub trait SystemSet: Debug + DynEq + Send + Sync + 'static {
     ) -> SystemNode;
 }
 
-impl Clone for Box<dyn SystemSet> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
-
-#[doc(hidden)]
-pub type SetConditionBuilder =
-    Box<dyn FnOnce(&mut World) -> Box<dyn Fn() -> bool + Send + Sync> + Send + Sync>;
-
 #[doc(hidden)]
 pub struct GuardNode<S: SystemSet> {
     pub(crate) _marker: PhantomData<S>,
-    pub(crate) set: Box<dyn SystemSet>,
     pub(crate) gates: Vec<ConditionFn>,
     pub(crate) shared_flag: Arc<AtomicBool>,
     pub(crate) storage: FunctionData,
+    pub(crate) identity: GuardIdentity,
 }
 
 impl<S: SystemSet> SystemData for GuardNode<S> {
@@ -65,15 +55,13 @@ impl<S: SystemSet> SystemData for GuardNode<S> {
 }
 
 impl<S: SystemSet> System for GuardNode<S> {
-    fn run(&mut self, _world: &World) {
-        let result = self.gates.iter().all(|cond| cond());
+    fn run(&mut self, world: &World) {
+        let result = self.gates.iter().all(|cond| cond(world));
         self.shared_flag.store(result, Ordering::Release);
     }
 
-    fn identity(&self) -> Box<dyn SystemIdentity> {
-        Box::new(GuardIdentity {
-            set: self.set.clone_box(),
-        })
+    fn identity(&self) -> &dyn SystemIdentity {
+        &self.identity
     }
 }
 
@@ -86,16 +74,20 @@ impl<S: SystemSet> GuardNode<S> {
     ) -> Self {
         Self {
             _marker: PhantomData,
-            set,
             gates,
             shared_flag,
             storage: FunctionData::new(),
+            identity: GuardIdentity {
+                set: set.dyn_clone(),
+                name: format!("GuardNodeSet: {:?}", set),
+            },
         }
     }
 }
 
 pub struct GuardIdentity {
     set: Box<dyn SystemSet>,
+    name: String,
 }
 
 impl GuardIdentity {
@@ -115,13 +107,14 @@ impl SystemIdentity for GuardIdentity {
             false
         }
     }
-    fn clone_box(&self) -> Box<dyn SystemIdentity> {
+    fn dyn_clone(&self) -> Box<dyn SystemIdentity> {
         Box::new(GuardIdentity {
-            set: self.set.clone_box(),
+            set: self.set.dyn_clone(),
+            name: self.name.clone(),
         })
     }
-    fn display_name(&self) -> String {
-        format!("GuardNodeSet: {:?}", self.set)
+    fn display_name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -133,13 +126,12 @@ pub(crate) struct SetRegistration {
     pub(crate) run_after_systems: Vec<Box<dyn SystemIdentity>>,
     pub(crate) run_before_systems: Vec<Box<dyn SystemIdentity>>,
     pub(crate) member_of: Vec<Box<dyn SystemSet>>,
-    pub(crate) condition_builders: Vec<SetConditionBuilder>,
+    pub(crate) condition_gates: Vec<ConditionFn>,
 }
 
 pub(crate) fn preprocess_system_sets(
     schedule_systems: &mut [&mut SystemNode],
     registrations: &mut [SetRegistration],
-    world: &mut World,
     generated_guards: &mut Vec<SystemNode>,
 ) {
     let n_reg = registrations.len();
@@ -199,8 +191,12 @@ pub(crate) fn preprocess_system_sets(
     while structural_changes {
         structural_changes = false;
         for set_reg in registrations.iter_mut() {
-            let child_set = set_reg.set.clone();
-            let parent_sets = set_reg.member_of.clone();
+            let child_set = set_reg.set.dyn_clone();
+            let parent_sets = set_reg
+                .member_of
+                .iter()
+                .map(|set| set.dyn_clone())
+                .collect::<Vec<_>>();
 
             if !parent_sets.is_empty() {
                 for node in schedule_systems.iter_mut() {
@@ -219,7 +215,7 @@ pub(crate) fn preprocess_system_sets(
                                 .iter()
                                 .any(|s| s.dyn_eq(parent.as_ref()))
                             {
-                                orderings.member_of.push(parent.clone());
+                                orderings.member_of.push(parent.dyn_clone());
                                 structural_changes = true;
                             }
                         }
@@ -250,17 +246,14 @@ pub(crate) fn preprocess_system_sets(
         Vec::with_capacity(registrations.len());
 
     for reg in registrations.iter_mut() {
-        if reg.condition_builders.is_empty() {
+        if reg.condition_gates.is_empty() {
             continue;
         }
 
-        let mut gates = Vec::with_capacity(reg.condition_builders.len());
-        for builder in reg.condition_builders.drain(..) {
-            gates.push(builder(world));
-        }
+        let gates = std::mem::take(&mut reg.condition_gates);
 
         let shared_flag = Arc::new(AtomicBool::new(false));
-        let set_identity = reg.set.clone();
+        let set_identity = reg.set.dyn_clone();
         let guard_node = reg.set.create_guard_node(gates, shared_flag.clone());
 
         guard_nodes.push((set_identity, shared_flag, guard_node));
@@ -269,7 +262,7 @@ pub(crate) fn preprocess_system_sets(
         let sys = node.system_mut();
         let guard_ids: Vec<Box<dyn SystemIdentity>> = guard_nodes
             .iter()
-            .map(|(_, _, g)| g.system().identity())
+            .map(|(_, _, g)| g.system().identity().dyn_clone())
             .collect();
 
         let orderings = sys.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
@@ -279,7 +272,7 @@ pub(crate) fn preprocess_system_sets(
             for (idx, (guard_set, shared_flag, _)) in guard_nodes.iter().enumerate() {
                 if member_set.dyn_eq(guard_set.as_ref()) {
                     matching_flags.push(shared_flag.clone());
-                    let guard_id = guard_ids[idx].clone_box();
+                    let guard_id = guard_ids[idx].dyn_clone();
                     if !orderings
                         .run_after_systems
                         .iter()
@@ -293,9 +286,9 @@ pub(crate) fn preprocess_system_sets(
 
         if !matching_flags.is_empty() {
             let list = sys.get_or_init_mut::<RunConditionsList>(RunConditionsList::default);
-            for flag in matching_flags {
-                let gate: ConditionFn = Box::new(move || flag.load(Ordering::Acquire));
-                list.conditions_mut().push(gate);
+            for flag in matching_flags.into_iter().rev() {
+                let gate: ConditionFn = Box::new(move |_world| flag.load(Ordering::Acquire));
+                list.insert(0, gate);
             }
         }
     }
@@ -303,12 +296,12 @@ pub(crate) fn preprocess_system_sets(
     for reg in registrations.iter() {
         let mut target_before_systems: Vec<Box<dyn SystemIdentity>> = Vec::new();
         for sys_id in &reg.run_before_systems {
-            target_before_systems.push(sys_id.clone_box());
+            target_before_systems.push(sys_id.dyn_clone());
         }
         for target_set in &reg.run_before_sets {
             for node in schedule_systems.iter_mut() {
                 let sys = node.system_mut();
-                let sys_id = sys.identity();
+                let sys_id = sys.identity().dyn_clone();
                 let orderings = sys.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
                 if orderings
                     .member_of
@@ -320,19 +313,19 @@ pub(crate) fn preprocess_system_sets(
             }
             for (guard_set, _, guard_node) in &guard_nodes {
                 if guard_set.dyn_eq(target_set.as_ref()) {
-                    target_before_systems.push(guard_node.system().identity());
+                    target_before_systems.push(guard_node.system().identity().dyn_clone());
                 }
             }
         }
 
         let mut target_after_systems: Vec<Box<dyn SystemIdentity>> = Vec::new();
         for sys_id in &reg.run_after_systems {
-            target_after_systems.push(sys_id.clone_box());
+            target_after_systems.push(sys_id.dyn_clone());
         }
         for target_set in &reg.run_after_sets {
             for node in schedule_systems.iter_mut() {
                 let sys = node.system_mut();
-                let sys_id = sys.identity();
+                let sys_id = sys.identity().dyn_clone();
                 let orderings = sys.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
                 if orderings
                     .member_of
@@ -344,7 +337,7 @@ pub(crate) fn preprocess_system_sets(
             }
             for (guard_set, _, guard_node) in &guard_nodes {
                 if guard_set.dyn_eq(target_set.as_ref()) {
-                    target_after_systems.push(guard_node.system().identity());
+                    target_after_systems.push(guard_node.system().identity().dyn_clone());
                 }
             }
         }
@@ -364,7 +357,7 @@ pub(crate) fn preprocess_system_sets(
                         .iter()
                         .any(|existing| existing.dyn_system_eq(id.as_ref()))
                     {
-                        orderings.run_before_systems.push(id.clone_box());
+                        orderings.run_before_systems.push(id.dyn_clone());
                     }
                 }
                 for id in &target_after_systems {
@@ -373,7 +366,7 @@ pub(crate) fn preprocess_system_sets(
                         .iter()
                         .any(|existing| existing.dyn_system_eq(id.as_ref()))
                     {
-                        orderings.run_after_systems.push(id.clone_box());
+                        orderings.run_after_systems.push(id.dyn_clone());
                     }
                 }
             }
@@ -388,9 +381,9 @@ pub(crate) fn preprocess_system_sets(
     let mut member_cache: Vec<SystemSetMemberCache> = Vec::with_capacity(schedule_systems.len());
     for node in schedule_systems.iter_mut() {
         let sys = node.system_mut();
-        let identity = sys.identity();
+        let identity = sys.identity().dyn_clone();
         let orderings = sys.get_or_init_mut::<SystemOrderings>(SystemOrderings::default);
-        let member_of = orderings.member_of.iter().map(|s| s.clone_box()).collect();
+        let member_of = orderings.member_of.iter().map(|s| s.dyn_clone()).collect();
         member_cache.push(SystemSetMemberCache {
             identity,
             member_of,
@@ -428,12 +421,12 @@ pub(crate) fn preprocess_system_sets(
                 {
                     orderings
                         .run_before_systems
-                        .push(cache_item.identity.clone_box());
+                        .push(cache_item.identity.dyn_clone());
                 }
             }
             for (guard_set, _, guard_node) in &guard_nodes {
                 if guard_set.dyn_eq(target_set.as_ref()) {
-                    let guard_id = guard_node.system().identity();
+                    let guard_id = guard_node.system().identity().dyn_clone();
                     if !orderings
                         .run_before_systems
                         .iter()
@@ -474,12 +467,12 @@ pub(crate) fn preprocess_system_sets(
                 {
                     orderings
                         .run_after_systems
-                        .push(cache_item.identity.clone_box());
+                        .push(cache_item.identity.dyn_clone());
                 }
             }
             for (guard_set, _, guard_node) in &guard_nodes {
                 if guard_set.dyn_eq(target_set.as_ref()) {
-                    let guard_id = guard_node.system().identity();
+                    let guard_id = guard_node.system().identity().dyn_clone();
                     if !orderings
                         .run_after_systems
                         .iter()

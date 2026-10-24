@@ -99,7 +99,7 @@ fn main() {
                 (
                     GameLoopStage::Input,
                     GameLoopStage::Simulation.run_if(
-                        move |state: &ParallelResourceAccessor<MatchState>| {
+                        move |state: ParallelResourceAccessor<MatchState>| {
                             state.scope(|s| s.tick_paused == 0)
                         },
                     ),

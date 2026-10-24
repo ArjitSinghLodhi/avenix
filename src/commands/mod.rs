@@ -6,7 +6,7 @@ pub(crate) use command_types::DespawnCommand;
 use orx_parallel::{IterIntoParIter, Par};
 pub use parallel_commands::ParallelCommands;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, mem::transmute, sync::Arc};
 
 use dashmap::DashSet;
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -244,20 +244,23 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
 }
 
 impl<'a> SystemParam for Commands<'a> {
+    type Item<'world> = Commands<'world>;
+
     fn init_access(_system_meta: &mut SystemMeta) {}
-    fn get_param(world: &World) -> Self {
+
+    fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         let queue_local = world.commands.queue.read();
         let despawns_local = world.commands.despawns.read();
         unsafe {
-            let queue = std::mem::transmute::<
+            let queue = transmute::<
                 RwLockReadGuard<'_, CommandQueue>,
-                RwLockReadGuard<'_, CommandQueue>,
+                RwLockReadGuard<'world, CommandQueue>,
             >(queue_local);
-            let despawns = std::mem::transmute::<
+            let despawns = transmute::<
                 RwLockReadGuard<'_, DashSet<Entity, FxBuildHasher>>,
-                RwLockReadGuard<'_, DashSet<Entity, FxBuildHasher>>,
+                RwLockReadGuard<'world, DashSet<Entity, FxBuildHasher>>,
             >(despawns_local);
-            Self { queue, despawns }
+            Some(Commands { queue, despawns })
         }
     }
 }

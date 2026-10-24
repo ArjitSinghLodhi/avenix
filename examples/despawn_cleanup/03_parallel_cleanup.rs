@@ -150,7 +150,7 @@ fn main() {
             (
                 update_stepper_frame,
                 simulate_network_failure.run_if(
-                    |stepper: &ParallelResourceAccessor<SimulationStepper>| {
+                    |stepper: ParallelResourceAccessor<SimulationStepper>| {
                         stepper.scope(|s| s.target_frame == 1)
                     },
                 ),
