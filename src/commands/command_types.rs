@@ -9,7 +9,7 @@ use std::{any::TypeId, sync::atomic::AtomicU32};
 use crate::reactivity::{TRACKED_COMPONENTS, removed::REMOVAL_TRACKED_COMPS};
 use crate::{
     commands::{WorldCommand, bundle::ComponentBundle},
-    component::hooks::{DeferredWorld, GLOBAL_HOOK_REGISTRY},
+    component::hooks::{ExclusiveWorld, GLOBAL_HOOK_REGISTRY},
     entity::Entity,
     entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
     world::{
@@ -50,7 +50,7 @@ impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
         drop(arch);
 
         let type_ids = T::get_type_ids();
-        let mut deferred_world = DeferredWorld { world };
+        let mut deferred_world = ExclusiveWorld { world };
 
         let mut must_register = false;
         {
@@ -142,7 +142,7 @@ impl<T: ComponentBundle, I: Iterator<Item = T> + Send + 'static> WorldCommand
         drop(arch);
 
         let type_ids = T::get_type_ids();
-        let mut deferred_world = DeferredWorld { world };
+        let mut deferred_world = ExclusiveWorld { world };
 
         let mut must_register = false;
         {
@@ -203,7 +203,7 @@ impl DespawnCommand {
         let component_ids: Vec<TypeId> = arch.types.iter().cloned().collect();
         drop(arch);
 
-        let mut deferred_world = DeferredWorld { world };
+        let mut deferred_world = ExclusiveWorld { world };
 
         let mut active_hooks = Vec::with_capacity(component_ids.len());
         {
@@ -287,7 +287,7 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
         let incoming_ids = T::get_type_ids();
         let target_registry_idx = self.entity.registry_index as usize;
 
-        let mut deferred_world = DeferredWorld { world };
+        let mut deferred_world = ExclusiveWorld { world };
 
         let mut must_register = false;
         {
@@ -468,7 +468,7 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
         let target_registry_idx = self.entity.registry_index as usize;
         let removed_ids = T::get_type_ids();
 
-        let mut deferred_world = DeferredWorld { world };
+        let mut deferred_world = ExclusiveWorld { world };
 
         let mut must_register = false;
         {

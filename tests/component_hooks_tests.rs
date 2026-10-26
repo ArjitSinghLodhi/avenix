@@ -13,7 +13,7 @@ struct Transform {
     y: f32,
 }
 
-fn on_discard_physics(world: &mut DeferredWorld, entity: &Entity) {
+fn on_discard_physics(world: &mut ExclusiveWorld, entity: &Entity) {
     let mut meets_condition = false;
 
     {
@@ -35,7 +35,7 @@ struct PhysicsBody {
     mass: f32,
 }
 
-fn on_add_physics(world: &mut DeferredWorld, entity: &Entity) {
+fn on_add_physics(world: &mut ExclusiveWorld, entity: &Entity) {
     let mut meets_condition = false;
 
     {
@@ -51,11 +51,11 @@ fn on_add_physics(world: &mut DeferredWorld, entity: &Entity) {
     }
 }
 
-fn on_insert_physics(_world: &mut DeferredWorld, _entity: &Entity) {
+fn on_insert_physics(_world: &mut ExclusiveWorld, _entity: &Entity) {
     INSERT_EXEC_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
-fn on_remove_physics(_world: &mut DeferredWorld, _entity: &Entity) {
+fn on_remove_physics(_world: &mut ExclusiveWorld, _entity: &Entity) {
     TARGET_CLEANUP_RUN.fetch_add(1, Ordering::SeqCst);
 }
 

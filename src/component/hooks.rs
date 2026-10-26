@@ -7,11 +7,12 @@ use crate::{
     component::{ComponentMut, ComponentRef},
     ecs::component::Component,
     entity::Entity,
+    events::{Event, EventReader, EventWriter},
     resources::{NonSend, NonSendMut, Res, ResMut, Resource},
     world::World,
 };
 
-pub type ComponentHook = fn(&mut DeferredWorld, &Entity);
+pub type ComponentHook = fn(&mut ExclusiveWorld, &Entity);
 
 #[derive(Clone, Default, Copy)]
 pub(crate) struct ComponentHooks {
@@ -21,11 +22,11 @@ pub(crate) struct ComponentHooks {
     pub(crate) on_discard: Option<ComponentHook>,
 }
 
-pub struct DeferredWorld<'a> {
+pub struct ExclusiveWorld<'a> {
     pub(crate) world: &'a mut World,
 }
 
-impl<'a> DeferredWorld<'a> {
+impl<'a> ExclusiveWorld<'a> {
     pub fn get<'w, C: Component>(&'w self, entity: &'w Entity) -> Option<ComponentRef<'w, C>> {
         self.world.get::<C>(entity)
     }
@@ -61,7 +62,7 @@ impl<'a> DeferredWorld<'a> {
         self.world.resource::<R>()
     }
 
-    pub fn resource_mut<'w, R: Resource + Send + Sync>(&'w mut self) -> ResMut<'w, R> {
+    pub fn resource_mut<'w, R: Resource + Send + Sync>(&'w self) -> ResMut<'w, R> {
         self.world.resource_mut::<R>()
     }
 
@@ -69,7 +70,7 @@ impl<'a> DeferredWorld<'a> {
         self.world.get_resource::<R>()
     }
 
-    pub fn get_resource_mut<'w, R: Resource + Send + Sync>(&'w mut self) -> Option<ResMut<'w, R>> {
+    pub fn get_resource_mut<'w, R: Resource + Send + Sync>(&'w self) -> Option<ResMut<'w, R>> {
         self.world.get_resource_mut::<R>()
     }
 
@@ -87,6 +88,35 @@ impl<'a> DeferredWorld<'a> {
 
     pub fn get_non_send_resource_mut<'w, R: Resource>(&'w mut self) -> Option<NonSendMut<'w, R>> {
         self.world.get_non_send_resource_mut::<R>()
+    }
+
+    /// Retrieve a mutable reference to a non-send resource using a shared reference.
+    ///
+    /// # Safety
+    /// The caller must ensure that no other mutable references to the same `NonSend`
+    /// resource are active at the same time. Aliasing a mutable reference triggers
+    /// immediate undefined behavior.
+    pub unsafe fn non_send_resource_mut_unsafe<'w, R: Resource>(&'w self) -> NonSendMut<'w, R> {
+        unsafe { self.world.non_send_resource_mut_unsafe::<R>() }
+    }
+
+    /// Safely attempt to retrieve a mutable reference to a non-send resource using a shared reference.
+    /// Returns `None` if the resource does not exist.
+    ///
+    /// # Safety
+    /// The caller must ensure that no other mutable references to the same `NonSend`
+    /// resource are active at the same time.
+    pub unsafe fn get_non_send_resource_mut_unsafe<'w, R: Resource>(
+        &'w self,
+    ) -> Option<NonSendMut<'w, R>> {
+        unsafe { self.world.get_non_send_resource_mut_unsafe::<R>() }
+    }
+
+    pub fn event_writer<'w, E: Event>(&'w self) -> EventWriter<'w, E> {
+        self.world.event_writer()
+    }
+    pub fn event_reader<'w, E: Event>(&'w self) -> EventReader<'w, E> {
+        self.world.event_reader()
     }
 }
 

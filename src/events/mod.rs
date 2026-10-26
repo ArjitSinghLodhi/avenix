@@ -3,16 +3,13 @@ mod parallel_events;
 use orx_parallel::IterIntoParIter;
 pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
 
-use std::{
-    any::{Any, TypeId},
-    sync::Arc,
-};
+use std::any::{Any, TypeId};
 
 use orx_concurrent_bag::ConcurrentBag;
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::RwLock;
 
 use crate::{
-    resources::Resource,
+    resources::{Res, Resource},
     system::{SystemMeta, SystemParam},
     world::World,
 };
@@ -44,10 +41,11 @@ pub(crate) fn register_event<T: Event>() {
                 let event_queue = raw_any
                     .downcast_mut::<EventBuffer<T>>()
                     .expect("Registered event queue was not found when clearing data");
-                let read_queue_guard = &mut *event_queue.read_queue.write();
-                let write_queue_guard = &mut *event_queue.write_queue.write();
-                read_queue_guard.queue.clear();
-                std::mem::swap(read_queue_guard, write_queue_guard);
+                event_queue.read_queue.queue.clear();
+                std::mem::swap(
+                    &mut event_queue.read_queue.queue,
+                    &mut event_queue.write_queue.queue,
+                );
             },
         });
     }
@@ -58,15 +56,15 @@ pub(crate) struct EventQueue<T: Event> {
 }
 
 pub struct EventBuffer<T: Event> {
-    pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
-    pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
+    pub(crate) read_queue: EventQueue<T>,
+    pub(crate) write_queue: EventQueue<T>,
 }
 
 impl<T: Event> EventBuffer<T> {
     pub(crate) fn new() -> Self {
         EventBuffer {
-            read_queue: Arc::new(RwLock::new(EventQueue::new())),
-            write_queue: Arc::new(RwLock::new(EventQueue::new())),
+            read_queue: EventQueue::new(),
+            write_queue: EventQueue::new(),
         }
     }
 }
@@ -98,7 +96,7 @@ impl<T: Event> EventQueue<T> {
 /// [`.send`]: EventWriter::send
 /// [`.send_batch`]: EventWriter::send_batch
 pub struct EventWriter<'a, T: Event> {
-    pub(crate) write_queue: RwLockReadGuard<'a, EventQueue<T>>,
+    pub(crate) buffer: Res<'a, EventBuffer<T>>,
 }
 
 impl<'a, T: Event> EventWriter<'a, T> {
@@ -107,7 +105,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
     /// The event is stored in the write buffer and will become visible to readers in the next frame.
     #[inline]
     pub fn send(&self, event: T) {
-        self.write_queue.queue.push(event);
+        self.buffer.write_queue.queue.push(event);
     }
 
     /// Queues an iterator of multiple events to be dispatched efficiently in a single operation.
@@ -117,7 +115,7 @@ impl<'a, T: Event> EventWriter<'a, T> {
         I: IntoIterator<Item = T>,
         I::IntoIter: Send + ExactSizeIterator,
     {
-        self.write_queue.queue.extend(event_iter);
+        self.buffer.write_queue.queue.extend(event_iter);
     }
 }
 
@@ -127,17 +125,8 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        unsafe {
-            let buffer = world.resource::<EventBuffer<T>>();
-            let queue = buffer.write_queue.read();
-
-            let queue = std::mem::transmute::<
-                RwLockReadGuard<'_, EventQueue<T>>,
-                RwLockReadGuard<'world, EventQueue<T>>,
-            >(queue);
-
-            Some(EventWriter { write_queue: queue })
-        }
+        let buffer = world.resource::<EventBuffer<T>>();
+        Some(EventWriter { buffer })
     }
 }
 
@@ -158,18 +147,18 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 /// [`.read()`]: EventReader::read
 /// [`.par_read()`]: EventReader::par_read
 pub struct EventReader<'w, T: Event> {
-    pub(crate) read_queue: RwLockReadGuard<'w, EventQueue<T>>,
+    pub(crate) buffer: Res<'w, EventBuffer<T>>,
 }
 
 impl<'w, T: Event> EventReader<'w, T> {
     /// Returns an iterator over all events dispatched during the previous frame.
     #[inline]
     pub fn read(&self) -> impl Iterator<Item = &T> {
-        unsafe { self.read_queue.queue.iter() }
+        unsafe { self.buffer.read_queue.queue.iter() }
     }
     #[inline]
     pub fn par_read(&self) -> impl Par<Item = &T> {
-        unsafe { self.read_queue.queue.iter().iter_into_par() }
+        unsafe { self.buffer.read_queue.queue.iter().iter_into_par() }
     }
 }
 
@@ -179,16 +168,7 @@ impl<'w, T: Event> SystemParam for EventReader<'w, T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        unsafe {
-            let buffer = world.resource::<EventBuffer<T>>();
-            let queue = buffer.read_queue.read();
-
-            let queue = std::mem::transmute::<
-                RwLockReadGuard<'_, EventQueue<T>>,
-                RwLockReadGuard<'world, EventQueue<T>>,
-            >(queue);
-
-            Some(EventReader { read_queue: queue })
-        }
+        let buffer = world.resource::<EventBuffer<T>>();
+        Some(EventReader { buffer })
     }
 }

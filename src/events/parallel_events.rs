@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
-use parking_lot::RwLock;
-
 use crate::{
-    events::{Event, EventBuffer, EventQueue, EventReader, EventWriter},
+    events::{Event, EventBuffer, EventReader, EventWriter},
+    resources::ParallelResourceAccessor,
     system::{ParallelSystemParam, SystemMeta, SystemParam},
     world::World,
 };
@@ -18,13 +15,13 @@ use crate::{
 ///
 /// [`.par_event_writer()`]: crate::world::World::par_event_writer
 pub struct ParallelEventWriter<T: Event> {
-    pub(crate) write_queue: Arc<RwLock<EventQueue<T>>>,
+    pub(crate) event_buffer_accessor: ParallelResourceAccessor<EventBuffer<T>>,
 }
 
 impl<T: Event> Clone for ParallelEventWriter<T> {
     fn clone(&self) -> Self {
         Self {
-            write_queue: self.write_queue.clone(),
+            event_buffer_accessor: self.event_buffer_accessor.clone(),
         }
     }
 }
@@ -38,10 +35,10 @@ impl<T: Event> ParallelEventWriter<T> {
     where
         F: for<'b> FnOnce(EventWriter<'b, T>) -> R,
     {
-        let writer = EventWriter {
-            write_queue: self.write_queue.read(),
-        };
-        f(writer)
+        self.event_buffer_accessor.scope(|buffer| {
+            let writer = EventWriter { buffer };
+            f(writer)
+        })
     }
 }
 
@@ -51,8 +48,10 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        let queue = world.resource::<EventBuffer<T>>().write_queue.clone();
-        Some(ParallelEventWriter { write_queue: queue })
+        let event_buffer_accessor = world.par_resource_accessor::<EventBuffer<T>>();
+        Some(ParallelEventWriter {
+            event_buffer_accessor,
+        })
     }
 }
 
@@ -79,13 +78,13 @@ unsafe impl<T: Event> ParallelSystemParam for ParallelEventWriter<T> {}
 ///
 /// [`.par_event_reader()`]: crate::world::World::par_event_reader
 pub struct ParallelEventReader<T: Event> {
-    pub(crate) read_queue: Arc<RwLock<EventQueue<T>>>,
+    pub(crate) event_buffer_accessor: ParallelResourceAccessor<EventBuffer<T>>,
 }
 
 impl<T: Event> Clone for ParallelEventReader<T> {
     fn clone(&self) -> Self {
         Self {
-            read_queue: self.read_queue.clone(),
+            event_buffer_accessor: self.event_buffer_accessor.clone(),
         }
     }
 }
@@ -99,10 +98,10 @@ impl<T: Event> ParallelEventReader<T> {
     where
         F: for<'b> FnOnce(EventReader<'b, T>) -> R,
     {
-        let reader = EventReader {
-            read_queue: self.read_queue.read(),
-        };
-        f(reader)
+        self.event_buffer_accessor.scope(|buffer| {
+            let event_reader = EventReader { buffer };
+            f(event_reader)
+        })
     }
 }
 
@@ -112,8 +111,10 @@ impl<T: Event> SystemParam for ParallelEventReader<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        let queue = world.resource::<EventBuffer<T>>().read_queue.clone();
-        Some(ParallelEventReader { read_queue: queue })
+        let event_buffer_accessor = world.par_resource_accessor::<EventBuffer<T>>();
+        Some(ParallelEventReader {
+            event_buffer_accessor,
+        })
     }
 }
 

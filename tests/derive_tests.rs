@@ -1,17 +1,14 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 use avenix::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static POS_ADD_TRIGGERS: AtomicU32 = AtomicU32::new(0);
 static VEL_OVERWRITE_TRIGGERS: AtomicU32 = AtomicU32::new(0);
 
-fn on_add_pos(_world: &mut DeferredWorld, _entity: &Entity) {
+fn on_add_pos(_world: &mut ExclusiveWorld, _entity: &Entity) {
     POS_ADD_TRIGGERS.fetch_add(1, Ordering::SeqCst);
 }
 
-fn on_discard_vel(_world: &mut DeferredWorld, _entity: &Entity) {
+fn on_discard_vel(_world: &mut ExclusiveWorld, _entity: &Entity) {
     VEL_OVERWRITE_TRIGGERS.fetch_add(1, Ordering::SeqCst);
 }
 

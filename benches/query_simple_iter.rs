@@ -69,7 +69,6 @@ fn run_simple_iter_bench(mut query: Query<(&mut Position, &Velocity)>, state: Re
 
     c.bench_function("ecs_suite_simple_iter", |b| {
         b.iter(|| {
-            #[allow(unused_mut)]
             for (mut pos, vel) in query.iter_mut() {
                 pos.x += vel.x;
                 pos.y += vel.y;

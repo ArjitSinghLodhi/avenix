@@ -69,7 +69,6 @@ fn run_pure_write_bench(
 
     c.bench_function("avenix_pure_mutable_write", |b| {
         b.iter(|| {
-            #[allow(unused_mut)]
             for (mut pos, vel) in query_write.iter_mut() {
                 pos.x += vel.x;
                 pos.y += vel.y;

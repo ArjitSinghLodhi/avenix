@@ -58,7 +58,7 @@ pub mod prelude {
         commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
         component::{
             Component, ComponentMut, ComponentRef,
-            hooks::{ComponentHook, ComponentHooksRegisterer, DeferredWorld},
+            hooks::{ComponentHook, ComponentHooksRegisterer, ExclusiveWorld},
         },
         entity::Entity,
         events::{
@@ -83,7 +83,7 @@ pub mod ecs {
         pub use crate::component::{Component, ComponentMut, ComponentRef};
         pub mod hooks {
             pub use crate::component::hooks::{
-                ComponentHook, ComponentHooksRegisterer, DeferredWorld,
+                ComponentHook, ComponentHooksRegisterer, ExclusiveWorld,
             };
         }
     }

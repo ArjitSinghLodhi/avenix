@@ -89,7 +89,6 @@ fn run_fragmented_iter_bench(mut query: Query<(&mut Position, &Velocity)>, state
 
     c.bench_function("ecs_suite_fragmented_iter", |b| {
         b.iter(|| {
-            #[allow(unused_mut)]
             for (mut pos, vel) in query.iter_mut() {
                 pos.x += vel.x;
                 pos.y += vel.y;

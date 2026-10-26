@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 use avenix::prelude::*;
 
 #[derive(Component)]
@@ -10,7 +7,7 @@ pub struct LinkTo {
 }
 
 impl LinkTo {
-    pub fn handle_link(world: &mut DeferredWorld, entity: &Entity) {
+    pub fn handle_link(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut parent_target = None;
         {
             if let Some(link) = world.get::<LinkTo>(entity) {
@@ -47,7 +44,7 @@ impl LinkTo {
 pub struct UnlinkChild;
 
 impl UnlinkChild {
-    pub fn on_add(world: &mut DeferredWorld, entity: &Entity) {
+    pub fn on_add(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut parent_target = None;
         {
             if let Some(child_of) = world.get::<ChildOf>(entity) {
@@ -75,7 +72,7 @@ impl UnlinkChild {
         world.remove_components::<UnlinkChild>(entity.clone());
     }
 
-    pub fn on_insert(world: &mut DeferredWorld, entity: &Entity) {
+    pub fn on_insert(world: &mut ExclusiveWorld, entity: &Entity) {
         Self::on_add(world, entity);
     }
 }
@@ -87,7 +84,7 @@ pub struct Children {
 }
 
 impl Children {
-    pub fn handle_remove(world: &mut DeferredWorld, entity: &Entity) {
+    pub fn handle_remove(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut children_to_clear = Vec::new();
         {
             if let Some(parent_children) = world.get::<Children>(entity) {
@@ -116,7 +113,7 @@ pub struct ChildOf {
 }
 
 impl ChildOf {
-    pub fn on_remove(world: &mut DeferredWorld, entity: &Entity) {
+    pub fn on_remove(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut parent_target = None;
         {
             if let Some(child_of) = world.get::<ChildOf>(entity) {

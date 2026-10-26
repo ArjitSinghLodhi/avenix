@@ -1,10 +1,10 @@
 use avenix::prelude::*;
 
-fn on_add_burning(world: &mut DeferredWorld, entity: &Entity) {
+fn on_add_burning(world: &mut ExclusiveWorld, entity: &Entity) {
     world.insert_components(entity.clone(), VisualEffectComponent { effect_type: 1 });
 }
 
-fn on_insert_burning(world: &mut DeferredWorld, entity: &Entity) {
+fn on_insert_burning(world: &mut ExclusiveWorld, entity: &Entity) {
     let mut meets_condition = false;
     {
         if let Some(fx) = world.get::<VisualEffectComponent>(entity) {
@@ -20,7 +20,7 @@ fn on_insert_burning(world: &mut DeferredWorld, entity: &Entity) {
     }
 }
 
-fn on_discard_burning(world: &mut DeferredWorld, entity: &Entity) {
+fn on_discard_burning(world: &mut ExclusiveWorld, entity: &Entity) {
     let mut meets_condition = false;
     {
         if let Some(burning) = world.get::<BurningEffect>(entity) {
@@ -34,7 +34,7 @@ fn on_discard_burning(world: &mut DeferredWorld, entity: &Entity) {
     }
 }
 
-fn on_remove_burning(world: &mut DeferredWorld, entity: &Entity) {
+fn on_remove_burning(world: &mut ExclusiveWorld, entity: &Entity) {
     world.remove_components::<VisualEffectComponent>(entity.clone());
     world.remove_components::<CombustionMarker>(entity.clone());
 }

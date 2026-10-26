@@ -19,7 +19,7 @@ pub trait Component: Send + Sync + 'static {
     /// * **Storage State**: The entity has been completely migrated to its target archetype destination. All structural allocations are fully complete.
     /// * **Component State**: The newly provided data payload is fully written into the table column and is active.
     /// * **Sibling Components**: If introduced as part of a bundle or tuple, all sibling columns are fully populated and safely readable.
-    /// * **Context Safety**: Archetype write locks are fully dropped before entry, making it safe to use immediate structural operations on the `DeferredWorld` context.
+    /// * **Context Safety**: Archetype write locks are fully dropped before entry, making it safe to use immediate structural operations on the `ExclusiveWorld` context.
     fn on_add() -> Option<ComponentHook> {
         None
     }

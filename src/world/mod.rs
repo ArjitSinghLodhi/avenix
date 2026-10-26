@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     commands::{
-        CommandBuffer, DespawnCommand, ParallelCommands, WorldCommand,
+        CommandBuffer, Commands, DespawnCommand, ParallelCommands, WorldCommand,
         bundle::ComponentBundle,
         command_types::{
             BatchSpawnCommand, InsertComponentsCommand, RemoveComponentsCommand, SpawnCommand,
@@ -24,6 +24,7 @@ use crate::{
     },
     entity::Entity,
     entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT},
+    events::{EventReader, EventWriter},
     reactivity::changed::{ChangedMarker, Mut},
     resources::{
         ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
@@ -309,6 +310,17 @@ impl World {
             "par_query_accessor".to_string(),
         ));
         ParallelQueryAccessor::<Q, F>::get_param(self).unwrap()
+    }
+
+    pub fn event_writer<'w, E: Event>(&'w self) -> EventWriter<'w, E> {
+        EventWriter::get_param(self).unwrap()
+    }
+    pub fn event_reader<'w, E: Event>(&'w self) -> EventReader<'w, E> {
+        EventReader::get_param(self).unwrap()
+    }
+
+    pub fn commands<'w>(&'w self) -> Commands<'w> {
+        Commands::get_param(self).unwrap()
     }
 
     pub fn get<'a, C: Component>(&'a self, entity: &Entity) -> Option<ComponentRef<'a, C>> {

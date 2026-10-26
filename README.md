@@ -11,7 +11,7 @@ Avenix provides a complete application pipeline out of the box, combining dense 
 * **Archetype-Based Storage**  
   Built entirely around a strict structural Archetype architecture. Components are packed into flat, dense tables to maximize CPU cache-line saturation and optimize hardware prefetching loops.
 * **Component Lifecycle Hooks**  
-  Supports immediate, synchronous lifecycle intercepts (`on_add`, `on_insert`, `on_remove`, `on_discard`) via a `DeferredWorld` context. This allows components to natively drive their own side effects, validate state changes, and automate asset or handle cleanup without relying on frame-delayed system query sweeps.
+  Supports immediate, synchronous lifecycle intercepts (`on_add`, `on_insert`, `on_remove`, `on_discard`) via a `ExclusiveWorld` context. This allows components to natively drive their own side effects, validate state changes, and automate asset or handle cleanup without relying on frame-delayed system query sweeps.
 * **Zero-UB Layout Execution**  
   Engineered with memory safety layout guarantees. Core pathways protect against undefined behavior without introducing overhead or sacrificing raw pointer iteration performance.
 * **Multi-Threading**  
