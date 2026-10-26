@@ -1,6 +1,6 @@
 use std::{any::TypeId, marker::PhantomData};
 
-use crate::{ecs::Component, system::AccessVec, world::archetypes::Archetype};
+use crate::{ecs::component::Component, system::AccessVec, world::archetypes::Archetype};
 
 pub trait QueryFilter {
     type FilterData<'w>: Sync;

@@ -68,7 +68,6 @@ fn parallel_read_system(query: Query<(&Position, &WorkerId)>) {
 }
 
 fn parallel_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    #[allow(unused_mut)]
     query.par_iter_mut().for_each(|(mut pos, vel)| {
         pos.x += vel.x;
         pos.y += vel.y;
@@ -118,7 +117,6 @@ fn parallel_chunk_read_system(query: Query<(&Position, &Velocity)>) {
 
 fn parallel_chunk_write_system(mut query: Query<(&mut Position, &Velocity)>) {
     query.par_chunks_mut(5000).for_each(|mut chunk| {
-        #[allow(unused_mut)]
         for (mut pos, vel) in chunk.iter_mut() {
             pos.x += vel.x;
             pos.y += vel.y;

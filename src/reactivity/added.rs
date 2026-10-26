@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    ecs::Component,
+    ecs::component::Component,
     query::{QueryData, QueryFilter},
     reactivity::{TRACKED_COMPONENTS, TrackedComponentMeta, verify_app_not_built_yet},
     system::AccessVec,
@@ -69,12 +69,21 @@ impl<T: Component> Component for AddedMarker<T> {}
 /// * **Frame 3 (Purge):** The addition state is unconditionally cleared and resets to `false`.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
+///
+/// # Structural Mutations & Spawning
+///
+/// Spawning a new entity with a component or inserting a component via commands acts as the initial addition event.
+/// This structural modification triggers addition tracking cleanly through the standard timeline:
+///
+/// 1. **Command Queuing:** You call `.spawn()` or `.insert()` to queue a component modification command.
+/// 2. **Immediate Application:** The command is flushed and applied to the world during that same frame's execution phase.
+/// 3. **Next-Frame Visibility:** The tracking markers are flagged immediately following application, making `Added<T>` evaluate to `true` across the entirety of the next frame.
 pub struct Added<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Added<T> {
     type FilterData<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
     fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
-        archetype.get_column::<AddedMarker<T>>()
+        archetype.column::<AddedMarker<T>>()
     }
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
@@ -103,11 +112,9 @@ impl<T: Component> QueryFilter for Added<T> {
 ///
 /// # Architecture & Timing
 ///
-/// This tracking relies on the exact same double-buffered, frame-locked system as the filter:
-///
-/// * **Frame 1:** The target component is added or spawned. The tracking bool is set but remains hidden.
-/// * **Frame 2:** [`.is_added()`] evaluates to `true` globally across this entire frame window.
-/// * **Frame 3:** The flag is automatically purged and resets to `false`, regardless of system execution.
+/// This tracking relies on the exact same double-buffered, frame-locked system as the filter.
+/// For a detailed breakdown of the 3-frame lifecycle timing, command application phases, and
+/// initial spawn behavior, see the documentation for [`Added<T>`].
 ///
 /// [`.is_added()`]: AddedTracker::is_added
 pub struct AddedTracker<T: Component> {
@@ -116,7 +123,6 @@ pub struct AddedTracker<T: Component> {
 }
 
 impl<T: Component> AddedTracker<T> {
-    /// Returns whether the target component was newly added to the entity during the previous frame.
     #[inline(always)]
     pub fn is_added(&self) -> bool {
         self.added
@@ -138,7 +144,7 @@ impl<T: Component> QueryData for AddedTracker<T> {
         archetype.has_column::<T>()
     }
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        archetype.get_column::<AddedMarker<T>>()
+        archetype.column::<AddedMarker<T>>()
     }
 
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {

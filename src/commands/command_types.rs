@@ -1,15 +1,15 @@
 use dashmap::mapref::one::Ref;
 use indexmap::IndexMap;
-#[cfg(feature = "reactivity")]
 use indexmap::IndexSet;
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
+use std::marker::PhantomData;
 use std::{any::TypeId, sync::atomic::AtomicU32};
 
-#[cfg(feature = "reactivity")]
-use crate::reactivity::{REMOVAL_TRACKED_COMPS, TRACKED_COMPONENTS};
+use crate::reactivity::{TRACKED_COMPONENTS, removed::REMOVAL_TRACKED_COMPS};
 use crate::{
     commands::{WorldCommand, bundle::ComponentBundle},
+    component::hooks::{DeferredWorld, GLOBAL_HOOK_REGISTRY},
     entity::Entity,
     entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT, RegistryData},
     world::{
@@ -34,24 +34,69 @@ impl<T: ComponentBundle> WorldCommand for SpawnCommand<T> {
             .archetypes_manager
             .get_mut(arch_id)
             .expect("Archetype generation failed");
-
-        arch.entities
-            .write()
-            .push(Entity::new(assigned_registry_idx));
-        self.components.push_to_archetype(&mut arch);
-        #[cfg(feature = "reactivity")]
+        let entity = Entity::new(assigned_registry_idx);
+        let row_idx = {
+            let mut entities_lock = arch.entities.write();
+            let row_idx = entities_lock.len();
+            entities_lock.push(entity.clone());
+            row_idx
+        };
         {
             let columns = &mut arch.columns;
             initialize_spawn_markers(columns);
         }
+        unsafe { self.components.insert_to_archetype(&mut arch, row_idx) };
+
+        drop(arch);
+
+        let type_ids = T::get_type_ids();
+        let mut deferred_world = DeferredWorld { world };
+
+        let mut must_register = false;
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in type_ids {
+                if read_guard.get_hooks(id).is_none() {
+                    must_register = true;
+                    break;
+                }
+            }
+        }
+
+        if must_register {
+            T::register_bundle_hooks();
+        }
+
+        let mut active_hooks = Vec::with_capacity(type_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in type_ids {
+                active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for hooks in active_hooks.into_iter().flatten() {
+            if let Some(on_add_hook) = hooks.on_add {
+                on_add_hook(&mut deferred_world, &entity);
+            }
+            if let Some(on_insert_hook) = hooks.on_insert {
+                on_insert_hook(&mut deferred_world, &entity);
+            }
+        }
     }
 }
 
-pub(crate) struct BatchSpawnCommand<T: ComponentBundle> {
-    pub(crate) components_iter: Box<dyn Iterator<Item = T> + Send + 'static>,
+pub(crate) struct BatchSpawnCommand<T, I>
+where
+    T: ComponentBundle,
+    I: Iterator<Item = T> + Send + 'static,
+{
+    pub(crate) components_iter: I,
 }
 
-impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
+impl<T: ComponentBundle, I: Iterator<Item = T> + Send + 'static> WorldCommand
+    for BatchSpawnCommand<T, I>
+{
     fn apply(self, world: &mut World) {
         let world_ptr = world as *mut World;
         let arch_id = unsafe {
@@ -72,31 +117,64 @@ impl<T: ComponentBundle> WorldCommand for BatchSpawnCommand<T> {
             arch.entities.write().reserve(lower_bound);
         }
 
-        #[cfg(feature = "reactivity")]
-        let mut batch_size = 0;
+        let mut spawned_entities = Vec::new();
+        if lower_bound > 0 {
+            spawned_entities.reserve(lower_bound);
+        }
 
         for components in self.components_iter {
-            {
+            let entity = {
                 let mut arch_entities = arch.entities.write();
                 let next_idx = arch_entities.len() as u32;
                 let assigned_registry_idx =
                     unsafe { alloc_registry_cell(arch_id, next_idx, &mut *world_ptr) };
+                let entity = Entity::new(assigned_registry_idx);
+                arch_entities.push(entity.clone());
+                entity
+            };
 
-                arch_entities.push(Entity::new(assigned_registry_idx));
-            }
-            components.push_to_archetype(&mut arch);
+            let row_idx = arch.entities.read().len() - 1;
+            initialize_spawn_markers(&mut arch.columns);
+            unsafe { components.insert_to_archetype(&mut arch, row_idx) };
+            spawned_entities.push(entity);
+        }
 
-            #[cfg(feature = "reactivity")]
-            {
-                batch_size += 1;
+        drop(arch);
+
+        let type_ids = T::get_type_ids();
+        let mut deferred_world = DeferredWorld { world };
+
+        let mut must_register = false;
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in type_ids {
+                if read_guard.get_hooks(id).is_none() {
+                    must_register = true;
+                    break;
+                }
             }
         }
 
-        #[cfg(feature = "reactivity")]
-        if batch_size > 0 {
-            {
-                let columns = &mut arch.columns;
-                initialize_batch_spawn_markers(columns, batch_size);
+        if must_register {
+            T::register_bundle_hooks();
+        }
+
+        let mut active_hooks = Vec::with_capacity(type_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in type_ids {
+                active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for entity in &spawned_entities {
+            for hooks in active_hooks.iter().flatten() {
+                if let Some(on_add_hook) = hooks.on_add {
+                    on_add_hook(&mut deferred_world, entity);
+                }
+                if let Some(on_insert_hook) = hooks.on_insert {
+                    on_insert_hook(&mut deferred_world, entity);
+                }
             }
         }
     }
@@ -111,138 +189,223 @@ pub(crate) struct DespawnCommand {
 impl DespawnCommand {
     pub(crate) fn apply(&self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index as usize;
-        let (arch_id, target_idx) = unsafe {
-            let data_ptr = REGISTRY.get_ptr(target_registry_idx);
-            let arch_id = (*data_ptr).archetype_id;
-            let handle_count = REGISTRY_HANDLE_COUNT.get_count(target_registry_idx);
-            if handle_count > 0 {
-                let arch_mutex = &world.archetypes_manager.archetypes.get(&arch_id).unwrap();
-                let lock = arch_mutex.lock();
-                let types_names = &lock.type_names;
-                panic!(
-                    "\n\
-                    {}\nCloned handles for an entity were not dropped before despawn execution!\n\
-                    Entity Archetype Component Names: \n{:#?}\n\
-                    Refer to the `CleanupHandles` schedule and `EntityCommands::despawn` documentation to understand how to coordinate handle cleanup.\n\
-                    ",
-                    ENTITY_HANDLE_VIOLATION_ERR, types_names
-                );
-            }
 
-            (arch_id, (*data_ptr).idx)
+        let initial_arch_id = unsafe {
+            let data_ptr = REGISTRY.get_ptr(target_registry_idx);
+            (*data_ptr).archetype_id
+        };
+
+        let arch = world
+            .archetypes_manager
+            .get_mut(initial_arch_id)
+            .expect("Target archetype missing");
+
+        let component_ids: Vec<TypeId> = arch.types.iter().cloned().collect();
+        drop(arch);
+
+        let mut deferred_world = DeferredWorld { world };
+
+        let mut active_hooks = Vec::with_capacity(component_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for id in component_ids {
+                active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for hooks_opt in active_hooks {
+            if let Some(hooks) = hooks_opt
+                && let Some(on_remove_hook) = hooks.on_remove
+            {
+                on_remove_hook(&mut deferred_world, &self.entity);
+            }
+        }
+
+        let handle_count = REGISTRY_HANDLE_COUNT.get_count(target_registry_idx);
+        if handle_count > 0 {
+            let arch_mutex = &world
+                .archetypes_manager
+                .archetypes
+                .get(&initial_arch_id)
+                .unwrap();
+            let lock = arch_mutex.lock();
+            let types_names = &lock.type_names;
+            panic!(
+                "{}\n\
+                Cloned handles for an entity were not dropped after hook execution and before despawn flushing!\n\
+                Entity Archetype Component Names: \n{:#?}\n\
+                Refer to the `CleanupHandles` schedule and `EntityCommands::despawn` documentation to understand how to coordinate handle cleanup.\n\
+                ",
+                ENTITY_HANDLE_VIOLATION_ERR, types_names
+            );
+        }
+
+        let (current_arch_id, current_target_idx) = unsafe {
+            let data_ptr = REGISTRY.get_ptr(target_registry_idx);
+            ((*data_ptr).archetype_id, (*data_ptr).idx)
         };
 
         let mut arch = world
             .archetypes_manager
-            .get_mut(arch_id)
+            .get_mut(current_arch_id)
             .expect("Target archetype missing");
+
         let last_idx = (arch.entities.read().len() - 1) as u32;
 
-        if target_idx != last_idx {
+        if current_target_idx != last_idx {
             let swapped_entity_registry_idx =
                 arch.entities.read()[last_idx as usize].registry_index as usize;
 
             unsafe {
                 let swapped_cell_ptr = REGISTRY.get_mut_ptr(swapped_entity_registry_idx);
-                (*swapped_cell_ptr).idx = target_idx;
+                (*swapped_cell_ptr).idx = current_target_idx;
             }
         }
         unsafe {
             let cols = &mut arch.columns;
             for col in cols.values_mut() {
-                col.data.write().swap_remove_erased(target_idx as usize);
+                col.data
+                    .write()
+                    .swap_remove_erased(current_target_idx as usize);
             }
         }
 
-        arch.entities.write().swap_remove(target_idx as usize);
+        arch.entities
+            .write()
+            .swap_remove(current_target_idx as usize);
         world.free_indices_list.push(target_registry_idx as u32);
     }
 }
 
-pub(crate) struct AddComponentsCommand<T: ComponentBundle> {
+pub(crate) struct InsertComponentsCommand<T: ComponentBundle> {
     pub(crate) entity: Entity,
     pub(crate) components: T,
 }
 
-impl<T: ComponentBundle> WorldCommand for AddComponentsCommand<T> {
-    fn apply(self, world: &mut World) {
-        let target_registry_idx = self.entity.registry_index as usize;
-        let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
-        let incoming_ids = T::get_type_ids();
-
-        let new_arch_id = if let Some(id) = world
-            .archetypes_manager
-            .find_target_id_for_addition(old_arch_id, incoming_ids)
-        {
-            id
-        } else {
-            create_addition_archetype::<T>(world, old_arch_id, incoming_ids)
-        };
-
-        if old_arch_id == new_arch_id {
-            return;
-        }
-
-        unsafe {
-            let (old_arch_mutex, new_arch_mutex) =
-                get_double_archetypes(world, old_arch_id, new_arch_id);
-            let mut old_arch = old_arch_mutex.lock();
-            let mut new_arch = new_arch_mutex.lock();
-            {
-                let new_cols = &mut new_arch.columns;
-                let old_cols = &mut old_arch.columns;
-                move_matching_columns(old_cols, new_cols, old_idx as usize);
-            }
-            let new_dense_idx = new_arch.entities.read().len() as u32;
-            self.components.push_to_archetype(&mut new_arch);
-            #[cfg(feature = "reactivity")]
-            {
-                let fresh_new_cols = &mut new_arch.columns;
-                migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
-            }
-            swap_remove_entity_registry_update(&mut old_arch.entities.write(), old_idx);
-            let entity_handle = old_arch.entities.write().swap_remove(old_idx as usize);
-            new_arch.entities.write().push(entity_handle);
-            update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
-        }
-    }
-}
-
-pub struct InsertComponentsCommand<T: ComponentBundle> {
-    pub entity: Entity,
-    pub components: T,
-}
-
 impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
     fn apply(self, world: &mut World) {
-        let target_registry_idx = self.entity.registry_index as usize;
-        let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
         let incoming_ids = T::get_type_ids();
+        let target_registry_idx = self.entity.registry_index as usize;
 
-        let new_arch_id = if let Some(id) = world
+        let mut deferred_world = DeferredWorld { world };
+
+        let mut must_register = false;
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in incoming_ids {
+                if read_guard.get_hooks(id).is_none() {
+                    must_register = true;
+                    break;
+                }
+            }
+        }
+
+        if must_register {
+            T::register_bundle_hooks();
+        }
+
+        let (mut old_arch_id, mut old_idx) = get_registry_location(target_registry_idx);
+
+        let mut new_arch_id = if let Some(id) = deferred_world
+            .world
             .archetypes_manager
             .find_target_id_for_addition(old_arch_id, incoming_ids)
         {
             id
         } else {
-            create_addition_archetype::<T>(world, old_arch_id, incoming_ids)
+            create_addition_archetype::<T>(deferred_world.world, old_arch_id, incoming_ids)
         };
 
         if old_arch_id == new_arch_id {
-            let mut arch = world.archetypes_manager.get_mut(old_arch_id).expect(
-                "Avenix Engine Fatal: Entity registry pointed to an untracked Archetype ID",
-            );
+            let mut active_hooks = Vec::with_capacity(incoming_ids.len());
+            {
+                let read_guard = GLOBAL_HOOK_REGISTRY.read();
+                for &id in incoming_ids {
+                    active_hooks.push(read_guard.get_hooks(id));
+                }
+            }
+
+            for hooks_opt in &active_hooks {
+                if let Some(hooks) = hooks_opt
+                    && let Some(on_discard_hook) = hooks.on_discard
+                {
+                    on_discard_hook(&mut deferred_world, &self.entity);
+                }
+            }
+
+            let (fresh_arch_id, fresh_idx) = get_registry_location(target_registry_idx);
+
+            let mut arch = deferred_world
+                .world
+                .archetypes_manager
+                .get_mut(fresh_arch_id)
+                .expect(
+                    "Avenix Engine Fatal: Entity registry pointed to an untracked Archetype ID",
+                );
 
             unsafe {
                 self.components
-                    .insert_to_archetype(&mut arch, old_idx as usize);
+                    .insert_to_archetype(&mut arch, fresh_idx as usize);
+            }
+
+            drop(arch);
+
+            for hooks_opt in active_hooks {
+                if let Some(hooks) = hooks_opt
+                    && let Some(on_insert_hook) = hooks.on_insert
+                {
+                    on_insert_hook(&mut deferred_world, &self.entity);
+                }
             }
             return;
         }
 
+        let mut old_has_component = Vec::with_capacity(incoming_ids.len());
+        {
+            let map = &deferred_world.world.archetypes_manager.archetypes;
+            let old_arch_mutex = map.get(&old_arch_id).expect("Old archetype missing");
+            let old_arch = old_arch_mutex.lock();
+            for &id in incoming_ids {
+                old_has_component.push(old_arch.types.contains(&id));
+            }
+        }
+
+        let mut active_hooks = Vec::with_capacity(incoming_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in incoming_ids {
+                active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for (i, hooks_opt) in active_hooks.iter().enumerate() {
+            if old_has_component[i]
+                && let Some(hooks) = hooks_opt
+                && let Some(on_discard_hook) = hooks.on_discard
+            {
+                on_discard_hook(&mut deferred_world, &self.entity);
+            }
+        }
+
+        let (fresh_arch_id, fresh_idx) = get_registry_location(target_registry_idx);
+
+        if fresh_arch_id != old_arch_id {
+            old_arch_id = fresh_arch_id;
+            old_idx = fresh_idx;
+            new_arch_id = if let Some(id) = deferred_world
+                .world
+                .archetypes_manager
+                .find_target_id_for_addition(old_arch_id, incoming_ids)
+            {
+                id
+            } else {
+                create_addition_archetype::<T>(deferred_world.world, old_arch_id, incoming_ids)
+            };
+        }
+
         unsafe {
             let (old_arch_mutex, new_arch_mutex) =
-                get_double_archetypes(world, old_arch_id, new_arch_id);
+                get_double_archetypes(deferred_world.world, old_arch_id, new_arch_id);
             let mut old_arch = old_arch_mutex.lock();
             let mut new_arch = new_arch_mutex.lock();
             let new_dense_idx = {
@@ -258,41 +421,96 @@ impl<T: ComponentBundle> WorldCommand for InsertComponentsCommand<T> {
                 move_matching_columns(old_cols, new_cols, old_idx as usize);
                 new_arch_entities.len() as u32
             };
+
+            let fresh_new_cols = &mut new_arch.columns;
+            migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
+
             self.components
                 .insert_to_archetype(&mut new_arch, new_dense_idx as usize);
 
-            #[cfg(feature = "reactivity")]
-            {
-                let fresh_new_cols = &mut new_arch.columns;
-                migrate_addition_markers(&old_arch.types, incoming_ids, fresh_new_cols);
-            }
             let mut old_arch_entities = old_arch.entities.write();
             swap_remove_entity_registry_update(&mut old_arch_entities, old_idx);
             let entity_handle = old_arch_entities.swap_remove(old_idx as usize);
             new_arch.entities.write().push(entity_handle);
             update_registry_cell(target_registry_idx, new_arch_id, new_dense_idx);
         }
+
+        let mut fresh_active_hooks = Vec::with_capacity(incoming_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in incoming_ids {
+                fresh_active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for (i, hooks_opt) in fresh_active_hooks.into_iter().enumerate() {
+            if let Some(hooks) = hooks_opt {
+                if !old_has_component[i]
+                    && let Some(on_add_hook) = hooks.on_add
+                {
+                    on_add_hook(&mut deferred_world, &self.entity);
+                }
+                if let Some(on_insert_hook) = hooks.on_insert {
+                    on_insert_hook(&mut deferred_world, &self.entity);
+                }
+            }
+        }
     }
 }
 
 pub(crate) struct RemoveComponentsCommand<T: ComponentBundle> {
     pub(crate) entity: Entity,
-    pub(crate) _marker: std::marker::PhantomData<T>,
+    pub(crate) _marker: PhantomData<T>,
 }
 
 impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
     fn apply(self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index as usize;
-        let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
         let removed_ids = T::get_type_ids();
 
-        let new_arch_id = if let Some(id) = world
+        let mut deferred_world = DeferredWorld { world };
+
+        let mut must_register = false;
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in removed_ids {
+                if read_guard.get_hooks(id).is_none() {
+                    must_register = true;
+                    break;
+                }
+            }
+        }
+
+        if must_register {
+            T::register_bundle_hooks();
+        }
+
+        let mut active_hooks = Vec::with_capacity(removed_ids.len());
+        {
+            let read_guard = GLOBAL_HOOK_REGISTRY.read();
+            for &id in removed_ids {
+                active_hooks.push(read_guard.get_hooks(id));
+            }
+        }
+
+        for hooks_opt in active_hooks {
+            if let Some(hooks) = hooks_opt
+                && let Some(on_remove_hook) = hooks.on_remove
+            {
+                on_remove_hook(&mut deferred_world, &self.entity);
+            }
+        }
+
+        let (old_arch_id, old_idx) = get_registry_location(target_registry_idx);
+
+        let new_arch_id = if let Some(id) = deferred_world
+            .world
             .archetypes_manager
             .find_target_id_for_subtraction(old_arch_id, removed_ids)
         {
             id
         } else {
-            create_subtraction_archetype::<T>(world, old_arch_id, removed_ids)
+            create_subtraction_archetype::<T>(deferred_world.world, old_arch_id, removed_ids)
         };
 
         if old_arch_id == new_arch_id {
@@ -300,17 +518,15 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
         }
 
         unsafe {
-            #[cfg(feature = "reactivity")]
-            let world_ptr = world as *mut World;
+            let world_ptr = deferred_world.world as *mut World;
             let (old_arch_mutex, new_arch_mutex) =
-                get_double_archetypes(world, old_arch_id, new_arch_id);
+                get_double_archetypes(deferred_world.world, old_arch_id, new_arch_id);
             let mut old_arch = old_arch_mutex.lock();
             let mut new_arch = new_arch_mutex.lock();
             let Archetype {
                 entities: new_arch_entities,
                 columns: new_cols,
-                #[cfg(feature = "reactivity")]
-                    types: new_types,
+                types: new_types,
                 ..
             } = &mut *new_arch;
             let mut new_arch_entities = new_arch_entities.write();
@@ -318,20 +534,17 @@ impl<T: ComponentBundle> WorldCommand for RemoveComponentsCommand<T> {
             let Archetype {
                 entities: old_arch_entities,
                 columns: old_cols,
-                #[cfg(feature = "reactivity")]
-                    types: old_types,
+                types: old_types,
                 ..
             } = &mut *old_arch;
             move_matching_columns(old_cols, new_cols, old_idx as usize);
             erase_subtracted_columns(removed_ids, old_cols, old_idx as usize);
 
             let mut old_arch_entities = old_arch_entities.write();
-            #[cfg(feature = "reactivity")]
-            {
-                erase_subtracted_markers(old_types, new_types, old_cols, old_idx as usize);
-                let entity_handle = &old_arch_entities[old_idx as usize];
-                push_removed_components_reactivity(world_ptr, removed_ids, entity_handle);
-            }
+
+            erase_subtracted_markers(old_types, new_types, old_cols, old_idx as usize);
+            let entity_handle = &old_arch_entities[old_idx as usize];
+            push_removed_components_reactivity(world_ptr, removed_ids, entity_handle);
 
             swap_remove_entity_registry_update(&mut old_arch_entities, old_idx);
 
@@ -421,7 +634,6 @@ fn create_addition_archetype<T: ComponentBundle>(
             new_types.insert(*id);
         }
 
-        #[cfg(feature = "reactivity")]
         world
             .archetypes_manager
             .sync_tracking_markers(&mut new_types);
@@ -451,7 +663,6 @@ fn create_addition_archetype<T: ComponentBundle>(
                 cols.entry(type_id).or_insert(col);
             }
 
-            #[cfg(feature = "reactivity")]
             initialize_missing_archetype_markers(_types_set, cols);
         },
     )
@@ -477,7 +688,6 @@ fn create_subtraction_archetype<T: ComponentBundle>(
             new_types.swap_remove(id);
         }
 
-        #[cfg(feature = "reactivity")]
         world
             .archetypes_manager
             .sync_tracking_markers(&mut new_types);
@@ -507,7 +717,6 @@ fn create_subtraction_archetype<T: ComponentBundle>(
                 cols.insert(type_id, col);
             }
 
-            #[cfg(feature = "reactivity")]
             initialize_missing_archetype_markers(_types_set, cols);
         },
     )
@@ -556,7 +765,6 @@ unsafe fn swap_remove_entity_registry_update(
     }
 }
 
-#[cfg(feature = "reactivity")]
 #[inline(always)]
 fn initialize_spawn_markers(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
     let tracked = TRACKED_COMPONENTS.lock();
@@ -569,25 +777,6 @@ fn initialize_spawn_markers(columns: &mut IndexMap<TypeId, ComponentColumn, FxBu
     }
 }
 
-#[cfg(feature = "reactivity")]
-#[inline]
-fn initialize_batch_spawn_markers(
-    columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
-    batch_size: usize,
-) {
-    let tracked = TRACKED_COMPONENTS.lock();
-    for meta_list in tracked.values() {
-        for meta in meta_list {
-            if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
-                for _ in 0..batch_size {
-                    unsafe { (meta.push_default_marker)(marker_column) };
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "reactivity")]
 #[inline(always)]
 fn initialize_missing_archetype_markers(
     types: &IndexSet<TypeId, FxBuildHasher>,
@@ -603,7 +792,6 @@ fn initialize_missing_archetype_markers(
     }
 }
 
-#[cfg(feature = "reactivity")]
 #[inline(always)]
 unsafe fn migrate_addition_markers(
     old_types: &IndexSet<TypeId, FxBuildHasher>,
@@ -627,7 +815,6 @@ unsafe fn migrate_addition_markers(
     }
 }
 
-#[cfg(feature = "reactivity")]
 #[inline(always)]
 unsafe fn erase_subtracted_markers(
     old_types: &IndexSet<TypeId, FxBuildHasher>,
@@ -648,7 +835,6 @@ unsafe fn erase_subtracted_markers(
     }
 }
 
-#[cfg(feature = "reactivity")]
 pub(crate) unsafe fn push_removed_components_reactivity(
     world_ptr: *mut World,
     removed_ids: &[std::any::TypeId],

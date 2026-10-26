@@ -1,19 +1,17 @@
 use avenix::prelude::*;
-use std::thread::sleep;
-use std::time::Duration;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct Player;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct Score(u32);
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct Buff {
     name: &'static str,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 struct StatusEffect;
 
 #[derive(Resource)]
@@ -33,8 +31,8 @@ fn setup_game(commands: Commands) {
 
 fn simulate_gameplay_mutations_frame_1(commands: Commands, score_query: Query<(Entity, &Score)>) {
     for (entity, _) in score_query.iter() {
-        println!("[Mutation - Frame 1] commands.add_components() queued for 'Buff'.");
-        commands.entity(entity).add(Buff { name: "Haste" });
+        println!("[Mutation - Frame 1] commands.entity().insert() queued for 'Buff'.");
+        commands.entity(entity).insert(Buff { name: "Haste" });
     }
 }
 
@@ -46,7 +44,7 @@ fn simulate_gameplay_mutations_frame_2(
         println!("[Mutation - Frame 2] Direct Mut Write modifying Score component value.");
         score.0 = 100;
 
-        println!("[Mutation - Frame 2] commands.insert_components() queued for 'StatusEffect'.");
+        println!("[Mutation - Frame 2] commands.entity().insert() queued for 'StatusEffect'.");
         commands.entity(entity).insert(StatusEffect);
     }
 }
@@ -184,7 +182,6 @@ fn test_runner_four_frames(app: &mut App) {
 
     for _ in 0..4 {
         app.update();
-        sleep(Duration::from_millis(50));
     }
 }
 

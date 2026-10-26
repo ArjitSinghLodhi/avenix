@@ -1,4 +1,4 @@
-use crate::ecs::Component;
+use crate::ecs::component::Component;
 use crate::query::QueryData;
 use crate::query::QueryFilter;
 use crate::reactivity::verify_app_not_built_yet;
@@ -33,7 +33,7 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
             let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
             vec.push(ChangedMarker {
                 read: false,
-                write: false,
+                write: true,
                 phantom: PhantomData,
             });
         },
@@ -50,7 +50,7 @@ pub(crate) fn register_changed_tracked_component<T: Component>() {
 #[derive(Clone, Copy)]
 pub struct ChangedMarker<T: Component> {
     read: bool,
-    write: bool,
+    pub(crate) write: bool,
     phantom: PhantomData<T>,
 }
 
@@ -64,11 +64,9 @@ impl<T: Component> Component for ChangedMarker<T> {}
 ///
 /// # Architecture & Timing
 ///
-/// This tracking relies on the exact same double-buffered, frame-locked system as the filter:
-///
-/// * **Frame 1:** The target component is mutably modified. The tracking bool is set but remains hidden.
-/// * **Frame 2:** [`.is_changed()`] evaluates to `true` globally across this entire frame window.
-/// * **Frame 3:** The flag is automatically purged and resets to `false`, regardless of system execution.
+/// This tracking relies on the exact same double-buffered, frame-locked system as the filter.
+/// For detailed breakdown of the 3-frame lifecycle timing, command application phases, and
+/// initial spawn behavior, see the documentation for [`Changed<T>`].
 ///
 /// [`.is_changed()`]: ChangedTracker::is_changed
 pub struct ChangedTracker<T: Component> {
@@ -77,7 +75,6 @@ pub struct ChangedTracker<T: Component> {
 }
 
 impl<T: Component> ChangedTracker<T> {
-    /// Returns whether the target component was mutably modified during the previous frame.
     #[inline(always)]
     pub fn is_changed(&self) -> bool {
         self.changed
@@ -102,7 +99,7 @@ impl<T: Component> QueryData for ChangedTracker<T> {
     }
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        archetype.get_column::<ChangedMarker<T>>()
+        archetype.column::<ChangedMarker<T>>()
     }
 
     unsafe fn fetch_read_only<'w, 'b>(
@@ -208,7 +205,7 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
     #[inline(always)]
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
         let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(fetch, index) };
-        let changed = unsafe { (&*mut_item.marker).read };
+        let changed = unsafe { (&*mut_item.changed_marker).read };
         ChangedRefMut {
             value: mut_item,
             changed,
@@ -245,6 +242,15 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
 /// * **Frame 3 (Purge):** The change state is unconditionally cleared.
 ///
 /// Regardless of whether a system ran or read the data, the detection flag will never last for more than exactly one frame.
+///
+/// # Structural Mutations & Spawning
+///
+/// Spawning a new entity with a component or inserting a component via commands acts as an initial mutation event.
+/// This structural modification triggers change tracking identically to a manual component mutation:
+///
+/// 1. **Command Queuing:** You call `.spawn()` or `.insert()` to queue a component modification command.
+/// 2. **Immediate Application:** The command is flushed and applied to the world during that same frame's execution phase.
+/// 3. **Next-Frame Visibility:** The tracking markers are flagged immediately following application, making `Changed<T>` evaluate to `true` across the entirety of the next frame.
 pub struct Changed<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Changed<T> {
@@ -254,7 +260,7 @@ impl<T: Component> QueryFilter for Changed<T> {
     }
 
     fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
-        archetype.get_column::<ChangedMarker<T>>()
+        archetype.column::<ChangedMarker<T>>()
     }
 
     fn matches_row<'w>(filter_data: &Self::FilterData<'w>, row_idx: usize) -> bool {
@@ -273,7 +279,7 @@ impl<T: Component> QueryFilter for Changed<T> {
 
 pub struct Mut<'w, T: Component> {
     pub(crate) value: *mut T,
-    pub(crate) marker: *mut ChangedMarker<T>,
+    pub(crate) changed_marker: *mut ChangedMarker<T>,
     pub(crate) _marker: std::marker::PhantomData<&'w mut T>,
 }
 
@@ -285,9 +291,9 @@ impl<'w, T: Component> Mut<'w, T> {
 
     #[inline(always)]
     pub fn trigger_change_detection(&mut self) {
-        if !self.marker.is_null() {
+        if !self.changed_marker.is_null() {
             unsafe {
-                (*self.marker).write = true;
+                (*self.changed_marker).write = true;
             }
         }
     }
@@ -299,8 +305,8 @@ impl<'w, T: Component> AsRef<T> for Mut<'w, T> {
     }
 }
 
-unsafe impl<'w, T: Component + Send> Send for Mut<'w, T> {}
-unsafe impl<'w, T: Component + Sync> Sync for Mut<'w, T> {}
+unsafe impl<'w, T: Component> Send for Mut<'w, T> {}
+unsafe impl<'w, T: Component> Sync for Mut<'w, T> {}
 
 impl<'w, T: Component> std::ops::Deref for Mut<'w, T> {
     type Target = T;

@@ -9,7 +9,6 @@ mod entity;
 mod entity_registry;
 mod events;
 mod query;
-#[cfg(feature = "reactivity")]
 mod reactivity;
 mod resources;
 mod schedule;
@@ -50,15 +49,17 @@ pub mod prelude {
         Component, ComponentBundle, Event, ParallelSystemParam, QueryData, QueryFilter, Resource,
         ScheduleLabel, States, SystemParam, SystemSet,
     };
-    #[cfg(feature = "reactivity")]
     pub use crate::ecs::reactivity::{
         added::{Added, AddedTracker},
         changed::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut},
-        removed::RemovedComponents,
+        removed::{RemovedComponents, RemovedComponentsBuffer},
     };
     pub use crate::ecs::{
-        Component,
         commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
+        component::{
+            Component, ComponentMut, ComponentRef,
+            hooks::{ComponentHook, ComponentHooksRegisterer, DeferredWorld},
+        },
         entity::Entity,
         events::{
             EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
@@ -78,7 +79,14 @@ pub mod prelude {
 }
 
 pub mod ecs {
-    pub use crate::component::Component;
+    pub mod component {
+        pub use crate::component::{Component, ComponentMut, ComponentRef};
+        pub mod hooks {
+            pub use crate::component::hooks::{
+                ComponentHook, ComponentHooksRegisterer, DeferredWorld,
+            };
+        }
+    }
     pub mod events {
         pub use crate::events::{
             EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
@@ -104,11 +112,10 @@ pub mod ecs {
         }
         pub use crate::query::parallel_query::ParallelQueryAccessor;
     }
-    #[cfg(feature = "reactivity")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reactivity")))]
+
     /// # Component Reactivity Architecture
     ///
-    /// When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
+    /// Avenix uses a demand-driven model to minimize runtime overhead with reactive trackers.
     ///
     /// * **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component
     ///   type by default. They are registered and initialized only if a system explicitly requests them
@@ -129,20 +136,22 @@ pub mod ecs {
     /// [`App`]: crate::app::App
     /// [`World`]: crate::world::World
     /// [`RemovedComponents<T>`]: crate::reactivity::removed::RemovedComponents
-    /// [`Changed<T>`]: crate::reactivity::changed::Changed<T>
+    /// [`Changed<T>`]: crate::reactivity::changed::Changed
     /// [`ChangedRefMut<T>`]: crate::reactivity::changed::ChangedRefMut
-    /// [`Added<T>`]: crate::reactivity::added::Added<T>
+    /// [`Added<T>`]: crate::reactivity::added::Added
     /// [`ParallelQueryAccessor`]: crate::ecs::query::ParallelQueryAccessor
     /// [`app.build()`]: crate::app::App::build
     pub mod reactivity {
         pub mod changed {
-            pub use crate::reactivity::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut};
+            pub use crate::reactivity::changed::{
+                Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut,
+            };
         }
         pub mod added {
-            pub use crate::reactivity::{Added, AddedTracker};
+            pub use crate::reactivity::added::{Added, AddedTracker};
         }
         pub mod removed {
-            pub use crate::reactivity::RemovedComponents;
+            pub use crate::reactivity::removed::{RemovedComponents, RemovedComponentsBuffer};
         }
     }
     pub mod commands {
@@ -155,7 +164,7 @@ pub mod ecs {
         pub use crate::world::World;
         pub mod archetypes {
             pub use crate::world::archetypes::{
-                Archetype, ComponentColumn, ComponentColumnRead, ComponentColumnWrite,
+                Archetype, ComponentColumn, ComponentColumnRead, ComponentColumnWrite, EntitiesRead,
             };
         }
     }

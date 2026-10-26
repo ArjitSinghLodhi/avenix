@@ -4,7 +4,9 @@ use rustc_hash::FxBuildHasher;
 use std::any::{TypeId, type_name};
 
 use crate::{
-    ecs::Component,
+    component::hooks::GLOBAL_HOOK_REGISTRY,
+    ecs::component::Component,
+    reactivity::changed::ChangedMarker,
     world::archetypes::{Archetype, ComponentColumn},
 };
 
@@ -15,7 +17,7 @@ pub trait ComponentBundle: Send + Sync + 'static {
     #[doc(hidden)]
     fn get_type_ids() -> &'static [TypeId];
     #[doc(hidden)]
-    fn push_to_archetype(self, archetype: &mut Archetype);
+    fn register_bundle_hooks();
 
     /// # Safety
     ///
@@ -41,6 +43,9 @@ impl<T: Component> ComponentBundle for T {
     fn get_type_ids() -> &'static [TypeId] {
         Self::TYPE_IDS
     }
+    fn register_bundle_hooks() {
+        GLOBAL_HOOK_REGISTRY.write().get_hooks_or_init::<T>();
+    }
     fn create_empty_columns(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
         let id = TypeId::of::<T>();
         columns.insert(
@@ -50,19 +55,21 @@ impl<T: Component> ComponentBundle for T {
             },
         );
     }
-    fn push_to_archetype(self, archetype: &mut Archetype) {
-        let mut vec_guard = archetype.get_column_mut::<T>();
-        vec_guard.push(self);
-    }
+
     unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
         unsafe {
-            let mut vec_guard = archetype.get_column_mut::<T>();
+            let mut vec_guard = archetype.column_mut::<T>();
             if row_idx < vec_guard.len() {
                 std::ptr::drop_in_place(&mut vec_guard[row_idx]);
                 std::ptr::write(&mut vec_guard[row_idx], self);
             } else {
                 vec_guard.push(self);
             }
+        }
+
+        if let Some(mut changed_marker_column) = archetype.get_column_mut::<ChangedMarker<T>>() {
+            let marker = unsafe { changed_marker_column.get_unchecked_mut(row_idx) };
+            marker.write = true;
         }
     }
     type NamesArray = [&'static str; 1];
@@ -81,48 +88,26 @@ macro_rules! impl_component_tuple {
                 Self::TYPE_IDS
             }
 
-            fn create_empty_columns(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
+            fn register_bundle_hooks() {
                 $(
-                    let id = TypeId::of::<$T>();
-                    columns.insert(id, ComponentColumn {
-                        data: RwLock::new(Box::new(Vec::<$T>::new())),
-                    });
+                    $T::register_bundle_hooks();
                 )*
             }
 
-            fn push_to_archetype(self, archetype: &mut Archetype) {
-                #[allow(non_snake_case)]
-                let ($($val,)*) = self;
-
+            fn create_empty_columns(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
                 $(
-                    #[allow(non_snake_case)]
-                    let mut $T = archetype.get_column_mut::<$T>();
-                )*
-
-                $(
-                    $T.push($val);
+                    $T::create_empty_columns(columns);
                 )*
             }
 
             unsafe fn insert_to_archetype(self, archetype: &mut Archetype, row_idx: usize) {
                 #[allow(non_snake_case)]
                 let ($($val,)*) = self;
-
-                $(
-                    #[allow(non_snake_case)]
-                    let mut $T = archetype.get_column_mut::<$T>();
-                )*
-
-                $(
-                    if row_idx < $T.len() {
-                        unsafe {
-                            std::ptr::drop_in_place(&mut $T[row_idx]);
-                            std::ptr::write(&mut $T[row_idx], $val);
-                        }
-                    } else {
-                        $T.push($val);
-                    }
-                )*
+                unsafe {
+                    $(
+                        $T::insert_to_archetype($val, archetype, row_idx);
+                    )*
+                }
             }
 
             type NamesArray = [&'static str; 0 $( + { let _ = stringify!($T); 1 } )*];

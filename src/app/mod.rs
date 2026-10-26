@@ -29,8 +29,7 @@ use std::{
 use crate::events::{Event, EventBuffer, register_event};
 use std::any::type_name;
 
-#[cfg(feature = "reactivity")]
-use crate::{ecs::Component, reactivity::register_removal_tracking_buffers};
+use crate::{ecs::component::Component, reactivity::removed::register_removal_tracking_buffers};
 
 static APP_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -354,19 +353,16 @@ impl App {
         self
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_changed_trackers<T: Component>(&mut self) -> &mut Self {
         self.world().register_changed_trackers::<T>();
         self
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_added_trackers<T: Component>(&mut self) -> &mut Self {
         self.world().register_added_trackers::<T>();
         self
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_removal_trackers<T: Component>(&mut self) -> &mut Self {
         self.world().register_removal_trackers::<T>();
         self
@@ -397,7 +393,6 @@ impl App {
         self.startup_schedule.init_executor();
         self.cleanup_schedule.init_executor();
         self.configuration().schedules_processed = true;
-        #[cfg(feature = "reactivity")]
         register_removal_tracking_buffers(self.world_mut());
     }
 

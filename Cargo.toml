@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.25.0"
+version = "0.26.1"
 edition = "2024"
 description = "A concurrent ECS application framework"
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["ecs", "archetype", "framework", "parallel", "concurrency"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = "0.8.0"
+avenix_macros = "0.9.0"
 indexmap = "2.14.2"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"
@@ -25,7 +25,6 @@ test-fork = "0.1.7"
 
 [features]
 default = []
-reactivity = []
 
 [lib]
 name = "avenix"
@@ -50,22 +49,18 @@ path = "tests/derive_tests.rs"
 [[test]]
 name = "change_tracking_test"
 path = "tests/reactivity/changed_tracking_test.rs"
-required-features = ["reactivity"]
 
 [[test]]
 name = "added_tracking_test"
 path = "tests/reactivity/added_tracking_test.rs"
-required-features = ["reactivity"]
 
 [[test]]
 name = "removed_tracking_test"
 path = "tests/reactivity/removed_tracking_test.rs"
-required-features = ["reactivity"]
 
 [[test]]
 name = "parallel_query_tests"
 path = "tests/parallel_query_tests.rs"
-required-features = ["reactivity"]
 
 [[test]]
 name = "system_set_tests"
@@ -84,9 +79,12 @@ name = "query_single"
 path = "tests/query_single.rs"
 
 [[test]]
+name = "component_hooks_tests"
+path = "tests/component_hooks_tests.rs"
+
+[[test]]
 name = "app_configuration_lifecycle"
 path = "tests/app_configuration_lifecycle.rs"
-required-features = ["reactivity"]
 
 [[example]]
 name = "hello_world"
@@ -123,12 +121,10 @@ path = "examples/08_query_lookups.rs"
 [[example]]
 name = "query_reactivity"
 path = "examples/09_query_reactivity.rs"
-required-features = ["reactivity"]
 
 [[example]]
 name = "removal_tracking"
 path = "examples/10_removal_tracking.rs"
-required-features = ["reactivity"]
 
 [[example]]
 name = "derive"
@@ -141,7 +137,6 @@ path = "examples/12_parallel_resources.rs"
 [[example]]
 name = "parallel_query"
 path = "examples/13_parallel_query.rs"
-required-features = ["reactivity"]
 
 [[example]]
 name = "system_ordering_conditions"
@@ -156,9 +151,12 @@ name = "system_sets"
 path = "examples/16_system_sets.rs"
 
 [[example]]
+name = "component_hooks"
+path = "examples/17_component_hooks.rs"
+
+[[example]]
 name = "basic_cleanup"
 path = "examples/despawn_cleanup/01_basic_cleanup.rs"
-
 
 [[example]]
 name = "intermediate_cleanup"
@@ -215,10 +213,8 @@ harness = false
 name = "query_write_reactive_untracked"
 path = "benches/query_write_reactive_untracked.rs"
 harness = false
-required-features = ["reactivity"]
 
 [[bench]]
 name = "query_write_reactive_tracked"
 path = "benches/query_write_reactive_tracked.rs"
 harness = false
-required-features = ["reactivity"]

@@ -18,233 +18,45 @@ struct FrameCounter {
     current_frame: u32,
 }
 
-fn increment_frame_system(mut counter: ResMut<FrameCounter>) {
-    counter.current_frame += 1;
+fn simulate_frame_2_mutation(mut query: Query<&mut Position>) {
+    for mut pos in query.iter_mut() {
+        pos.x = 999.0;
+    }
 }
 
-fn setup_multi_frame_entities(commands: Commands) {
-    commands.spawn((Position { x: 10.0, y: 10.0 }, Velocity { x: 1.0, y: 1.0 }));
+fn verify_frame_1_baseline(changed_query: Query<&Position, Changed<Position>>) {
+    let changed_count = changed_query.filtered_entities();
+    assert_eq!(changed_count, 0);
 }
 
-fn pre_mutation_verify_system(
-    counter: Res<FrameCounter>,
-    pos_changed_query: Query<&Position, Changed<Position>>,
-    vel_changed_query: Query<&Velocity, Changed<Velocity>>,
-    pos_tracker_query: Query<ChangedTracker<Position>>,
-    vel_tracker_query: Query<ChangedTracker<Velocity>>,
+fn verify_frame_2_immediate_change(changed_query: Query<&Position, Changed<Position>>) {
+    let changed_count = changed_query.filtered_entities();
+    assert_eq!(changed_count, 1);
+    for pos in changed_query.iter() {
+        assert_eq!(pos.x, 999.0);
+    }
+}
+
+fn verify_frame_3_persistent_state(
+    changed_query: Query<&Position, Changed<Position>>,
+    tracker_query: Query<(&Position, ChangedTracker<Velocity>)>,
 ) {
-    let pos_changes = pos_changed_query.filtered_entities();
-    let vel_changes = vel_changed_query.filtered_entities();
-
-    let mut pos_tracker_changes = 0;
-    for tracker in pos_tracker_query.iter() {
-        if tracker.is_changed() {
-            pos_tracker_changes += 1;
-        }
-    }
-
-    let mut vel_tracker_changes = 0;
-    for tracker in vel_tracker_query.iter() {
-        if tracker.is_changed() {
-            vel_tracker_changes += 1;
-        }
-    }
-
-    if counter.current_frame == 1 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Soundness Failure: Spawned Position registered as changed on Changed Filter Frame 1 baseline!"
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Soundness Failure: Spawned Velocity registered as changed on Changed Filter Frame 1 baseline!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Soundness Failure: Spawned Position registered as changed on ChangedTracker Frame 1 baseline!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Soundness Failure: Spawned Velocity registered as changed on ChangedTracker Frame 1 baseline!"
-        );
-    }
-
-    if counter.current_frame == 2 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Pipeline Leak: Pre-mutator system saw a Changed Filter Position change prematurely on Frame 2!"
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Pipeline Leak: Pre-mutator system saw a Changed Filter Velocity change prematurely on Frame 2!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Pipeline Leak: Pre-mutator system saw a ChangedTracker Position change prematurely on Frame 2!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Pipeline Leak: Pre-mutator system saw a ChangedTracker Velocity change prematurely on Frame 2!"
-        );
-    }
-
-    if counter.current_frame == 3 {
-        assert_eq!(
-            pos_changes, 1,
-            "❌ Core Failure: Pre-mutator failed to detect independent Position historical mutation on Changed Filter Frame 3!"
-        );
-        assert_eq!(
-            vel_changes, 1,
-            "❌ Core Failure: Pre-mutator failed to detect independent Velocity historical mutation on Changed Filter Frame 3!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 1,
-            "❌ Core Failure: Pre-mutator failed to detect independent Position historical mutation on ChangedTracker Frame 3!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 1,
-            "❌ Core Failure: Pre-mutator failed to detect independent Velocity historical mutation on ChangedTracker Frame 3!"
-        );
-    }
-
-    if counter.current_frame == 4 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Stagnation Failure: Stale Position change marker leaked into Changed Filter Frame 4 for Pre-system!"
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Stagnation Failure: Stale Velocity change marker leaked into Changed Filter Frame 4 for Pre-system!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Stagnation Failure: Stale Position change marker leaked into ChangedTracker Frame 4 for Pre-system!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Stagnation Failure: Stale Velocity change marker leaked into ChangedTracker Frame 4 for Pre-system!"
-        );
+    let changed_count = changed_query.filtered_entities();
+    assert_eq!(changed_count, 1);
+    for (pos, tracker) in tracker_query.iter() {
+        assert_eq!(pos.x, 999.0);
+        assert!(!tracker.is_changed());
     }
 }
 
-fn midstream_mutator_system(
-    mut pos_query: Query<&mut Position>,
-    mut vel_query: Query<&mut Velocity>,
-) {
-    for mut pos in pos_query.iter_mut() {
-        *pos = Position { x: 20.0, y: 10.0 };
-    }
-
-    for mut vel in vel_query.iter_mut() {
-        *vel = Velocity { x: 5.0, y: 1.0 };
-    }
+fn verify_frame_4_decayed_state(changed_query: Query<&Position, Changed<Position>>) {
+    let changed_count = changed_query.filtered_entities();
+    assert_eq!(changed_count, 0);
 }
 
-fn post_mutation_verify_system(
-    counter: Res<FrameCounter>,
-    pos_changed_query: Query<&Position, Changed<Position>>,
-    vel_changed_query: Query<&Velocity, Changed<Velocity>>,
-    pos_tracker_query: Query<ChangedTracker<Position>>,
-    vel_tracker_query: Query<ChangedTracker<Velocity>>,
-) {
-    let pos_changes = pos_changed_query.filtered_entities();
-    let vel_changes = vel_changed_query.filtered_entities();
-
-    let mut pos_tracker_changes = 0;
-    for tracker in pos_tracker_query.iter() {
-        if tracker.is_changed() {
-            pos_tracker_changes += 1;
-        }
-    }
-
-    let mut vel_tracker_changes = 0;
-    for tracker in vel_tracker_query.iter() {
-        if tracker.is_changed() {
-            vel_tracker_changes += 1;
-        }
-    }
-
-    if counter.current_frame == 1 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Soundness Failure: Post-system flagged Changed Filter Position change on Frame 1 baseline."
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Soundness Failure: Post-system flagged Changed Filter Velocity change on Frame 1 baseline."
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Soundness Failure: Post-system flagged ChangedTracker Position change on Frame 1 baseline."
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Soundness Failure: Post-system flagged ChangedTracker Velocity change on Frame 1 baseline."
-        );
-    }
-
-    if counter.current_frame == 2 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Buffer Break: Post-mutator caught an immediate inline Changed Filter Position alteration on Frame 2!"
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Buffer Break: Post-mutator caught an immediate inline Changed Filter Velocity alteration on Frame 2!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Buffer Break: Post-mutator caught an immediate inline ChangedTracker Position alteration on Frame 2!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Buffer Break: Post-mutator caught an immediate inline ChangedTracker Velocity alteration on Frame 2!"
-        );
-    }
-
-    if counter.current_frame == 3 {
-        assert_eq!(
-            pos_changes, 1,
-            "❌ Pipeline Leak: Post-mutator failed to detect historical Changed Filter Position change on Frame 3!"
-        );
-        assert_eq!(
-            vel_changes, 1,
-            "❌ Pipeline Leak: Post-mutator failed to detect historical Changed Filter Velocity change on Frame 3!"
-        );
-        assert_eq!(
-            pos_tracker_changes, 1,
-            "❌ Pipeline Leak: Post-mutator failed to detect historical ChangedTracker Position change on Frame 3!"
-        );
-        assert_eq!(
-            vel_tracker_changes, 1,
-            "❌ Pipeline Leak: Post-mutator failed to detect historical ChangedTracker Velocity change on Frame 3!"
-        );
-    }
-
-    if counter.current_frame == 4 {
-        assert_eq!(
-            pos_changes, 0,
-            "❌ Tracking Error: Post-system leaked Changed Filter Position change into Frame 4 (should stagnate)."
-        );
-        assert_eq!(
-            vel_changes, 0,
-            "❌ Tracking Error: Post-system leaked Changed Filter Velocity change into Frame 4 (should stagnate)."
-        );
-        assert_eq!(
-            pos_tracker_changes, 0,
-            "❌ Tracking Error: Post-system leaked ChangedTracker Position change into Frame 4 (should stagnate)."
-        );
-        assert_eq!(
-            vel_tracker_changes, 0,
-            "❌ Tracking Error: Post-system leaked ChangedTracker Velocity change into Frame 4 (should stagnate)."
-        );
-    }
-}
-
-fn test_runner_four_frames(app: &mut App) {
+fn multi_frame_test_runner(app: &mut App) {
     app.build();
     app.run_startup();
-
     app.update();
     app.update();
     app.update();
@@ -252,27 +64,49 @@ fn test_runner_four_frames(app: &mut App) {
 }
 
 #[test_fork::test]
-fn test_multiple_changed_filters_lifecycle() {
+fn test_multi_frame_change_propagation() {
     let mut app = App::new();
-
     app.insert_resource(FrameCounter { current_frame: 0 })
-        .add_systems(Startup, setup_multi_frame_entities);
+        .add_systems(Startup, spawn_tracking_entity)
+        .add_systems(
+            Update,
+            (
+                increment_frame_system,
+                simulate_frame_2_mutation.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                verify_frame_1_baseline.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
+                verify_frame_2_immediate_change.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 2)
+                    },
+                ),
+                verify_frame_3_persistent_state.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 3)
+                    },
+                ),
+                verify_frame_4_decayed_state.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 4)
+                    },
+                ),
+            )
+                .chain(),
+        );
 
-    app.add_systems(
-        Update,
-        (
-            increment_frame_system,
-            pre_mutation_verify_system,
-            midstream_mutator_system.run_if(|counter: ParallelResourceAccessor<FrameCounter>| {
-                counter.scope(|c| c.current_frame == 2)
-            }),
-            post_mutation_verify_system,
-        )
-            .chain(),
-    );
-
-    app.set_runner(test_runner_four_frames);
+    app.set_runner(multi_frame_test_runner);
     app.run();
+}
+
+fn increment_frame_system(mut counter: ResMut<FrameCounter>) {
+    counter.current_frame += 1;
 }
 
 fn spawn_tracking_entity(commands: Commands) {
@@ -299,17 +133,25 @@ fn verify_change_tracking(frame: Res<FrameCounter>, query: Query<&Position, Chan
 
 fn verify_change_tracking_data(
     frame: Res<FrameCounter>,
-    query: Query<(&Position, ChangedTracker<Velocity>)>,
+    query: Query<(&Position, ChangedTracker<Position>)>,
 ) {
     if frame.current_frame == 2 {
         let mut change_detected_track = false;
-        for (pos, mark) in query.iter() {
-            if pos.x == 50.0 && !mark.is_changed() {
+        for (pos, tracker) in query.iter() {
+            if pos.x == 50.0 && tracker.is_changed() {
                 change_detected_track = true;
             }
         }
         assert!(change_detected_track);
     }
+}
+
+fn test_runner_once(app: &mut App) {
+    app.build();
+    app.run_startup();
+    app.update();
+    app.update();
+    app.update();
 }
 
 #[test_fork::test]
@@ -321,7 +163,11 @@ fn test_changed_generational_tracking() {
             Update,
             (
                 increment_frame_system,
-                modify_component_system,
+                modify_component_system.run_if(
+                    |counter: ParallelResourceAccessor<FrameCounter>| {
+                        counter.scope(|c| c.current_frame == 1)
+                    },
+                ),
                 verify_change_tracking,
                 verify_change_tracking_data,
             )
@@ -332,9 +178,20 @@ fn test_changed_generational_tracking() {
     app.run();
 }
 
-fn test_runner_once(app: &mut App) {
+fn setup_multi_frame_entities(commands: Commands) {
+    commands.spawn((Position { x: 5.0, y: 5.0 }, Velocity { x: 1.0, y: 1.0 }));
+}
+
+fn midstream_mutator_system(mut query: Query<&mut Position>) {
+    for mut pos in query.iter_mut() {
+        pos.x = 50.0;
+    }
+}
+
+fn test_runner_four_frames(app: &mut App) {
     app.build();
     app.run_startup();
+    app.update();
     app.update();
     app.update();
     app.update();

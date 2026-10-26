@@ -46,7 +46,7 @@ fn apply_frame_1_mutations(query: Query<(Entity, &EntityTag)>, commands: Command
         let entity_cmd = commands.entity(entity);
         match tag {
             EntityTag::AdderTarget => {
-                entity_cmd.add(Velocity { x: 10.0, y: 10.0 });
+                entity_cmd.insert(Velocity { x: 10.0, y: 10.0 });
             }
             EntityTag::InserterTarget => {
                 entity_cmd.insert(Acceleration { x: 5.0, y: 5.0 });

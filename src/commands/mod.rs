@@ -1,6 +1,6 @@
 pub mod bundle;
 mod command_queue;
-mod command_types;
+pub(crate) mod command_types;
 mod parallel_commands;
 pub(crate) use command_types::DespawnCommand;
 use orx_parallel::{IterIntoParIter, Par};
@@ -17,8 +17,7 @@ use crate::{
         bundle::ComponentBundle,
         command_queue::CommandQueue,
         command_types::{
-            AddComponentsCommand, BatchSpawnCommand, InsertComponentsCommand,
-            RemoveComponentsCommand, SpawnCommand,
+            BatchSpawnCommand, InsertComponentsCommand, RemoveComponentsCommand, SpawnCommand,
         },
     },
     entity::Entity,
@@ -69,12 +68,9 @@ impl<'a> Commands<'a> {
     pub fn spawn_batch<C, I>(&self, components_iter: I)
     where
         C: ComponentBundle + Send,
-        I: IntoIterator<Item = C>,
-        I::IntoIter: Send + 'static,
+        I: Iterator<Item = C> + Send + 'static,
     {
-        self.queue(BatchSpawnCommand {
-            components_iter: Box::new(components_iter.into_iter()),
-        });
+        self.queue(BatchSpawnCommand { components_iter });
     }
 
     pub fn entity<'b>(&'b self, entity: &'b Entity) -> EntityCommands<'a, 'b> {
@@ -167,30 +163,16 @@ pub struct EntityCommands<'a, 'b> {
 }
 
 impl<'a, 'b> EntityCommands<'a, 'b> {
-    /// Schedules a command to add a bundle of components to an entity without overwriting existing data.
-    ///
-    /// # Behavior
-    ///
-    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
-    ///   `true`, but the `Changed<T>` filter is **not** notified.
-    /// * **If the component already exists:** The command is ignored and the data is **not** overwritten.
-    ///   Neither the `Added<T>` nor `Changed<T>` filters are notified.
-    pub fn add<C: ComponentBundle + Send>(&self, components: C) -> &Self {
-        self.commands.queue(AddComponentsCommand {
-            entity: self.entity_id.clone(),
-            components,
-        });
-        self
-    }
-
     /// Schedules a command to insert a bundle of components onto an entity, overwriting any existing data.
     ///
     /// # Behavior
     ///
-    /// * **If the component does not exist:** It is added to the entity. The `Added<T>` filter is flagged as
-    ///   `true`, but the `Changed<T>` filter is **not** notified.
-    /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. Neither the
-    ///   `Added<T>` nor `Changed<T>` filters are notified.
+    /// * **If the component does not exist:** It is added to the entity. Both [`Added<T>`] and [`Changed<T>`] are flagged.
+    /// * **If the component already exists:** The existing value is unconditionally dropped and replaced by the new data. [`Changed<T>`] is flagged
+    ///   but [`Added<T>`] is *not*.
+    ///
+    /// [`Added<T>`]: crate::reactivity::added::Added
+    /// [`Changed<T>`]: crate::reactivity::changed::Changed
     pub fn insert<C: ComponentBundle + Send>(&self, components: C) -> &Self {
         self.commands.queue(InsertComponentsCommand {
             entity: self.entity_id.clone(),
@@ -227,7 +209,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// of every component within the entity's archetype, allowing you to instantly
     /// identify which entity type caused the violation.
     ///
-    /// look into the documentation of [`CleanupHandles`] to understand how its structured
+    /// Look into the documentation of [`CleanupHandles`] to understand how it is structured
     /// to help you on using [`for_each_despawn`] and [`will_despawn`] to satisfy this requirement.
     ///
     /// [`CleanupHandles`]: crate::schedule::CleanupHandles

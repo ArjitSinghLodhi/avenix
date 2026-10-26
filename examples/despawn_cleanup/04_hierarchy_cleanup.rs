@@ -1,159 +1,150 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use avenix::prelude::*;
 
 #[derive(Component)]
-pub struct Children {
-    pub children: Vec<Entity>,
-}
-
-#[derive(Component)]
-pub struct ChildOf {
-    pub parent: Entity,
-}
-
-#[derive(Component)]
+#[component(on_add = LinkTo::handle_link, on_insert = Self::handle_link)]
 pub struct LinkTo {
     pub parent: Entity,
 }
 
+impl LinkTo {
+    pub fn handle_link(world: &mut DeferredWorld, entity: &Entity) {
+        let mut parent_target = None;
+        {
+            if let Some(link) = world.get::<LinkTo>(entity) {
+                parent_target = Some(link.parent.clone());
+            }
+        }
+
+        if let Some(parent) = parent_target {
+            let mut appended_to_parent = false;
+            {
+                if let Some(mut parent_children) = world.get_mut::<Children>(&parent) {
+                    parent_children.children.push(entity.clone());
+                    appended_to_parent = true;
+                }
+            }
+
+            if !appended_to_parent {
+                world.insert_components(
+                    parent.clone(),
+                    Children {
+                        children: vec![entity.clone()],
+                    },
+                );
+            }
+
+            world.insert_components(entity.clone(), ChildOf { parent });
+            world.remove_components::<LinkTo>(entity.clone());
+        }
+    }
+}
+
 #[derive(Component)]
+#[component(on_add, on_insert)]
 pub struct UnlinkChild;
 
-pub struct HierarchyPlugin;
-
-#[derive(SystemSet, Clone, PartialEq, Debug)]
-enum HierarchySet {
-    UpdateSync,
-    Cleanup,
-}
-
-impl Plugin for HierarchyPlugin {
-    fn build(&self, app: &mut App) {
-        app.configure_sets(Update, HierarchySet::UpdateSync)
-            .configure_sets(CleanupHandles, HierarchySet::Cleanup)
-            .add_systems(
-                Update,
-                (hierarchy_linker_system, hierarchy_unlinker_system)
-                    .in_set(HierarchySet::UpdateSync),
-            )
-            .add_systems(
-                CleanupHandles,
-                (
-                    hirearchy_cleanup_despawns,
-                    hierarchy_cleanup_dead_link_entities,
-                    hierarchy_cleanup_dead_unlink_entities,
-                    hierarchy_cleanup_orphan_unlink_entities,
-                )
-                    .in_set(HierarchySet::Cleanup),
-            );
-    }
-}
-
-fn hierarchy_linker_system(
-    commands: Commands,
-    mut parent_query: Query<&mut Children>,
-    link_query: Query<(Entity, &LinkTo)>,
-) {
-    for (child_entity, link_comp) in link_query.iter() {
-        let parent_target = &link_comp.parent;
-        #[allow(unused_mut)]
-        if let Some(mut parent_comp) = parent_query.get_mut(&parent_target) {
-            parent_comp.children.push(child_entity.clone());
-        } else {
-            commands.entity(parent_target).add(Children {
-                children: vec![child_entity.clone()],
-            });
-        }
-        commands
-            .entity(child_entity)
-            .insert(ChildOf {
-                parent: parent_target.clone(),
-            })
-            .remove::<LinkTo>();
-    }
-}
-
-fn hierarchy_unlinker_system(
-    commands: Commands,
-    mut parent_query: Query<&mut Children>,
-    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
-) {
-    for (child_entity, child_of) in unlink_query.iter() {
-        #[allow(unused_mut)]
-        if let Some(mut parent_comp) = parent_query.get_mut(&child_of.parent) {
-            parent_comp.children.retain(|entity| entity != child_entity);
-            println!("Hierarchy Plugin: Unlinked child from parent");
-            if parent_comp.children.is_empty() {
-                println!(
-                    "Hierarchy Plugin: Removing Children component from parent because there are no children anymore"
-                );
-                commands.entity(&child_of.parent).remove::<Children>();
+impl UnlinkChild {
+    pub fn on_add(world: &mut DeferredWorld, entity: &Entity) {
+        let mut parent_target = None;
+        {
+            if let Some(child_of) = world.get::<ChildOf>(entity) {
+                parent_target = Some(child_of.parent.clone());
             }
         }
-        commands
-            .entity(child_entity)
-            .remove::<(UnlinkChild, ChildOf)>();
-    }
-}
 
-fn hirearchy_cleanup_despawns(
-    commands: Commands,
-    mut parent_query: Query<&mut Children>,
-    child_query: Query<(Entity, &ChildOf)>,
-) {
-    commands.for_each_despawn(|dead_entity| {
-        #[allow(unused_mut)]
-        if let Some(mut parent_comp) = parent_query.get_mut(dead_entity) {
-            println!("Hierarchy Plugin: Parent is despawning. Queueing recursive child deletion!");
-            while let Some(child_handle) = parent_comp.children.pop() {
-                commands.entity(&child_handle).remove::<ChildOf>().despawn();
+        if let Some(parent) = parent_target {
+            let mut clean_parent_component = false;
+            {
+                if let Some(mut parent_children) = world.get_mut::<Children>(&parent) {
+                    parent_children.children.retain(|e| e != entity);
+                    if parent_children.children.is_empty() {
+                        clean_parent_component = true;
+                    }
+                }
             }
-            commands.entity(dead_entity).remove::<Children>();
-        }
 
-        if let Some((child_entity, childof)) = child_query.get(dead_entity) {
-            println!("Hierarchy Plugin: Child is dying, Unlinking it from parent");
-            #[allow(unused_mut)]
-            if let Some(mut parent_comp) = parent_query.get_mut(&childof.parent) {
-                parent_comp.children.retain(|entity| entity != child_entity);
+            if clean_parent_component {
+                world.remove_components::<Children>(parent);
             }
         }
-    });
+
+        world.remove_components::<ChildOf>(entity.clone());
+        world.remove_components::<UnlinkChild>(entity.clone());
+    }
+
+    pub fn on_insert(world: &mut DeferredWorld, entity: &Entity) {
+        Self::on_add(world, entity);
+    }
 }
 
-fn hierarchy_cleanup_dead_link_entities(commands: Commands, link_query: Query<(Entity, &LinkTo)>) {
-    for (child_entity, link_comp) in link_query.iter() {
-        if commands.will_despawn(&link_comp.parent) {
-            println!(
-                "Hierarchy Plugin: Target parent is dying before linkage completes. Stripping LinkTo component safely..."
-            );
-            commands.entity(child_entity).remove::<LinkTo>();
+#[derive(Component)]
+#[component(on_remove = Self::handle_remove)]
+pub struct Children {
+    pub children: Vec<Entity>,
+}
+
+impl Children {
+    pub fn handle_remove(world: &mut DeferredWorld, entity: &Entity) {
+        let mut children_to_clear = Vec::new();
+        {
+            if let Some(parent_children) = world.get::<Children>(entity) {
+                children_to_clear = parent_children.children.clone();
+            }
+        }
+
+        for child in children_to_clear {
+            let mut child_still_exists = false;
+            {
+                if world.get::<ChildOf>(&child).is_some() {
+                    child_still_exists = true;
+                }
+            }
+            if child_still_exists {
+                world.remove_components::<ChildOf>(child);
+            }
         }
     }
 }
 
-fn hierarchy_cleanup_dead_unlink_entities(
-    commands: Commands,
-    unlink_query: Query<(Entity, &ChildOf), With<UnlinkChild>>,
-) {
-    for (child_entity, childof) in unlink_query.iter() {
-        if commands.will_despawn(&childof.parent) {
-            println!("Hierarchy plugin: Unlink target is dying, removing unlink comp from entity");
-            commands.entity(child_entity).remove::<UnlinkChild>();
+#[derive(Component)]
+#[component(on_remove)]
+pub struct ChildOf {
+    pub parent: Entity,
+}
+
+impl ChildOf {
+    pub fn on_remove(world: &mut DeferredWorld, entity: &Entity) {
+        let mut parent_target = None;
+        {
+            if let Some(child_of) = world.get::<ChildOf>(entity) {
+                parent_target = Some(child_of.parent.clone());
+            }
+        }
+
+        if let Some(parent) = parent_target {
+            let mut clean_parent_component = false;
+            let mut parent_still_exists = false;
+            {
+                if let Some(mut parent_children) = world.get_mut::<Children>(&parent) {
+                    parent_still_exists = true;
+                    parent_children.children.retain(|e| e != entity);
+                    if parent_children.children.is_empty() {
+                        clean_parent_component = true;
+                    }
+                }
+            }
+
+            if parent_still_exists && clean_parent_component {
+                world.remove_components::<Children>(parent);
+            }
         }
     }
 }
 
-fn hierarchy_cleanup_orphan_unlink_entities(
-    commands: Commands,
-    unlink_orphan_query: Query<Entity, (With<UnlinkChild>, Without<ChildOf>)>,
-) {
-    for entity in unlink_orphan_query.iter() {
-        println!("Entity was set for unlink without parent, removing UnlinkChild component");
-        commands.entity(entity).remove::<UnlinkChild>();
-    }
-}
-
-trait HierarchyEntityCommandsExt {
+pub trait HierarchyEntityCommandsExt {
     fn set_parent(&self, new_parent: Entity) -> &Self;
     fn remove_parent(&self) -> &Self;
 }
@@ -295,9 +286,11 @@ fn main() {
     println!("--- Starting Hirarchy Example ---");
 
     App::new()
-        .add_plugins(HierarchyPlugin)
         .insert_resource(FrameStepper { current_frame: 0 })
-        .add_systems(Startup, (setup_scene_graph, build_generation_hierarchy))
+        .add_systems(
+            Startup,
+            (setup_scene_graph, build_generation_hierarchy).chain(),
+        )
         .add_systems(
             Update,
             (
@@ -323,8 +316,7 @@ fn main() {
                     },
                 ),
             )
-                .chain()
-                .after(HierarchySet::UpdateSync),
+                .chain(),
         )
         .set_runner(run_test_frames)
         .run();

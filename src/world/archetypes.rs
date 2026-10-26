@@ -11,9 +11,8 @@ use indexmap::{IndexMap, IndexSet};
 use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
-use crate::{commands::bundle::ComponentBundle, ecs::Component, entity::Entity};
+use crate::{commands::bundle::ComponentBundle, ecs::component::Component, entity::Entity};
 
-#[cfg(feature = "reactivity")]
 use crate::reactivity::TRACKED_COMPONENTS;
 
 pub(crate) trait AnyColumn: Any {
@@ -117,6 +116,17 @@ impl<'a, T: Component> DerefMut for ComponentColumnWrite<'a, T> {
     }
 }
 
+pub struct EntitiesRead<'w> {
+    entities_guard: RwLockReadGuard<'w, Vec<Entity>>,
+}
+
+impl<'w> Deref for EntitiesRead<'w> {
+    type Target = Vec<Entity>;
+    fn deref(&self) -> &Self::Target {
+        &self.entities_guard
+    }
+}
+
 pub struct Archetype {
     pub(crate) id: ArchetypeId,
     pub(crate) types: IndexSet<TypeId, FxBuildHasher>,
@@ -145,15 +155,18 @@ impl Archetype {
     }
 
     #[inline(always)]
-    pub fn entities(&self) -> RwLockReadGuard<'_, Vec<Entity>> {
-        self.entities.read()
+    pub fn entities<'w>(&'w self) -> EntitiesRead<'w> {
+        let guard = self.entities.read();
+        EntitiesRead {
+            entities_guard: guard,
+        }
     }
 
     pub fn has_column<T: Component>(&self) -> bool {
         self.types.contains(&TypeId::of::<T>())
     }
 
-    pub fn get_column<'a, T: Component>(&self) -> ComponentColumnRead<'a, T> {
+    pub fn column<'a, T: Component>(&self) -> ComponentColumnRead<'a, T> {
         let col = self
             .columns
             .get(&TypeId::of::<T>())
@@ -170,7 +183,7 @@ impl Archetype {
         unsafe { transmute(reader) }
     }
 
-    pub fn get_column_opt<'a, T: Component>(&self) -> Option<ComponentColumnRead<'a, T>> {
+    pub fn get_column<'a, T: Component>(&self) -> Option<ComponentColumnRead<'a, T>> {
         let col = self.columns.get(&TypeId::of::<T>())?;
         let read_guard = col.data.read();
         let vector = read_guard
@@ -184,7 +197,7 @@ impl Archetype {
         unsafe { transmute(opt_read) }
     }
 
-    pub fn get_column_mut<'a, T: Component>(&self) -> ComponentColumnWrite<'a, T> {
+    pub fn column_mut<'a, T: Component>(&self) -> ComponentColumnWrite<'a, T> {
         let col = self
             .columns
             .get(&TypeId::of::<T>())
@@ -201,7 +214,7 @@ impl Archetype {
         unsafe { transmute(writer) }
     }
 
-    pub fn get_column_mut_opt<'a, T: Component>(&self) -> Option<ComponentColumnWrite<'a, T>> {
+    pub fn get_column_mut<'a, T: Component>(&self) -> Option<ComponentColumnWrite<'a, T>> {
         let col = self.columns.get(&TypeId::of::<T>())?;
         let mut write_guard = col.data.write();
         let vector = write_guard
@@ -244,7 +257,6 @@ impl ArchetypeManager {
         combined_hash
     }
 
-    #[cfg(feature = "reactivity")]
     pub(crate) fn sync_tracking_markers(&self, types: &mut IndexSet<TypeId, FxBuildHasher>) {
         let tracked = TRACKED_COMPONENTS.lock();
         for (comp_id, meta_list) in tracked.iter() {
@@ -272,7 +284,6 @@ impl ArchetypeManager {
             target_types.insert(*id);
         }
 
-        #[cfg(feature = "reactivity")]
         self.sync_tracking_markers(&mut target_types);
 
         let hash = self.calculate_hash(&target_types);
@@ -291,7 +302,6 @@ impl ArchetypeManager {
             target_types.swap_remove(id);
         }
 
-        #[cfg(feature = "reactivity")]
         self.sync_tracking_markers(&mut target_types);
 
         let hash = self.calculate_hash(&target_types);
@@ -334,7 +344,6 @@ impl ArchetypeManager {
             types_set.insert(id);
         }
 
-        #[cfg(feature = "reactivity")]
         self.sync_tracking_markers(&mut types_set);
 
         let order_independent_hash = self.calculate_hash(&types_set);
@@ -356,15 +365,12 @@ impl ArchetypeManager {
         let mut columns = IndexMap::with_hasher(FxBuildHasher);
         T::create_empty_columns(&mut columns);
 
-        #[cfg(feature = "reactivity")]
-        {
-            let tracked = TRACKED_COMPONENTS.lock();
-            for &comp_id in incoming_ids {
-                if let Some(meta_list) = tracked.get(&comp_id) {
-                    for meta in meta_list {
-                        if types_set.contains(&meta.marker_id) {
-                            columns.insert(meta.marker_id, (meta.create_marker_column)());
-                        }
+        let tracked = TRACKED_COMPONENTS.lock();
+        for &comp_id in incoming_ids {
+            if let Some(meta_list) = tracked.get(&comp_id) {
+                for meta in meta_list {
+                    if types_set.contains(&meta.marker_id) {
+                        columns.insert(meta.marker_id, (meta.create_marker_column)());
                     }
                 }
             }

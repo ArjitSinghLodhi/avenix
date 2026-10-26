@@ -128,7 +128,7 @@ impl<'a, T: Event> SystemParam for EventWriter<'a, T> {
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         unsafe {
-            let buffer = world.get_resource::<EventBuffer<T>>()?;
+            let buffer = world.resource::<EventBuffer<T>>();
             let queue = buffer.write_queue.read();
 
             let queue = std::mem::transmute::<
@@ -180,7 +180,7 @@ impl<'w, T: Event> SystemParam for EventReader<'w, T> {
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         unsafe {
-            let buffer = world.get_resource::<EventBuffer<T>>()?;
+            let buffer = world.resource::<EventBuffer<T>>();
             let queue = buffer.read_queue.read();
 
             let queue = std::mem::transmute::<

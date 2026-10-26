@@ -1,6 +1,5 @@
 use avenix::prelude::*;
 use std::sync::{Arc, Barrier};
-use std::time::Duration;
 
 #[derive(Component)]
 struct Velocity {
@@ -22,6 +21,9 @@ struct TestSyncContext {
     barrier: Arc<Barrier>,
 }
 
+#[derive(Resource)]
+struct SimulationActive(bool);
+
 fn main() {
     let mut app = App::new();
 
@@ -30,13 +32,22 @@ fn main() {
         .par_query_accessor::<(&Position, &Velocity), EmptyQueryFilter>();
     let par_writer = app
         .world()
-        .par_query_accessor::<(&mut Position, &Velocity), EmptyQueryFilter>();
+        .par_query_accessor::<(&mut Position, &Velocity), Without<IsFollower>>();
     let par_reactive = app
         .world()
         .par_query_accessor::<&Position, Changed<Position>>();
 
+    app.insert_resource(SimulationActive(false));
+
     app.add_systems(Startup, setup_simulation_entities)
-        .add_systems(Update, multi_query_in_band_system);
+        .add_systems(
+            Update,
+            multi_query_in_band_system.run_if(
+                |active_res_accessor: ParallelResourceAccessor<SimulationActive>| {
+                    active_res_accessor.scope(|res| res.0)
+                },
+            ),
+        );
 
     let shared_barrier = Arc::new(Barrier::new(3));
     app.insert_resource(TestSyncContext {
@@ -45,6 +56,9 @@ fn main() {
 
     app.build();
     app.run_startup();
+    app.update();
+
+    app.world_mut().resource_mut::<SimulationActive>().0 = true;
 
     println!("Starting concurrent background worker threads and main app frame updates...");
 
@@ -71,7 +85,6 @@ fn main() {
 
         s.spawn(move || {
             b2.wait();
-            std::thread::sleep(Duration::from_millis(2));
 
             par_writer.scope(|mut query| {
                 let mut write_count = 0;

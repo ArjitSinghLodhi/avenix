@@ -1,5 +1,3 @@
-#![cfg(feature = "reactivity")]
-
 use crate::{app_impl::APP_BUILT, world::archetypes::ComponentColumn};
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLockReadGuard};
@@ -33,13 +31,3 @@ pub(crate) struct TrackedComponentMeta {
 pub(crate) static TRACKED_COMPONENTS: Mutex<
     IndexMap<TypeId, Vec<TrackedComponentMeta>, FxBuildHasher>,
 > = Mutex::new(IndexMap::with_hasher(FxBuildHasher));
-
-pub use changed::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut};
-
-pub(crate) use changed::ChangedMarker;
-
-pub use added::{Added, AddedTracker};
-
-pub use removed::RemovedComponents;
-
-pub(crate) use removed::{REMOVAL_TRACKED_COMPS, register_removal_tracking_buffers};

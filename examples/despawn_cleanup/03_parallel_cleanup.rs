@@ -46,7 +46,6 @@ fn bidirectional_cluster_purge(
     mut metrics: ResMut<NetworkTrafficMetrics>,
 ) {
     commands.for_each_despawn(|despawned_node| {
-        #[allow(unused_mut)]
         if let Some(mut cluster) = cluster_query.get_mut(despawned_node) {
             for socket_entity in cluster.connected_sockets.drain(..) {
                 if !commands.will_despawn(&socket_entity) {

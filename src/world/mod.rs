@@ -11,9 +11,20 @@ use std::{
 };
 
 use crate::{
-    commands::{CommandBuffer, DespawnCommand, ParallelCommands},
+    commands::{
+        CommandBuffer, DespawnCommand, ParallelCommands, WorldCommand,
+        bundle::ComponentBundle,
+        command_types::{
+            BatchSpawnCommand, InsertComponentsCommand, RemoveComponentsCommand, SpawnCommand,
+        },
+    },
+    component::{
+        ComponentMut, ComponentRef,
+        hooks::{ComponentHooksRegisterer, GLOBAL_HOOK_REGISTRY},
+    },
     entity::Entity,
-    entity_registry::REGISTRY_HANDLE_COUNT,
+    entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT},
+    reactivity::changed::{ChangedMarker, Mut},
     resources::{
         ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
         Resource,
@@ -28,10 +39,9 @@ use crate::{
     system::SystemParam,
 };
 
-#[cfg(feature = "reactivity")]
 use crate::{
-    ecs::Component,
-    reactivity::{REMOVAL_TRACKED_COMPS, TRACKED_COMPONENTS},
+    ecs::component::Component,
+    reactivity::{TRACKED_COMPONENTS, removed::REMOVAL_TRACKED_COMPS},
 };
 
 pub struct World {
@@ -184,27 +194,22 @@ impl World {
     }
 
     pub fn end_of_frame_sync(&mut self) {
-        #[cfg(feature = "reactivity")]
         self.clear_trackers();
         self.clear_events();
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_changed_trackers<T: Component>(&self) {
         crate::reactivity::changed::register_changed_tracked_component::<T>();
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_added_trackers<T: Component>(&self) {
         crate::reactivity::added::register_added_tracked_component::<T>();
     }
 
-    #[cfg(feature = "reactivity")]
     pub fn register_removal_trackers<T: Component>(&self) {
         crate::reactivity::removed::register_removal_tracking_buffers(self);
     }
 
-    #[cfg(feature = "reactivity")]
     fn clear_trackers(&mut self) {
         let tracked_comps = TRACKED_COMPONENTS.lock();
         if !tracked_comps.is_empty() {
@@ -305,13 +310,92 @@ impl World {
         ));
         ParallelQueryAccessor::<Q, F>::get_param(self).unwrap()
     }
+
+    pub fn get<'a, C: Component>(&'a self, entity: &Entity) -> Option<ComponentRef<'a, C>> {
+        let cell_ptr = unsafe { REGISTRY.get_ptr(entity.registry_index() as usize) };
+        let arch_id = unsafe { (*cell_ptr).archetype_id };
+        let row_index = unsafe { (*cell_ptr).idx };
+        let arch = self.archetypes_manager.get_mut(arch_id).unwrap();
+        let component_column = arch.get_column::<C>()?;
+        let component = unsafe { component_column.get_unchecked(row_index as usize) as *const C };
+        Some(ComponentRef {
+            _guard: component_column,
+            ptr: component,
+        })
+    }
+
+    pub fn get_mut<'a, C: Component>(&'a mut self, entity: &Entity) -> Option<ComponentMut<'a, C>> {
+        let cell_ptr = unsafe { REGISTRY.get_ptr(entity.registry_index() as usize) };
+        let arch_id = unsafe { (*cell_ptr).archetype_id };
+        let row_index = unsafe { (*cell_ptr).idx };
+        let arch = self.archetypes_manager.get_mut(arch_id).unwrap();
+        let mut component_column = arch.get_column_mut::<C>()?;
+        let component = unsafe { component_column.get_unchecked_mut(row_index as usize) as *mut C };
+        let mut changed_marker_column_opt = arch.get_column_mut::<ChangedMarker<C>>();
+        let changed_marker = if let Some(ref mut changed_marker_column) = changed_marker_column_opt
+        {
+            unsafe {
+                changed_marker_column.get_unchecked_mut(row_index as usize) as *mut ChangedMarker<C>
+            }
+        } else {
+            std::ptr::null_mut()
+        };
+        let item = Mut {
+            value: component,
+            changed_marker,
+            _marker: PhantomData,
+        };
+        Some(ComponentMut {
+            _guard_val: component_column,
+            _guard_marker: changed_marker_column_opt,
+            item,
+        })
+    }
+
+    pub fn register_component_hooks<'a, T: Component>(
+        &'a mut self,
+    ) -> ComponentHooksRegisterer<'a, T> {
+        GLOBAL_HOOK_REGISTRY.write().register_hooks_or_panic::<T>();
+        ComponentHooksRegisterer::new()
+    }
+
+    pub fn spawn<C: ComponentBundle>(&mut self, component_bundle: C) {
+        let cmd = SpawnCommand {
+            components: component_bundle,
+        };
+        cmd.apply(self);
+    }
+
+    pub fn spawn_batch<C, I>(&mut self, components_iter: I)
+    where
+        C: ComponentBundle,
+        I: Iterator<Item = C> + Send + 'static,
+    {
+        let cmd = BatchSpawnCommand { components_iter };
+        cmd.apply(self);
+    }
+
+    pub fn insert_components<B: ComponentBundle>(&mut self, entity: Entity, component_bundle: B) {
+        let cmd = InsertComponentsCommand {
+            entity,
+            components: component_bundle,
+        };
+        cmd.apply(self);
+    }
+
+    pub fn remove_components<B: ComponentBundle>(&mut self, entity: Entity) {
+        let cmd = RemoveComponentsCommand::<B> {
+            entity,
+            _marker: PhantomData,
+        };
+        cmd.apply(self);
+    }
 }
 
 pub(crate) fn apply_despawns(
     world: &mut World,
     despawns_guard: &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>,
 ) {
-    #[cfg(feature = "reactivity")]
     if !despawns_guard.is_empty() {
         for meta in REMOVAL_TRACKED_COMPS.lock().values() {
             (meta.clear_dead_entities)(world, despawns_guard)

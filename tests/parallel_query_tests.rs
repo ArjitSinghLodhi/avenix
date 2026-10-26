@@ -198,7 +198,7 @@ fn dynamic_chaos_mutator_system(
     for entity in query.iter() {
         let entity_cmd = commands.entity(entity);
         if i % 2 == 0 {
-            entity_cmd.add(IsFollower);
+            entity_cmd.insert(IsFollower);
         } else {
             entity_cmd.remove::<Velocity>();
         }

@@ -61,7 +61,6 @@ fn sequential_read_system(query: Query<(&Position, &Velocity)>) {
 }
 
 fn sequential_write_system(mut query: Query<(&mut Position, &Velocity)>) {
-    #[allow(unused_mut)]
     for (mut pos, vel) in query.iter_mut() {
         pos.x += vel.x;
         pos.y += vel.y;

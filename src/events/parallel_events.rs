@@ -51,7 +51,7 @@ impl<T: Event> SystemParam for ParallelEventWriter<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        let queue = world.get_resource::<EventBuffer<T>>()?.write_queue.clone();
+        let queue = world.resource::<EventBuffer<T>>().write_queue.clone();
         Some(ParallelEventWriter { write_queue: queue })
     }
 }
@@ -112,7 +112,7 @@ impl<T: Event> SystemParam for ParallelEventReader<T> {
     fn init_access(_system_meta: &mut SystemMeta) {}
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
-        let queue = world.get_resource::<EventBuffer<T>>()?.read_queue.clone();
+        let queue = world.resource::<EventBuffer<T>>().read_queue.clone();
         Some(ParallelEventReader { read_queue: queue })
     }
 }

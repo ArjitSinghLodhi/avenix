@@ -31,7 +31,7 @@ struct PlayerComponentBundle {
 }
 
 #[derive(QueryData)]
-#[avenix(query_data(derive(Debug)))]
+#[query_data(derive(Debug))]
 struct PhysicsQuery {
     pos: &'static Position,
     vel: &'static mut Velocity,
@@ -47,7 +47,7 @@ struct PlayerFilter {
 struct CompositeSystemParam<'q> {
     query: Query<'q, PhysicsQuery, PlayerFilter>,
     tracker: ResMut<'q, ScoreTracker>,
-    #[avenix(system_param(ignore))]
+    #[system_param(ignore)]
     // Initialized with Default::default() every frame, it does not persist accross frames
     counter: usize,
 }
@@ -69,7 +69,6 @@ fn setup_macro_entities(commands: Commands) {
 fn verify_and_mutate_macros(mut tools: CompositeSystemParam) {
     tools.tracker.points += 500;
     let matched_entities = tools.query.filtered_entities();
-    #[allow(unused_mut)]
     for mut entity in tools.query.iter_mut() {
         println!("entity: {:?}", entity);
         entity.vel.x += 10.0;

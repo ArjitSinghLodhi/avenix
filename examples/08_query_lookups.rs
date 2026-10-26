@@ -43,7 +43,6 @@ fn simple_global_lookup_system(
     query_player: Query<Entity, With<PlayerTag>>,
 ) {
     for entity in query_player.iter() {
-        #[allow(unused_mut)]
         if let Some(mut health) = query_health.get_mut(entity) {
             if health.0 == 100 {
                 health.0 -= 20;
@@ -64,7 +63,6 @@ fn allocation_lookup_system(
     }
 
     for target in &targets_to_process {
-        #[allow(unused_mut)]
         if let Some(mut health) = query_health.get_mut(&target.0) {
             if health.0 == 500 {
                 health.0 -= 100;
@@ -79,7 +77,6 @@ fn zero_allocation_nested_lookup_system(
     query_boss: Query<Entity, With<BossTag>>,
 ) {
     for entity in query_boss.iter() {
-        #[allow(unused_mut)]
         if let Some(mut health) = query_health.get_mut(&entity) {
             if health.0 == 1000 {
                 health.0 -= 200;

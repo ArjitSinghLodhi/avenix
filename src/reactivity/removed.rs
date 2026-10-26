@@ -1,19 +1,18 @@
 use std::{
     any::{TypeId, type_name},
     marker::PhantomData,
-    sync::Arc,
 };
 
 use dashmap::DashSet;
 use indexmap::IndexMap;
-use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{Mutex, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    ecs::Component,
+    ecs::component::Component,
     entity::Entity,
     reactivity::verify_app_not_built_yet,
-    resources::Resource,
+    resources::{Res, Resource},
     system::{SystemMeta, SystemParam},
     world::World,
 };
@@ -49,37 +48,50 @@ fn register_removal_tracking_comp<T: Component>() {
         RemovalTrackedMeta {
             register_buffer: |world| {
                 world.insert_resource(RemovedComponentsBuffer::<T> {
-                    read_queue: Arc::new(RwLock::new(Vec::new())),
-                    write_queue: Arc::new(RwLock::new(Vec::new())),
+                    read_queue: Vec::new(),
+                    write_queue: Vec::new(),
                     _marker: PhantomData,
                 });
             },
             swap_and_clear_buffer: |world| {
-                let removed_tracking_buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
-                let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
-                let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
-                read_queue_guard.clear();
-                std::mem::swap(read_queue_guard, write_queue_guard);
+                let mut removed_tracking_buffer =
+                    world.resource_mut::<RemovedComponentsBuffer<T>>();
+                removed_tracking_buffer.read_queue.clear();
+                let RemovedComponentsBuffer {
+                    read_queue,
+                    write_queue,
+                    ..
+                } = &mut *removed_tracking_buffer;
+                std::mem::swap(read_queue, write_queue);
             },
             clear_dead_entities: |world, despawn_guard| {
-                let removed_tracking_buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
-                let read_queue_guard = &mut *removed_tracking_buffer.read_queue.write();
-                let write_queue_guard = &mut *removed_tracking_buffer.write_queue.write();
-                read_queue_guard.retain(|entity| !despawn_guard.contains(entity));
-                write_queue_guard.retain(|entity| !despawn_guard.contains(entity));
+                let mut removed_tracking_buffer =
+                    world.resource_mut::<RemovedComponentsBuffer<T>>();
+                removed_tracking_buffer
+                    .read_queue
+                    .retain(|entity| !despawn_guard.contains(entity));
+                removed_tracking_buffer
+                    .write_queue
+                    .retain(|entity| !despawn_guard.contains(entity));
             },
             push_to_write_queue: |world, entity| {
-                let buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
-                buffer.write_queue.write().push(entity);
+                let mut buffer = world.resource_mut::<RemovedComponentsBuffer<T>>();
+                buffer.write_queue.push(entity);
             },
         },
     );
 }
 
-pub(crate) struct RemovedComponentsBuffer<T: Component> {
-    read_queue: Arc<RwLock<Vec<Entity>>>,
-    pub(crate) write_queue: Arc<RwLock<Vec<Entity>>>,
+pub struct RemovedComponentsBuffer<T: Component> {
+    read_queue: Vec<Entity>,
+    pub(crate) write_queue: Vec<Entity>,
     _marker: PhantomData<T>,
+}
+
+impl<T: Component> RemovedComponentsBuffer<T> {
+    pub fn entities(&self) -> &[Entity] {
+        &self.read_queue
+    }
 }
 
 impl<T: Component> Resource for RemovedComponentsBuffer<T> {}
@@ -112,13 +124,13 @@ impl<T: Component> Resource for RemovedComponentsBuffer<T> {}
 /// check if a specific target will despawn via [`crate::commands::Commands::will_despawn`] or process all pending deaths
 /// ahead of time using [`crate::commands::Commands::for_each_despawn`].
 pub struct RemovedComponents<'w, T: Component> {
-    read_buffer: RwLockReadGuard<'w, Vec<Entity>>,
-    _marker: PhantomData<(&'w (), T)>,
+    buffer: Res<'w, RemovedComponentsBuffer<T>>,
+    _marker: PhantomData<T>,
 }
 
 impl<'w, T: Component> RemovedComponents<'w, T> {
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.read_buffer.iter()
+        self.buffer.read_queue.iter()
     }
 }
 
@@ -132,17 +144,9 @@ impl<'w, T: Component> SystemParam for RemovedComponents<'w, T> {
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         let removed_comp_buffer = world.get_resource::<RemovedComponentsBuffer<T>>()?;
-        let reader = removed_comp_buffer.read_queue.read();
-
-        let reader = unsafe {
-            std::mem::transmute::<
-                RwLockReadGuard<'_, Vec<Entity>>,
-                RwLockReadGuard<'world, Vec<Entity>>,
-            >(reader)
-        };
 
         Some(RemovedComponents {
-            read_buffer: reader,
+            buffer: removed_comp_buffer,
             _marker: PhantomData,
         })
     }

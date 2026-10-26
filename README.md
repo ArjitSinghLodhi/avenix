@@ -1,6 +1,8 @@
 # Avenix
 
-A deterministic, concurrent Entity Component System (ECS) application framework written in Rust, featuring high-performance parallel workloads, out-of-band remote parallel handles, native **States**, and **SystemSets** grouping.
+A deterministic, concurrent Entity Component System (ECS) framework written in Rust, engineered for high-performance parallel workloads and out-of-band remote thread execution. 
+
+Avenix provides a complete application pipeline out of the box, combining dense archetype storage with native workflow orchestration tools including component lifecycle hooks, system grouping, and state machines.
 
 ---
 
@@ -8,6 +10,8 @@ A deterministic, concurrent Entity Component System (ECS) application framework 
 
 * **Archetype-Based Storage**  
   Built entirely around a strict structural Archetype architecture. Components are packed into flat, dense tables to maximize CPU cache-line saturation and optimize hardware prefetching loops.
+* **Component Lifecycle Hooks**  
+  Supports immediate, synchronous lifecycle intercepts (`on_add`, `on_insert`, `on_remove`, `on_discard`) via a `DeferredWorld` context. This allows components to natively drive their own side effects, validate state changes, and automate asset or handle cleanup without relying on frame-delayed system query sweeps.
 * **Zero-UB Layout Execution**  
   Engineered with memory safety layout guarantees. Core pathways protect against undefined behavior without introducing overhead or sacrificing raw pointer iteration performance.
 * **Multi-Threading**  
@@ -18,7 +22,6 @@ A deterministic, concurrent Entity Component System (ECS) application framework 
   Groups systems into functional blocks that share operational bounds. Attaching a run condition to a SystemSet evaluates that condition **exactly once** for the entire group, removing the overhead of individual system evaluations.
 * **Integrated States Pipeline**  
   Features a built-in Finite State Machine supporting edge-triggered transitions (`entered_state`, `exited_state`) and ongoing execution filters (`in_state`).
-
 ---
 
 ## Basic Example Usage
@@ -81,13 +84,6 @@ Please refer to the `examples/` directory for full usage blueprints covering cor
 
 ---
 
-## Feature Flag Architecture
-
-Avenix isolates core systems into optional build targets to keep untracked execution paths unburdened by default:
-
-* `reactivity` — Activates double-buffered change tracking infrastructure (`Added<T>`, `Changed<T>`, `ChangedTracker<T>`). Uses demand-driven tracking queues allocated exclusively when systems invoke them.
----
-
 ## Lifecycle Constraints & Safety Invariants
 
 ### System Timing & The 3-Frame Buffer Rule
@@ -114,7 +110,7 @@ Avenix enforces an explicit design invariant: **All cloned entity handles refere
 ---
 
 ### Component Reactivity Architecture
-When the `reactivity` feature is active, Avenix uses a demand-driven model to minimize runtime overhead.
+Avenix uses a demand-driven model for component reactivity to keep untracked data pathways completely unburdened by default.
 
 * **Lazy Tracking Allocations:** Double-buffered tracking queues are not allocated for every component type by default. They are registered and initialized only if a system explicitly requests them (e.g., via `RemovedComponents<T>`, `Changed<T>`, `ChangedRefMut<T>`, `Added<T>`) or a parallel handle (e.g., `ParallelQueryAccessor`) requests it in its parameters before `app.build()`, or they are manually registered through `World` or `App`.
 * **Optimized Runtime Pathways:** Component types that are never used in reactive query filters skip frame-boundary memory swaps and tracking management entirely, keeping untracked data paths completely unburdened by default.
@@ -126,6 +122,4 @@ For any tracking data requirements introduced dynamically post-build, explicit t
 
 ## License
 
-Avenix is dual-licensed under either:
-* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-* MIT license ([LICENSE-MIT](LICENSE-MIT))
+Avenix is dual-licensed under either the Apache License, Version 2.0 or the MIT license.
