@@ -7,8 +7,7 @@ use crate::{
     app::system::SystemExt,
     resources::Resource,
     schedule::{
-        CleanupHandles, DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel,
-        Startup,
+        DefaultSchedulesPlugin, Schedule, ScheduleConstraint, ScheduleLabel, Startup,
         schedule_sorter::sort_schedules,
         system_sorter::{dispatch_system_blocks, sort_schedule_systems},
     },
@@ -120,7 +119,6 @@ pub struct App {
     world: World,
     registered_plugins: FxHashSet<TypeId>,
     startup_schedule: Schedule,
-    cleanup_schedule: Schedule,
     schedules: Vec<Schedule>,
     systems_blocks: Vec<SystemsBlock>,
     pub(crate) schedule_order_constraints: Vec<ScheduleConstraint>,
@@ -136,7 +134,7 @@ impl App {
         app
     }
 
-    /// Initializes App with no default schedules except [`Startup`] and [`CleanupHandles`] schedules.
+    /// Initializes App with no default schedules except [`Startup`].
     pub fn empty() -> Self {
         if APP_INITIALIZED.swap(true, Ordering::SeqCst) {
             panic!(
@@ -149,7 +147,6 @@ impl App {
             world: World::new(),
             registered_plugins: FxHashSet::default(),
             startup_schedule: Schedule::new(Startup),
-            cleanup_schedule: Schedule::new(CleanupHandles),
             schedules: Vec::new(),
             systems_blocks: Vec::new(),
             schedule_order_constraints: Vec::new(),
@@ -162,7 +159,7 @@ impl App {
     pub fn has_schedule(&self, label: &impl ScheduleLabel) -> bool {
         self.schedules
             .iter()
-            .any(|schedule| schedule.schedule().dyn_eq(label))
+            .any(|schedule| schedule.label().dyn_eq(label))
     }
 
     pub fn init_state<T: States + Default>(&mut self) -> &mut Self {
@@ -179,10 +176,8 @@ impl App {
     pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
         self.configuration().not_ready();
 
-        if schedule.schedule().dyn_eq(&Startup) {
+        if schedule.label().dyn_eq(&Startup) {
             panic!("Startup schedule cannot be overwritten")
-        } else if schedule.schedule().dyn_eq(&CleanupHandles) {
-            panic!("CleanupHandles schedule cannnot be overwritten")
         } else {
             self.schedules.push(schedule);
         }
@@ -308,7 +303,8 @@ impl App {
         for schedule in self.schedules.iter_mut() {
             schedule.run(&mut self.world);
         }
-        self.cleanup_schedule.run(&mut self.world);
+        self.world.apply_queue_commands();
+        self.world.apply_despawns();
         self.world_mut().end_of_frame_sync();
     }
 
@@ -391,7 +387,6 @@ impl App {
             schedule.init_executor();
         });
         self.startup_schedule.init_executor();
-        self.cleanup_schedule.init_executor();
         self.configuration().schedules_processed = true;
         register_removal_tracking_buffers(self.world_mut());
     }
@@ -402,13 +397,12 @@ impl App {
         dispatch_system_blocks(
             &mut self.systems_blocks,
             &mut self.startup_schedule,
-            &mut self.cleanup_schedule,
             &mut self.schedules,
         );
 
         let mut remaining_registrations = global_registrations;
         {
-            let label = self.startup_schedule.schedule();
+            let label = self.startup_schedule.label();
             let mut schedule_registrations = Vec::new();
             let mut next_remaining = Vec::new();
             for reg in remaining_registrations.drain(..) {
@@ -430,32 +424,9 @@ impl App {
             );
             systems.extend(generated_guards);
         }
-        {
-            let label = self.cleanup_schedule.schedule();
-            let mut schedule_registrations = Vec::new();
-            let mut next_remaining = Vec::new();
-            for reg in remaining_registrations.drain(..) {
-                if reg.schedule.dyn_eq(label) {
-                    schedule_registrations.push(reg);
-                } else {
-                    next_remaining.push(reg);
-                }
-            }
-            remaining_registrations = next_remaining;
-
-            let systems = self.cleanup_schedule.systems_schedule_mut().systems_mut();
-            let mut borrowed_systems: Vec<&mut SystemNode> = systems.iter_mut().collect();
-            let mut generated_guards = Vec::new();
-            crate::system::system_set::preprocess_system_sets(
-                &mut borrowed_systems,
-                &mut schedule_registrations,
-                &mut generated_guards,
-            );
-            systems.extend(generated_guards);
-        }
 
         for schedule in &mut self.schedules {
-            let label = schedule.schedule();
+            let label = schedule.label();
             let mut schedule_registrations = Vec::new();
             let mut next_remaining = Vec::new();
             for reg in remaining_registrations.drain(..) {
@@ -480,8 +451,6 @@ impl App {
 
         sort_schedule_systems(self.startup_schedule.systems_schedule_mut().systems_mut());
 
-        sort_schedule_systems(self.cleanup_schedule.systems_schedule_mut().systems_mut());
-
         for schedule in &mut self.schedules {
             let systems = schedule.systems_schedule_mut().systems_mut();
             sort_schedule_systems(systems);
@@ -504,15 +473,6 @@ impl App {
         self.systems_blocks.shrink_to_fit();
         self.schedule_order_constraints.clear();
         self.startup_schedule
-            .systems_schedule_mut()
-            .systems_mut()
-            .iter_mut()
-            .for_each(|node| {
-                let system = node.system_mut();
-                system.remove::<SystemMeta>();
-                system.remove::<SystemOrderings>();
-            });
-        self.cleanup_schedule
             .systems_schedule_mut()
             .systems_mut()
             .iter_mut()

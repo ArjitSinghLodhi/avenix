@@ -56,7 +56,7 @@ fn event_execution_system(reader: EventReader<ThreatEvent>, writer: EventWriter<
 }
 
 fn event_verification_frame_2(reader: EventReader<ThreatEvent>) {
-    let count = reader.read().count();
+    let count = reader.par_read().count();
     println!("\n>> Avenix Event Analysis (Frame 2):");
     println!("   -> EventReader verified count: {}", count);
     assert_eq!(count, 2);

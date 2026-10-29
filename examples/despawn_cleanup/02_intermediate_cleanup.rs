@@ -1,63 +1,76 @@
 use avenix::prelude::*;
 
 #[derive(Component)]
-pub struct ConnectionSocket {
-    pub remote_node: Entity,
+#[component(on_insert = ConnectionSocket::handle_insert, on_remove = ConnectionSocket::handle_remove)]
+struct ConnectionSocket {
+    remote_node: Entity,
 }
 
-#[derive(Component)]
-pub struct SocketCluster {
-    pub connected_sockets: Vec<Entity>,
-}
+impl ConnectionSocket {
+    fn handle_insert(world: &mut ExclusiveWorld, entity: &Entity) {
+        let mut target_cluster = None;
+        if let Some(socket) = world.get::<ConnectionSocket>(entity) {
+            target_cluster = Some(socket.remote_node.clone());
+        }
 
-#[derive(Resource)]
-pub struct NetworkTrafficMetrics {
-    pub total_invalidated_clusters: u32,
-}
+        if let Some(cluster_entity) = target_cluster {
+            if let Some(mut cluster) = world.get_mut::<SocketCluster>(&cluster_entity) {
+                cluster.connected_sockets.push(entity.clone());
+            }
+        }
+    }
 
-pub struct NetworkPlugin;
+    fn handle_remove(world: &mut ExclusiveWorld, entity: &Entity) {
+        let mut target_cluster = None;
+        if let Some(socket) = world.get::<ConnectionSocket>(entity) {
+            target_cluster = Some(socket.remote_node.clone());
+        }
 
-impl Plugin for NetworkPlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(NetworkTrafficMetrics {
-            total_invalidated_clusters: 0,
-        })
-        .add_systems(
-            CleanupHandles,
-            (cleanup_dead_sockets, bidirectional_cluster_purge).chain(),
-        );
+        if let Some(cluster_entity) = target_cluster {
+            let mut clean_cluster_component = false;
+            if let Some(mut cluster) = world.get_mut::<SocketCluster>(&cluster_entity) {
+                cluster.connected_sockets.retain(|e| e != entity);
+                if cluster.connected_sockets.is_empty() {
+                    clean_cluster_component = true;
+                }
+            }
+
+            if clean_cluster_component {
+                world.remove_components::<SocketCluster>(cluster_entity);
+            }
+        }
     }
 }
 
-fn cleanup_dead_sockets(commands: Commands, socket_query: Query<(Entity, &ConnectionSocket)>) {
-    socket_query.par_iter().for_each(|(socket_entity, socket)| {
-        if commands.will_despawn(&socket.remote_node) {
-            commands
-                .entity(&socket_entity)
-                .remove::<ConnectionSocket>()
-                .despawn();
-        }
-    });
+#[derive(Component)]
+#[component(on_remove = SocketCluster::handle_remove)]
+struct SocketCluster {
+    connected_sockets: Vec<Entity>,
 }
 
-fn bidirectional_cluster_purge(
-    commands: Commands,
-    mut cluster_query: Query<&mut SocketCluster>,
-    mut metrics: ResMut<NetworkTrafficMetrics>,
-) {
-    commands.for_each_despawn(|despawned_node| {
-        if let Some(mut cluster) = cluster_query.get_mut(despawned_node) {
-            for socket_entity in cluster.connected_sockets.drain(..) {
-                if !commands.will_despawn(&socket_entity) {
-                    commands
-                        .entity(&socket_entity)
-                        .remove::<ConnectionSocket>()
-                        .despawn();
-                }
+impl SocketCluster {
+    fn handle_remove(world: &mut ExclusiveWorld, entity: &Entity) {
+        let mut sockets_to_clear = Vec::new();
+        if let Some(cluster) = world.get::<SocketCluster>(entity) {
+            sockets_to_clear = cluster.connected_sockets.clone();
+        }
+
+        while let Some(socket_entity) = sockets_to_clear.pop() {
+            if world.get::<ConnectionSocket>(&socket_entity).is_some() {
+                world.remove_components::<ConnectionSocket>(socket_entity.clone());
+                world.despawn(socket_entity);
             }
+        }
+
+        if let Some(mut metrics) = world.get_resource_mut::<NetworkTrafficMetrics>() {
             metrics.total_invalidated_clusters += 1;
         }
-    });
+    }
+}
+
+#[derive(Resource)]
+struct NetworkTrafficMetrics {
+    total_invalidated_clusters: u32,
 }
 
 #[derive(Component)]
@@ -69,17 +82,20 @@ struct SimulationStepper {
 }
 
 fn spawn_network_nodes(commands: Commands) {
-    println!("Init: Batch spawning 10,000 network host infrastructure nodes...");
-    commands.spawn_batch((0..10_000).map(|_| NetworkHostNode));
+    println!("Init Step 1: Batch spawning 10,000 network host nodes with base configurations...");
+
+    for _ in 0..10_000 {
+        commands.spawn((
+            NetworkHostNode,
+            SocketCluster {
+                connected_sockets: Vec::with_capacity(20),
+            },
+        ));
+    }
 }
 
-fn link_bidirectional_sockets(
-    commands: Commands,
-    host_query: Query<Entity, With<NetworkHostNode>>,
-    socket_query: Query<Entity, With<ConnectionSocket>>,
-) {
-    println!("Init: Batch spawning 200,000 dynamic sockets mapped back to host architectures...");
-
+fn allocate_dynamic_sockets(commands: Commands, host_query: Query<Entity, With<NetworkHostNode>>) {
+    println!("Init Step 2: Batch spawning 200,000 dynamic self-registering sockets...");
     let host_entities: Vec<Entity> = host_query.iter().cloned().collect();
 
     let socket_iterator = host_entities.into_iter().flat_map(|host_entity| {
@@ -88,20 +104,6 @@ fn link_bidirectional_sockets(
         })
     });
     commands.spawn_batch(socket_iterator);
-
-    let mut all_sockets = Vec::new();
-    for socket_entity in socket_query.iter() {
-        all_sockets.push(socket_entity.clone());
-    }
-
-    let mut socket_chunks = all_sockets.chunks_exact(20);
-    for host_entity in host_query.iter() {
-        if let Some(chunk) = socket_chunks.next() {
-            commands.entity(&host_entity).insert(SocketCluster {
-                connected_sockets: chunk.to_vec(),
-            });
-        }
-    }
 }
 
 fn simulate_network_failure(commands: Commands, host_query: Query<Entity, With<NetworkHostNode>>) {
@@ -117,7 +119,7 @@ fn verify_network_convergence(app: &mut App) {
     app.build();
     app.run_startup();
 
-    println!("\n--- Phase 1: Executing Heavy Load Parallel Cleanup Pass ---");
+    println!("\n--- Phase 1: Executing Heavy Load Pass ---");
     app.update();
 
     let metrics = app.world().resource::<NetworkTrafficMetrics>();
@@ -138,11 +140,13 @@ fn main() {
     println!("--- Initializing Heavy Load Direct Lookup Pipeline ---");
 
     App::new()
-        .add_plugins(NetworkPlugin)
+        .insert_resource(NetworkTrafficMetrics {
+            total_invalidated_clusters: 0,
+        })
         .insert_resource(SimulationStepper { target_frame: 0 })
         .add_systems(
             Startup,
-            (spawn_network_nodes, link_bidirectional_sockets).chain(),
+            (spawn_network_nodes, allocate_dynamic_sockets).chain(),
         )
         .add_systems(
             Update,

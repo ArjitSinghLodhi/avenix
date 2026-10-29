@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::schedule::{CleanupHandles, Schedule, ScheduleConstraint, Startup};
+use crate::schedule::{Schedule, ScheduleConstraint, Startup};
 
 const SCHEDULE_ERROR_STR: &str = "SchedulesSortingError";
 
@@ -14,7 +14,7 @@ pub(crate) fn sort_schedules(
     for s in unarranged {
         if unique_schedules
             .iter()
-            .any(|existing| (*existing.schedule()).dyn_eq(s.schedule()))
+            .any(|existing| (*existing.label()).dyn_eq(s.label()))
         {
             panic!("{}\nDuplicate Schedule detected!", SCHEDULE_ERROR_STR);
         }
@@ -32,16 +32,9 @@ pub(crate) fn sort_schedules(
                 SCHEDULE_ERROR_STR
             );
         }
-        if before.dyn_eq(&CleanupHandles) || after.dyn_eq(&CleanupHandles) {
-            panic!(
-                "{}\nCleanupHandles cannot be used for ordering schedules",
-                SCHEDULE_ERROR_STR
-            )
-        }
-
         let before_idx = unique_schedules
             .iter()
-            .position(|s| (*s.schedule()).dyn_eq(&**before))
+            .position(|s| (*s.label()).dyn_eq(&**before))
             .or_else(|| {
                 panic!(
                     "{}\nOrdering constraint references an unregistered schedule: '{:?}'",
@@ -51,7 +44,7 @@ pub(crate) fn sort_schedules(
 
         let after_idx = unique_schedules
             .iter()
-            .position(|s| (*s.schedule()).dyn_eq(&**after))
+            .position(|s| (*s.label()).dyn_eq(&**after))
             .or_else(|| {
                 panic!(
                     "{}\nOrdering constraint references an unregistered schedule: '{:?}'",
@@ -89,7 +82,7 @@ pub(crate) fn sort_schedules(
         let mut trapped_schedules = Vec::new();
         for (idx, s) in unique_schedules.iter().enumerate() {
             if !sorted_indices.contains(&idx) {
-                trapped_schedules.push(format!("  • {:?}", s.schedule()));
+                trapped_schedules.push(format!("  • {:?}", s.label()));
             }
         }
         panic!(

@@ -30,10 +30,7 @@ pub mod prelude {
     pub use crate::app::{
         App,
         plugin::{Plugin, PluginsBuildAll},
-        schedule::{
-            CleanupHandles, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup,
-            Update,
-        },
+        schedule::{First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel, Startup, Update},
         states::{NextState, State, States, entered_state, exited_state, in_state},
         system::{
             FunctionIdentity, IntoSystem, System, SystemIdentity, SystemMeta, SystemParam,
@@ -60,10 +57,7 @@ pub mod prelude {
             hooks::{ComponentHook, ComponentHooksRegisterer, ExclusiveWorld},
         },
         entity::Entity,
-        events::{
-            EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
-            ParallelEventWriter,
-        },
+        events::{Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter},
         query::{
             Has, ParallelQueryAccessor, Query, QueryData, QueryMutableChunk, QueryReadOnlyChunk,
             QuerySingleError,
@@ -88,8 +82,7 @@ pub mod ecs {
     }
     pub mod events {
         pub use crate::events::{
-            EnumeratePar, Event, EventReader, EventWriter, Par, ParallelEventReader,
-            ParallelEventWriter,
+            Event, EventReader, EventWriter, ParallelEventReader, ParallelEventWriter,
         };
     }
     pub mod resources {
@@ -213,7 +206,6 @@ pub mod app {
     /// * **[`Update`]**
     /// * **[`PostUpdate`]**
     /// * **[`Last`]**
-    /// * **[`CleanupHandles`]**
     ///
     /// [`Startup`]: crate::schedule::Startup
     /// [`First`]: crate::schedule::First
@@ -221,11 +213,10 @@ pub mod app {
     /// [`Update`]: crate::schedule::Update
     /// [`PostUpdate`]: crate::schedule::PostUpdate
     /// [`Last`]: crate::schedule::Last
-    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub mod schedule {
         pub use crate::schedule::{
-            CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
-            ScheduleLabel, Startup, SystemExecutor, SystemNode, SystemsSchedule, Update,
+            DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule, ScheduleLabel,
+            Startup, SystemExecutor, SystemNode, SystemsSchedule, Update,
             dyn_eq::DynEq,
             executors::{
                 multi_threaded::MultiThreadedExecutor, single_threaded::SingleThreadedExecutor,

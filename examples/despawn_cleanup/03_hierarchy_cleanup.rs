@@ -1,16 +1,46 @@
 use avenix::prelude::*;
 
 #[derive(Component)]
-#[component(on_add = LinkTo::handle_link, on_insert = Self::handle_link)]
-pub struct LinkTo {
+#[component(on_remove = Self::handle_remove)]
+pub struct Children {
+    pub children: Vec<Entity>,
+}
+
+impl Children {
+    pub fn handle_remove(world: &mut ExclusiveWorld, entity: &Entity) {
+        let mut children_to_clear = Vec::new();
+        {
+            if let Some(mut parent_children) = world.get_mut::<Children>(entity) {
+                children_to_clear = std::mem::take(&mut parent_children.children);
+            }
+        }
+
+        for child in children_to_clear {
+            let mut child_still_exists = false;
+            {
+                if world.get::<ChildOf>(&child).is_some() {
+                    child_still_exists = true;
+                }
+            }
+            if child_still_exists {
+                world.remove_components::<ChildOf>(child.clone());
+                world.despawn(child);
+            }
+        }
+    }
+}
+
+#[derive(Component)]
+#[component(on_remove, on_insert, on_discard)]
+pub struct ChildOf {
     pub parent: Entity,
 }
 
-impl LinkTo {
-    pub fn handle_link(world: &mut ExclusiveWorld, entity: &Entity) {
+impl ChildOf {
+    fn on_insert(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut parent_target = None;
         {
-            if let Some(link) = world.get::<LinkTo>(entity) {
+            if let Some(link) = world.get::<ChildOf>(entity) {
                 parent_target = Some(link.parent.clone());
             }
         }
@@ -32,19 +62,14 @@ impl LinkTo {
                     },
                 );
             }
-
-            world.insert_components(entity.clone(), ChildOf { parent });
-            world.remove_components::<LinkTo>(entity.clone());
         }
     }
-}
 
-#[derive(Component)]
-#[component(on_add, on_insert)]
-pub struct UnlinkChild;
+    fn on_remove(world: &mut ExclusiveWorld, entity: &Entity) {
+        Self::on_discard(world, entity);
+    }
 
-impl UnlinkChild {
-    pub fn on_add(world: &mut ExclusiveWorld, entity: &Entity) {
+    fn on_discard(world: &mut ExclusiveWorld, entity: &Entity) {
         let mut parent_target = None;
         {
             if let Some(child_of) = world.get::<ChildOf>(entity) {
@@ -67,77 +92,6 @@ impl UnlinkChild {
                 world.remove_components::<Children>(parent);
             }
         }
-
-        world.remove_components::<ChildOf>(entity.clone());
-        world.remove_components::<UnlinkChild>(entity.clone());
-    }
-
-    pub fn on_insert(world: &mut ExclusiveWorld, entity: &Entity) {
-        Self::on_add(world, entity);
-    }
-}
-
-#[derive(Component)]
-#[component(on_remove = Self::handle_remove)]
-pub struct Children {
-    pub children: Vec<Entity>,
-}
-
-impl Children {
-    pub fn handle_remove(world: &mut ExclusiveWorld, entity: &Entity) {
-        let mut children_to_clear = Vec::new();
-        {
-            if let Some(parent_children) = world.get::<Children>(entity) {
-                children_to_clear = parent_children.children.clone();
-            }
-        }
-
-        for child in children_to_clear {
-            let mut child_still_exists = false;
-            {
-                if world.get::<ChildOf>(&child).is_some() {
-                    child_still_exists = true;
-                }
-            }
-            if child_still_exists {
-                world.remove_components::<ChildOf>(child);
-            }
-        }
-    }
-}
-
-#[derive(Component)]
-#[component(on_remove)]
-pub struct ChildOf {
-    pub parent: Entity,
-}
-
-impl ChildOf {
-    pub fn on_remove(world: &mut ExclusiveWorld, entity: &Entity) {
-        let mut parent_target = None;
-        {
-            if let Some(child_of) = world.get::<ChildOf>(entity) {
-                parent_target = Some(child_of.parent.clone());
-            }
-        }
-
-        if let Some(parent) = parent_target {
-            let mut clean_parent_component = false;
-            let mut parent_still_exists = false;
-            {
-                if let Some(mut parent_children) = world.get_mut::<Children>(&parent) {
-                    parent_still_exists = true;
-                    parent_children.children.retain(|e| e != entity);
-                    if parent_children.children.is_empty() {
-                        clean_parent_component = true;
-                    }
-                }
-            }
-
-            if parent_still_exists && clean_parent_component {
-                world.remove_components::<Children>(parent);
-            }
-        }
     }
 }
 
@@ -148,11 +102,11 @@ pub trait HierarchyEntityCommandsExt {
 
 impl<'a, 'b> HierarchyEntityCommandsExt for EntityCommands<'a, 'b> {
     fn set_parent(&self, new_parent: Entity) -> &Self {
-        self.insert(LinkTo { parent: new_parent });
+        self.insert(ChildOf { parent: new_parent });
         self
     }
     fn remove_parent(&self) -> &Self {
-        self.insert(UnlinkChild);
+        self.remove::<ChildOf>();
         self
     }
 }
@@ -200,9 +154,6 @@ fn build_generation_hierarchy(
     commands
         .entity(&minion_entity)
         .set_parent(beta_entity.clone());
-    commands
-        .entity(&alpha_entity)
-        .set_parent(minion_entity.clone());
     println!("Linked hierarchy");
 
     commands

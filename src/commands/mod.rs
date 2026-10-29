@@ -1,16 +1,12 @@
-pub mod bundle;
+pub(crate) mod bundle;
 mod command_queue;
 pub(crate) mod command_types;
+pub(crate) mod concurrent_despawn_set;
 mod parallel_commands;
 pub(crate) use command_types::DespawnCommand;
-use orx_parallel::{IterIntoParIter, Par};
 pub use parallel_commands::ParallelCommands;
-
-use std::{marker::PhantomData, mem::transmute, sync::Arc};
-
-use dashmap::DashSet;
 use parking_lot::{RwLock, RwLockReadGuard};
-use rustc_hash::FxBuildHasher;
+use std::{marker::PhantomData, mem::transmute, sync::Arc};
 
 use crate::{
     commands::{
@@ -19,6 +15,7 @@ use crate::{
         command_types::{
             BatchSpawnCommand, InsertComponentsCommand, RemoveComponentsCommand, SpawnCommand,
         },
+        concurrent_despawn_set::ConcurrentBitSet,
     },
     entity::Entity,
     resources::Resource,
@@ -32,21 +29,21 @@ pub trait Command: 'static + Send {
 
 pub(crate) struct CommandBuffer {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
-    pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,
+    pub(crate) despawns: Arc<ConcurrentBitSet>,
 }
 
 impl CommandBuffer {
     pub fn new() -> Self {
         Self {
             queue: Arc::new(RwLock::new(CommandQueue::new())),
-            despawns: Arc::new(RwLock::new(DashSet::with_hasher(FxBuildHasher))),
+            despawns: Arc::new(ConcurrentBitSet::new()),
         }
     }
 }
 
 pub struct Commands<'a> {
     pub(crate) queue: RwLockReadGuard<'a, CommandQueue>,
-    pub(crate) despawns: RwLockReadGuard<'a, DashSet<Entity, FxBuildHasher>>,
+    pub(crate) despawns: Arc<ConcurrentBitSet>,
 }
 
 impl<'a> Commands<'a> {
@@ -78,55 +75,6 @@ impl<'a> Commands<'a> {
             entity_id: entity,
             commands: self,
         }
-    }
-
-    /// Executes a closure over all currently queued despawn commands.
-    ///
-    /// This allows you to inspect which entities are scheduled for removal. You can
-    /// use the yielded [`Entity`] reference in your query lookup functions to safely
-    /// access and drop any active cloned handles.
-    ///
-    /// See [`CleanupHandles`] to understand how it's structured to help you use this.
-    ///
-    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    pub fn for_each_despawn<F>(&self, mut f: F)
-    where
-        F: for<'b> FnMut(&'b Entity),
-    {
-        self.despawns.iter().for_each(|entity| f(&entity));
-    }
-
-    /// Parallel version of [`for_each_despawn`]
-    ///
-    /// [`for_each_despawn`]: Commands::for_each_despawn
-    pub fn par_for_each_despawn<F>(&self, f: F)
-    where
-        F: for<'b> Fn(&'b Entity) + Sync,
-    {
-        self.despawns
-            .iter()
-            .iter_into_par()
-            .for_each(|entity| f(&entity));
-    }
-
-    /// Returns how many despawn commands are currently present.
-    pub fn len_despawns(&self) -> usize {
-        self.despawns.len()
-    }
-
-    /// Returns whether the specified entity is currently scheduled for removal.
-    ///
-    /// This performs an `O(1)` lookup via an internal check, making it
-    /// highly efficient to call within heavy system loops. Use this check to conditionally
-    /// bypass logic or drop active cloned handles via query lookup functions before the
-    /// cleanup phase completes.
-    ///
-    /// See [`CleanupHandles`] to see how its structured to help you use this for the
-    /// Entity Despawn Invariant rule.
-    ///
-    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    pub fn will_despawn(&self, entity: &Entity) -> bool {
-        self.despawns.contains(entity)
     }
 
     /// Schedules a command to insert a global resource into the world.
@@ -196,18 +144,16 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// # Rules
     ///
     /// The engine panics during the despawn command execution phase if any cloned handles referencing this entity
-    /// are still active when the queued despawn command is applied.
+    /// are still alive in memory when the queued despawn command is applied.
     ///
-    /// The panic message will display a `HashSet` containing the `std::any::type_name`
-    /// of every component within the entity's archetype, allowing you to instantly
-    /// identify which entity type caused the violation.
+    /// The panic message will display a list of component type_names the entity had right before despawning,
+    /// allowing you to instantly identify which entity type caused the violation.
     ///
-    /// Look into the documentation of [`CleanupHandles`] to understand how it is structured
-    /// to help you on using [`for_each_despawn`] and [`will_despawn`] to satisfy this requirement.
+    /// Look into the documentation of the [`Component`] trait to understand how to use the
+    /// [`on_remove`] lifecycle hook to safely clear lingering handle references and satisfy this requirement.
     ///
-    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
-    /// [`for_each_despawn`]: Commands::for_each_despawn
-    /// [`will_despawn`]: Commands::will_despawn
+    /// [`Component`]: crate::component::Component
+    /// [`on_remove`]: crate::component::Component::on_remove
     pub fn despawn(&self) -> &Self {
         self.commands.despawns.insert(self.entity_id.clone());
         self
@@ -225,16 +171,12 @@ impl<'a> SystemParam for Commands<'a> {
 
     fn get_param<'world>(world: &'world World) -> Option<Self::Item<'world>> {
         let queue_local = world.commands.queue.read();
-        let despawns_local = world.commands.despawns.read();
+        let despawns = world.commands.despawns.clone();
         unsafe {
             let queue = transmute::<
                 RwLockReadGuard<'_, CommandQueue>,
                 RwLockReadGuard<'world, CommandQueue>,
             >(queue_local);
-            let despawns = transmute::<
-                RwLockReadGuard<'_, DashSet<Entity, FxBuildHasher>>,
-                RwLockReadGuard<'world, DashSet<Entity, FxBuildHasher>>,
-            >(despawns_local);
             Some(Commands { queue, despawns })
         }
     }

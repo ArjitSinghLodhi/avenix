@@ -61,6 +61,10 @@ impl<'a> ExclusiveWorld<'a> {
         self.world.remove_components::<B>(entity);
     }
 
+    pub fn despawn(&mut self, entity: Entity) {
+        self.world.despawn(entity)
+    }
+
     pub fn resource<'w, R: Resource + Send + Sync>(&'w self) -> Res<'w, R> {
         self.world.resource::<R>()
     }

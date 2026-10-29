@@ -1,6 +1,7 @@
 use dashmap::mapref::one::Ref;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use parking_lot::MutexGuard;
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use rustc_hash::FxBuildHasher;
 use std::any::TypeId;
@@ -10,6 +11,7 @@ use crate::entity::ENTITY_HANDLE_COUNT_REGISTRY;
 use crate::entity::ENTITY_LOCATION_REGISTRY;
 use crate::entity::HandleCount;
 use crate::entity::RegistryData;
+use crate::reactivity::TrackedComponentMeta;
 use crate::reactivity::{TRACKED_COMPONENTS, removed::REMOVAL_TRACKED_COMPS};
 use crate::{
     commands::{Command, bundle::ComponentBundle},
@@ -46,7 +48,7 @@ impl<T: ComponentBundle> Command for SpawnCommand<T> {
         };
         {
             let columns = &mut arch.columns;
-            initialize_spawn_markers(columns);
+            initialize_spawn_markers(&TRACKED_COMPONENTS.lock(), columns);
         }
         unsafe { self.components.insert_to_archetype(&mut arch, row_idx) };
 
@@ -124,7 +126,7 @@ impl<T: ComponentBundle, I: Iterator<Item = T> + Send + 'static> Command
         if lower_bound > 0 {
             spawned_entities.reserve(lower_bound);
         }
-
+        let tracked_components_guard = TRACKED_COMPONENTS.lock();
         for components in self.components_iter {
             let entity = {
                 let mut arch_entities = arch.entities.write();
@@ -137,7 +139,7 @@ impl<T: ComponentBundle, I: Iterator<Item = T> + Send + 'static> Command
             };
 
             let row_idx = arch.entities.read().len() - 1;
-            initialize_spawn_markers(&mut arch.columns);
+            initialize_spawn_markers(&tracked_components_guard, &mut arch.columns);
             unsafe { components.insert_to_archetype(&mut arch, row_idx) };
             spawned_entities.push(entity);
         }
@@ -189,9 +191,12 @@ pub(crate) struct DespawnCommand {
     pub(crate) entity: Entity,
 }
 
-impl DespawnCommand {
-    pub(crate) fn apply(&self, world: &mut World) {
+impl Command for DespawnCommand {
+    fn apply(self, world: &mut World) {
         let target_registry_idx = self.entity.registry_index() as usize;
+        unsafe {
+            (*ENTITY_HANDLE_COUNT_REGISTRY.get_ptr(target_registry_idx)).decrement();
+        }
 
         let initial_arch_id = unsafe {
             let data_ptr = ENTITY_LOCATION_REGISTRY
@@ -205,19 +210,16 @@ impl DespawnCommand {
             .archetypes_manager
             .get_mut(initial_arch_id)
             .expect("Target archetype missing");
-
-        let component_ids: Vec<TypeId> = arch.types.iter().cloned().collect();
-        drop(arch);
-
-        let mut exclusive_world = ExclusiveWorld { world };
-
-        let mut active_hooks = Vec::with_capacity(component_ids.len());
+        let mut active_hooks = Vec::with_capacity(arch.types.len());
         {
             let read_guard = GLOBAL_HOOK_REGISTRY.read();
-            for id in component_ids {
+            for &id in arch.types.iter() {
                 active_hooks.push(read_guard.get_hooks(id));
             }
         }
+        drop(arch);
+
+        let mut exclusive_world = ExclusiveWorld { world };
 
         for hooks_opt in active_hooks {
             if let Some(hooks) = hooks_opt
@@ -239,9 +241,9 @@ impl DespawnCommand {
             let types_names = &lock.type_names;
             panic!(
                 "{}\n\
-                Cloned handles for an entity were not dropped after hook execution and before despawn flushing!\n\
+                Cloned handles for an entity were not dropped in on_remove hook execution and before handle count check!\n\
                 Entity Archetype Component Names: \n{:#?}\n\
-                Refer to the `CleanupHandles` schedule and `EntityCommands::despawn` documentation to understand how to coordinate handle cleanup.\n\
+                Refer to the `on_remove` hook inside the Component trait documentation to understand how to coordinate handle cleanup.\n\
                 ",
                 ENTITY_HANDLE_VIOLATION_ERR, types_names
             );
@@ -775,9 +777,14 @@ unsafe fn swap_remove_entity_registry_update(
 }
 
 #[inline(always)]
-fn initialize_spawn_markers(columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>) {
-    let tracked = TRACKED_COMPONENTS.lock();
-    for meta_list in tracked.values() {
+fn initialize_spawn_markers(
+    tracked_components_guard: &MutexGuard<
+        '_,
+        IndexMap<TypeId, Vec<TrackedComponentMeta>, FxBuildHasher>,
+    >,
+    columns: &mut IndexMap<TypeId, ComponentColumn, FxBuildHasher>,
+) {
+    for meta_list in tracked_components_guard.values() {
         for meta in meta_list {
             if let Some(marker_column) = columns.get_mut(&meta.marker_id) {
                 unsafe { (meta.push_default_marker)(marker_column) };

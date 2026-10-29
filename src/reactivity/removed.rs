@@ -1,14 +1,15 @@
 use std::{
     any::{TypeId, type_name},
     marker::PhantomData,
+    sync::Arc,
 };
 
-use dashmap::DashSet;
 use indexmap::IndexMap;
-use parking_lot::{Mutex, RwLockWriteGuard};
+use parking_lot::Mutex;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
+    commands::concurrent_despawn_set::ConcurrentBitSet,
     ecs::component::Component,
     entity::Entity,
     reactivity::verify_app_not_built_yet,
@@ -26,8 +27,7 @@ pub(crate) fn register_removal_tracking_buffers(world: &World) {
 pub(crate) struct RemovalTrackedMeta {
     pub(crate) register_buffer: fn(&World),
     pub(crate) swap_and_clear_buffer: fn(&mut World),
-    pub(crate) clear_dead_entities:
-        fn(&mut World, &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>),
+    pub(crate) clear_dead_entities: fn(&mut World, &Arc<ConcurrentBitSet>),
 
     pub(crate) push_to_write_queue: fn(&mut World, Entity),
 }
@@ -120,9 +120,9 @@ impl<T: Component> Resource for RemovedComponentsBuffer<T> {}
 /// entity's handle from all active removal tracking buffers right as despawn operations are processed.
 /// This prevents downstream systems from accidentally iterating over dead or recycled entity IDs.
 ///
-/// To iterate over entities that are scheduled for despawning before they are actually despawned automatically,
-/// check if a specific target will despawn via [`crate::commands::Commands::will_despawn`] or process all pending deaths
-/// ahead of time using [`crate::commands::Commands::for_each_despawn`].
+/// To handle cleanup operations or respond to entities right before they are despawned from the world,
+/// look into the documentation of the [`crate::component::Component`] trait and implement the
+/// [`crate::component::Component::on_remove`] lifecycle hook.
 pub struct RemovedComponents<'w, T: Component> {
     buffer: Res<'w, RemovedComponentsBuffer<T>>,
     _marker: PhantomData<T>,

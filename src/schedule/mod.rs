@@ -11,7 +11,7 @@ pub(crate) mod schedule_sorter;
 mod schedules_list;
 pub(crate) mod system_sorter;
 
-pub use schedules_list::{CleanupHandles, First, Last, PostUpdate, PreUpdate, Startup, Update};
+pub use schedules_list::{First, Last, PostUpdate, PreUpdate, Startup, Update};
 
 use std::{any::Any, fmt::Debug};
 
@@ -145,11 +145,11 @@ impl Schedule {
         &mut self.systems_schedule
     }
 
-    pub fn schedule(&self) -> &dyn ScheduleLabel {
+    pub fn label(&self) -> &dyn ScheduleLabel {
         &*self.schedule
     }
 
-    pub fn schedule_mut(&mut self) -> &mut dyn ScheduleLabel {
+    pub fn label_mut(&mut self) -> &mut dyn ScheduleLabel {
         &mut *self.schedule
     }
 

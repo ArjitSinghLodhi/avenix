@@ -1,8 +1,6 @@
 pub(crate) mod archetypes;
 
-use dashmap::DashSet;
-use parking_lot::RwLockWriteGuard;
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 use std::{
     any::{Any, TypeId, type_name},
     cell::UnsafeCell,
@@ -189,8 +187,18 @@ impl World {
 
     pub fn apply_despawns(&mut self) {
         let despawns_arc = self.commands.despawns.clone();
-        let mut despawns_guard = despawns_arc.write();
-        apply_despawns(self, &mut despawns_guard);
+        for meta in REMOVAL_TRACKED_COMPS.lock().values() {
+            (meta.clear_dead_entities)(self, &despawns_arc)
+        }
+        loop {
+            despawns_arc.drain(|entity| {
+                let cmd = DespawnCommand { entity };
+                cmd.apply(self);
+            });
+            if despawns_arc.is_empty() {
+                break;
+            }
+        }
     }
 
     pub fn end_of_frame_sync(&mut self) {
@@ -410,27 +418,16 @@ impl World {
         };
         cmd.apply(self);
     }
-}
 
-pub(crate) fn apply_despawns(
-    world: &mut World,
-    despawns_guard: &mut RwLockWriteGuard<'_, DashSet<Entity, FxBuildHasher>>,
-) {
-    if !despawns_guard.is_empty() {
-        for meta in REMOVAL_TRACKED_COMPS.lock().values() {
-            (meta.clear_dead_entities)(world, despawns_guard)
-        }
-    }
-    for shard in despawns_guard.shards() {
-        let mut lock = shard.write();
-        for (entity, _) in lock.drain() {
+    pub fn despawn(&mut self, entity: Entity) {
+        if self.commands.despawns.remove(&entity) {
             unsafe {
                 (*ENTITY_HANDLE_COUNT_REGISTRY.get_ptr(entity.registry_index() as usize))
                     .decrement();
             }
-            let cmd = DespawnCommand { entity };
-            cmd.apply(world);
         }
+        let cmd = DespawnCommand { entity };
+        cmd.apply(self);
     }
 }
 

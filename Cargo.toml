@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.27.2"
+version = "0.28.0"
 edition = "2024"
 description = "A concurrent ECS application framework"
 readme = "README.md"
@@ -14,10 +14,9 @@ avenix_macros = "0.9.1"
 indexmap = "2.14.2"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 dashmap = { version = "6.2.1", default-features = false, features = ["raw-api", "inline"]}
 rustc-hash = "2.1.3"
-orx-parallel = { version = "4.1.1", features = ["rayon-core"] }
 
 [dev-dependencies]
 criterion = "0.8.2"
@@ -163,12 +162,8 @@ name = "intermediate_cleanup"
 path = "examples/despawn_cleanup/02_intermediate_cleanup.rs"
 
 [[example]]
-name = "parallel_cleanup"
-path = "examples/despawn_cleanup/03_parallel_cleanup.rs"
-
-[[example]]
 name = "hierarchy_cleanup"
-path = "examples/despawn_cleanup/04_hierarchy_cleanup.rs"
+path = "examples/despawn_cleanup/03_hierarchy_cleanup.rs"
 
 [[example]]
 name = "entity_handle_violation"

@@ -1,5 +1,4 @@
 use avenix::prelude::*;
-use orx_parallel::Par;
 
 #[derive(Event)]
 struct ThreatEvent {

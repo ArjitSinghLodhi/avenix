@@ -27,7 +27,7 @@ fn trigger_uncoordinated_despawn(commands: Commands, query: Query<Entity, With<L
     }
 }
 
-#[test]
+#[test_fork::test]
 #[should_panic(expected = "AvenixEntityHandleViolation")]
 fn test_forgotten_handle_scrub_triggers_panic() {
     let mut app = App::new();

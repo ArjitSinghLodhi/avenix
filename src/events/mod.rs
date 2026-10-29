@@ -1,7 +1,7 @@
 mod parallel_events;
 
-use orx_parallel::IterIntoParIter;
 pub use parallel_events::{ParallelEventReader, ParallelEventWriter};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 use std::any::{Any, TypeId};
 
@@ -13,8 +13,6 @@ use crate::{
     system::{SystemMeta, SystemParam},
     world::World,
 };
-
-pub use orx_parallel::{EnumeratePar, Par};
 
 pub trait Event: Send + Sync + 'static {}
 
@@ -150,14 +148,17 @@ pub struct EventReader<'w, T: Event> {
 }
 
 impl<'w, T: Event> EventReader<'w, T> {
-    /// Returns an iterator over all events dispatched during the previous frame.
-    #[inline]
     pub fn read(&self) -> impl Iterator<Item = &T> {
         unsafe { self.buffer.read_queue.queue.iter() }
     }
-    #[inline]
-    pub fn par_read(&self) -> impl Par<Item = &T> {
-        unsafe { self.buffer.read_queue.queue.iter().iter_into_par() }
+
+    pub fn par_read(&self) -> impl IndexedParallelIterator<Item = &T> {
+        let queue = &self.buffer.read_queue.queue;
+        let len = queue.len();
+
+        (0..len)
+            .into_par_iter()
+            .map(move |idx| unsafe { queue.get(idx).expect("Index should be within bounds") })
     }
 }
 

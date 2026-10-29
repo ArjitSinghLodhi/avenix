@@ -1,14 +1,10 @@
-use std::sync::Arc;
-
-use dashmap::DashSet;
-use parking_lot::RwLock;
-use rustc_hash::FxBuildHasher;
-
 use crate::commands::Commands;
 use crate::commands::command_queue::CommandQueue;
-use crate::entity::Entity;
+use crate::commands::concurrent_despawn_set::ConcurrentBitSet;
 use crate::system::{ParallelSystemParam, SystemMeta, SystemParam};
 use crate::world::World;
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// A thread-safe, thread-clonable handle that acts as a detached remote input into the ECS engine.
 ///
@@ -19,7 +15,7 @@ use crate::world::World;
 /// [`.par_commands()`]: crate::world::World::par_commands
 pub struct ParallelCommands {
     pub(crate) queue: Arc<RwLock<CommandQueue>>,
-    pub(crate) despawns: Arc<RwLock<DashSet<Entity, FxBuildHasher>>>,
+    pub(crate) despawns: Arc<ConcurrentBitSet>,
 }
 
 impl Clone for ParallelCommands {
@@ -42,7 +38,7 @@ impl ParallelCommands {
     {
         let commands = Commands {
             queue: self.queue.read(),
-            despawns: self.despawns.read(),
+            despawns: self.despawns.clone(),
         };
         f(commands)
     }

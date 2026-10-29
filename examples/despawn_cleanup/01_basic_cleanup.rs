@@ -6,24 +6,20 @@ pub struct ActiveTarget {
 }
 
 #[derive(Component)]
+#[component(on_remove = Enemy::handle_despawn)]
 struct Enemy;
 
-pub struct BasicCleanupPlugin;
-
-impl Plugin for BasicCleanupPlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(ActiveTarget { entity: None })
-            .add_systems(CleanupHandles, clear_dead_target_handle);
-    }
-}
-
-fn clear_dead_target_handle(commands: Commands, mut target: ResMut<ActiveTarget>) {
-    commands.for_each_despawn(|despawned_entity| {
-        if target.entity.as_ref() == Some(despawned_entity) {
-            println!("Cleanup Gate: Intercepted hardware despawn for active target. Evicting leaked handle to prevent diagnostic crash.");
-            target.entity = None;
+impl Enemy {
+    fn handle_despawn(world: &mut ExclusiveWorld, entity: &Entity) {
+        if let Some(mut target) = world.get_resource_mut::<ActiveTarget>() {
+            if target.entity.as_ref() == Some(entity) {
+                println!(
+                    "Cleanup Hook: Intercepted hardware despawn for active target. Evicting leaked handle instantly."
+                );
+                target.entity = None;
+            }
         }
-    });
+    }
 }
 
 fn spawn_initial_entities(commands: Commands) {
@@ -61,7 +57,7 @@ fn run_simulation_flow(app: &mut App) {
     println!("\n--- Step 1: Active Tracking State After Startup ---");
     verify_handle_state(&app.world().resource::<ActiveTarget>());
 
-    println!("\n--- Step 2: Trigger Despawn and Flush Cleanup Gate ---");
+    println!("\n--- Step 2: Trigger Despawn and Run Hook ---");
     app.update();
 
     println!("\n--- Step 3: Post-Execution Verification ---");
@@ -72,7 +68,7 @@ fn main() {
     println!("--- Starting Basic Cleanup Example ---");
 
     App::new()
-        .add_plugins(BasicCleanupPlugin)
+        .insert_resource(ActiveTarget { entity: None })
         .add_systems(
             Startup,
             (spawn_initial_entities, track_initial_entities).chain(),

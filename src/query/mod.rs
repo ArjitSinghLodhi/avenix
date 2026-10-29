@@ -540,11 +540,11 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// * The `index` must be strictly less than the length of the target archetype's data rows.
     /// * No mutable references ([`Self::fetch_mut`]) can be actively held for this row index on any thread.
     #[inline(always)]
-    pub unsafe fn fetch_read_only(
-        &self,
-        fetch: &Q::Fetch<'q>,
+    pub unsafe fn fetch_read_only<'w>(
+        &'w self,
+        fetch: &Q::Fetch<'w>,
         index: usize,
-    ) -> Q::ReadOnlyItem<'_> {
+    ) -> Q::ReadOnlyItem<'w> {
         unsafe { Q::fetch_read_only(fetch, index) }
     }
 
@@ -556,7 +556,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// * **Strict Aliasing Rule:** You must guarantee absolute exclusive access to this row. No other
     ///   thread or task may hold a read-only or mutable reference to this exact element simultaneously.
     #[inline(always)]
-    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'q>, index: usize) -> Q::Item<'_> {
+    pub unsafe fn fetch_mut<'w>(&'w self, fetch: &Q::Fetch<'w>, index: usize) -> Q::Item<'w> {
         unsafe { Q::fetch_mut(fetch, index) }
     }
 }

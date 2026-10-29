@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     app::system::SystemExt,
     app_impl::SystemsBlock,
-    schedule::{CleanupHandles, Schedule, Startup, SystemNode},
+    schedule::{Schedule, Startup, SystemNode},
     system::{SystemMeta, system_traits::SystemOrderings},
 };
 
@@ -57,7 +57,6 @@ pub fn check_access_conflicts(a: &SystemAccessView, b: &SystemAccessView) -> boo
 pub(crate) fn dispatch_system_blocks(
     systems_blocks: &mut Vec<SystemsBlock>,
     startup_schedule: &mut Schedule,
-    cleanup_schedule: &mut Schedule,
     schedules: &mut [Schedule],
 ) {
     for system_block in systems_blocks.drain(..) {
@@ -67,16 +66,10 @@ pub(crate) fn dispatch_system_blocks(
             }
             continue;
         }
-        if (*system_block.schedule).dyn_eq(&CleanupHandles) {
-            for system in system_block.systems {
-                cleanup_schedule.add_system_boxed(system);
-            }
-            continue;
-        }
 
         let target_schedule = match schedules
             .iter_mut()
-            .find(|s| (*s.schedule()).dyn_eq(&*system_block.schedule))
+            .find(|s| (*s.label()).dyn_eq(&*system_block.schedule))
         {
             Some(schedule) => schedule,
             None => {

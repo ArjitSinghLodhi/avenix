@@ -127,7 +127,7 @@ fn parallel_execution_system(
             par_reader_a.scope(|reader| {
                 nest_read_a_count = reader.read().count();
                 par_reader_b.scope(|reader| {
-                    nest_read_b_count = reader.read().count();
+                    nest_read_b_count = reader.par_read().count();
                 });
             });
         });
