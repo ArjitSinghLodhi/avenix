@@ -15,30 +15,28 @@ use crate::{
 
 /// A thread-safe, clonable handle providing detached remote access to the engine's archetype data blocks.
 ///
-/// `ParallelQueryAccessor` can be passed to external or background worker threads, allowing them to
-/// concurrently read or modify component data arrays outside the main execution path. It can be obtained
-/// directly from the world layer via [`.par_query_accessor()`] before building the app.
+/// `ParallelQueryAccessor` can be passed to background worker threads, network loops, or async task pools,
+/// allowing them to concurrently read or modify component data arrays completely out-of-band.
+///
+/// # Concurrency & Performance
+/// **All data retrieval and structural handle operations are 100% thread-safe and lock-free.** Background
+/// tasks can invoke random slot lookups, clone `Entity` handles, or update component states simultaneously
+/// across multiple threads without requiring manual synchronization or application-level locks.
 ///
 /// # Initialization Requirement
-/// Unlike other parallel handles, this handle must be initialized prior to app compilation. This ensures the
-/// engine can automatically register and configure the underlying demand-driven component tracking.
+/// This handle is sourced via `world.par_query_accessor::<Q, F>()`. **If** the accessor interacts with tracking
+/// data (e.g., `Changed<T>`, `Added<T>`), those component trackers must be pre-registered before `app.build()`.
+/// This can be done either by calling this method pre-build to let the engine auto-register them, or by manually
+/// invoking the tracking registerers on `App` or `World` pre-build—which allows you to safely obtain the
+/// accessor post-build.
 ///
-/// # Thread Safety
-/// Standard concurrent reads and writes for component columns are completely safe without any extra rules.
-/// For specific rules regarding cloning `Entity` handles, lookups, or using [`query.get()`] out-of-band,
-/// please refer to the [`Entity`] documentation.
-///
-/// # Deadlock Safety Rules
-/// Cross-thread parallel access is entirely safe. However, because the underlying storage utilizes granular,
-/// column-level `RwLocks` to enable simultaneous multi-threaded table access, nesting parallel query scopes
-/// incorrectly on the *same thread* will freeze execution:
-/// * **Same-Thread Deadlocks:** Nesting scopes on a single thread will cause a freeze if standard borrowing rules are broken.
-/// * **Overlapping Access:** Opening a mutable query scope while an active scope (mutable or immutable)
-///   targets overlapping components on that same thread will trigger a deadlock.
-///
-/// [`.par_query_accessor()`]: crate::world::World::par_query_accessor
-/// [`Entity`]: crate::entity::Entity
-/// [`query.get()`]: crate::query::Query::get
+/// # Single-Thread Aliasing Rules
+/// While cross-thread parallel processing is completely race-free, interacting with a query from the *same thread*
+/// behaves exactly like **Standard Rust borrow rules** enforced at runtime based on your `QueryData` parameter layout:
+/// * **Exclusive Access (Unique Borrow):** You must not open a query scope that requests mutable access to a component column
+///   while another active query scope holds an active borrow (mutable or shared) on that same component column on the same thread.
+/// * **Borrow Rules:** Violating standard shared vs. exclusive reference bounds across nested scopes on a single execution
+///   path will cause a thread freeze due to nested acquisition of the underlying column-level locks.
 pub struct ParallelQueryAccessor<Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     pub(crate) archetypes_map: Arc<DashMap<ArchetypeId, Mutex<Archetype>, FxBuildHasher>>,
     pub(crate) _marker: PhantomData<(Q, F)>,

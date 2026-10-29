@@ -15,7 +15,7 @@ use crate::{
 pub(crate) fn register_added_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
-    let marker_id = TypeId::of::<AddedMarker<T>>();
+    let marker_id = TypeId::of::<AddedState<T>>();
 
     let meta_list = tracked.entry(component_id).or_default();
 
@@ -23,39 +23,66 @@ pub(crate) fn register_added_tracked_component<T: Component>() {
         return;
     }
 
-    let _lock = verify_app_not_built_yet(type_name::<AddedMarker<T>>());
+    let _lock = verify_app_not_built_yet(type_name::<AddedState<T>>());
     meta_list.push(TrackedComponentMeta {
         marker_id,
         create_marker_column: || ComponentColumn {
-            data: RwLock::new(Box::new(Vec::<AddedMarker<T>>::new())),
+            data: RwLock::new(Box::new(Vec::<AddedState<T>>::new())),
         },
         push_default_marker: |column| {
             let mut guard = column.data.write();
             let raw_any = guard.as_any_mut();
-            let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
-            vec.push(AddedMarker {
+            let vec = raw_any.downcast_mut::<Vec<AddedState<T>>>().unwrap();
+            vec.push(AddedState {
                 read: false,
                 write: true,
                 phantom: PhantomData,
             });
         },
         clear_column_markers: |raw_any| {
-            let vec = raw_any.downcast_mut::<Vec<AddedMarker<T>>>().unwrap();
-            vec.iter_mut().for_each(|marker| {
-                marker.read = marker.write;
-                marker.write = false;
+            let vec = raw_any.downcast_mut::<Vec<AddedState<T>>>().unwrap();
+            vec.iter_mut().for_each(|state| {
+                state.read = state.write;
+                state.write = false;
             });
         },
     });
 }
 
-pub struct AddedMarker<T> {
+#[derive(Clone, Copy, Debug)]
+pub struct AddedState<T: Component> {
     read: bool,
     write: bool,
     phantom: PhantomData<T>,
 }
 
-impl<T: Component> Component for AddedMarker<T> {}
+impl<T: Component> AddedState<T> {
+    pub const fn new(read: bool, write: bool) -> Self {
+        Self {
+            read,
+            write,
+            phantom: PhantomData,
+        }
+    }
+
+    pub const fn read(&self) -> bool {
+        self.read
+    }
+
+    pub fn set_read(&mut self, read: bool) {
+        self.read = read;
+    }
+
+    pub const fn write(&self) -> bool {
+        self.write
+    }
+
+    pub fn set_write(&mut self, write: bool) {
+        self.write = write;
+    }
+}
+
+impl<T: Component> Component for AddedState<T> {}
 
 /// A query filter that matches components of type `T` that were newly added during the previous frame.
 ///
@@ -81,9 +108,9 @@ impl<T: Component> Component for AddedMarker<T> {}
 pub struct Added<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Added<T> {
-    type FilterData<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
+    type FilterData<'w> = ComponentColumnRead<'w, AddedState<T>>;
     fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
-        archetype.column::<AddedMarker<T>>()
+        archetype.column::<AddedState<T>>()
     }
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
@@ -95,12 +122,12 @@ impl<T: Component> QueryFilter for Added<T> {
         withs: &mut AccessVec<std::any::TypeId>,
         _withouts: &mut AccessVec<std::any::TypeId>,
     ) {
-        withs.push(TypeId::of::<AddedMarker<T>>());
+        withs.push(TypeId::of::<AddedState<T>>());
         register_added_tracked_component::<T>();
     }
 
     fn collect_filter_access(reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {
-        reads.push(TypeId::of::<AddedMarker<T>>());
+        reads.push(TypeId::of::<AddedState<T>>());
     }
 }
 
@@ -132,19 +159,19 @@ impl<T: Component> AddedTracker<T> {
 impl<T: Component> QueryData for AddedTracker<T> {
     type Item<'w> = AddedTracker<T>;
     type ReadOnlyItem<'w> = AddedTracker<T>;
-    type Fetch<'w> = ComponentColumnRead<'w, AddedMarker<T>>;
+    type Fetch<'w> = ComponentColumnRead<'w, AddedState<T>>;
     fn collect_access(
         reads: &mut AccessVec<std::any::TypeId>,
         _writes: &mut AccessVec<std::any::TypeId>,
     ) {
-        reads.push(TypeId::of::<AddedMarker<T>>());
+        reads.push(TypeId::of::<AddedState<T>>());
         register_added_tracked_component::<T>();
     }
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
     }
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        archetype.column::<AddedMarker<T>>()
+        archetype.column::<AddedState<T>>()
     }
 
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {

@@ -129,6 +129,8 @@ pub(crate) struct SetRegistration {
     pub(crate) condition_gates: Vec<ConditionFn>,
 }
 
+const SYSTEM_SET_ERROR_STR: &str = "SystemSetError";
+
 pub(crate) fn preprocess_system_sets(
     schedule_systems: &mut [&mut SystemNode],
     registrations: &mut [SetRegistration],
@@ -159,7 +161,8 @@ pub(crate) fn preprocess_system_sets(
     for i in 0..n_reg {
         if nesting_matrix[i][i] {
             panic!(
-                "❌ SystemSet Error: A cyclic nesting deadlock was detected! A SystemSet cannot be configured to contain itself hierarchically."
+                "{}\nA cyclic nesting deadlock was detected! A SystemSet cannot be configured to contain itself hierarchically.",
+                SYSTEM_SET_ERROR_STR
             );
         }
     }
@@ -171,7 +174,8 @@ pub(crate) fn preprocess_system_sets(
                 .any(|r| r.set.dyn_eq(target_set.as_ref()))
             {
                 panic!(
-                    "❌ SystemSet Error: A SystemSet was configured to run before a set that was never registered via app.configure_set()!"
+                    "{}\nA SystemSet was configured to run before a set that was never registered via app.configure_set()!",
+                    SYSTEM_SET_ERROR_STR
                 );
             }
         }
@@ -181,7 +185,8 @@ pub(crate) fn preprocess_system_sets(
                 .any(|r| r.set.dyn_eq(target_set.as_ref()))
             {
                 panic!(
-                    "❌ SystemSet Error: A SystemSet was configured to run after a set that was never registered via app.configure_set()!"
+                    "{}\nA SystemSet was configured to run after a set that was never registered via app.configure_set()!",
+                    SYSTEM_SET_ERROR_STR
                 );
             }
         }
@@ -235,7 +240,8 @@ pub(crate) fn preprocess_system_sets(
 
             if !is_registered {
                 panic!(
-                    "❌ SystemSet Error: System '{}' is configured to run inside a SystemSet which was never registered via app.configure_set()!",
+                    "{}\nSystem '{}' is configured to run inside a SystemSet which was never registered via app.configure_set()!",
+                    SYSTEM_SET_ERROR_STR,
                     sys.identity().display_name()
                 );
             }
@@ -403,7 +409,8 @@ pub(crate) fn preprocess_system_sets(
                 .any(|reg| reg.set.dyn_eq(target_set.as_ref()))
             {
                 panic!(
-                    "❌ SystemSet Error: System '{}' is configured to run before a SystemSet which was never registered!",
+                    "{}\nSystem '{}' is configured to run before a SystemSet which was never registered!",
+                    SYSTEM_SET_ERROR_STR,
                     sys.identity().display_name()
                 );
             }
@@ -449,7 +456,8 @@ pub(crate) fn preprocess_system_sets(
                 .any(|reg| reg.set.dyn_eq(target_set.as_ref()))
             {
                 panic!(
-                    "❌ SystemSet Error: System '{}' is configured to run after a SystemSet which was never registered!",
+                    "{}\nSystem '{}' is configured to run after a SystemSet which was never registered!",
+                    SYSTEM_SET_ERROR_STR,
                     sys.identity().display_name()
                 );
             }

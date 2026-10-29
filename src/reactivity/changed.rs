@@ -14,47 +14,73 @@ use std::marker::PhantomData;
 pub(crate) fn register_changed_tracked_component<T: Component>() {
     let mut tracked = TRACKED_COMPONENTS.lock();
     let component_id = TypeId::of::<T>();
-    let marker_id = TypeId::of::<ChangedMarker<T>>();
+    let marker_id = TypeId::of::<ChangedState<T>>();
 
     let meta_list = tracked.entry(component_id).or_default();
 
     if meta_list.iter().any(|m| m.marker_id == marker_id) {
         return;
     }
-    let _lock = verify_app_not_built_yet(type_name::<ChangedMarker<T>>());
+    let _lock = verify_app_not_built_yet(type_name::<ChangedState<T>>());
     meta_list.push(TrackedComponentMeta {
         marker_id,
         create_marker_column: || ComponentColumn {
-            data: RwLock::new(Box::new(Vec::<ChangedMarker<T>>::new())),
+            data: RwLock::new(Box::new(Vec::<ChangedState<T>>::new())),
         },
         push_default_marker: |column| {
             let mut guard = column.data.write();
             let raw_any = guard.as_any_mut();
-            let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
-            vec.push(ChangedMarker {
+            let vec = raw_any.downcast_mut::<Vec<ChangedState<T>>>().unwrap();
+            vec.push(ChangedState {
                 read: false,
                 write: true,
                 phantom: PhantomData,
             });
         },
         clear_column_markers: |raw_any| {
-            let vec = raw_any.downcast_mut::<Vec<ChangedMarker<T>>>().unwrap();
-            vec.iter_mut().for_each(|marker| {
-                marker.read = marker.write;
-                marker.write = false;
+            let vec = raw_any.downcast_mut::<Vec<ChangedState<T>>>().unwrap();
+            vec.iter_mut().for_each(|state| {
+                state.read = state.write;
+                state.write = false;
             });
         },
     });
 }
 
-#[derive(Clone, Copy)]
-pub struct ChangedMarker<T: Component> {
+#[derive(Clone, Copy, Debug)]
+pub struct ChangedState<T: Component> {
     read: bool,
-    pub(crate) write: bool,
+    write: bool,
     phantom: PhantomData<T>,
 }
 
-impl<T: Component> Component for ChangedMarker<T> {}
+impl<T: Component> ChangedState<T> {
+    pub const fn new(read: bool, write: bool) -> Self {
+        Self {
+            read,
+            write,
+            phantom: PhantomData,
+        }
+    }
+
+    pub const fn read(&self) -> bool {
+        self.read
+    }
+
+    pub fn set_read(&mut self, read: bool) {
+        self.read = read;
+    }
+
+    pub const fn write(&self) -> bool {
+        self.write
+    }
+
+    pub fn set_write(&mut self, write: bool) {
+        self.write = write;
+    }
+}
+
+impl<T: Component> Component for ChangedState<T> {}
 
 /// A query data wrapper that allows systems to inspect the change state of an individual component instance.
 ///
@@ -84,7 +110,7 @@ impl<T: Component> ChangedTracker<T> {
 impl<T: Component> QueryData for ChangedTracker<T> {
     type Item<'w> = ChangedTracker<T>;
     type ReadOnlyItem<'w> = ChangedTracker<T>;
-    type Fetch<'w> = ComponentColumnRead<'w, ChangedMarker<T>>;
+    type Fetch<'w> = ComponentColumnRead<'w, ChangedState<T>>;
 
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
@@ -94,12 +120,12 @@ impl<T: Component> QueryData for ChangedTracker<T> {
         reads: &mut AccessVec<std::any::TypeId>,
         _writes: &mut AccessVec<std::any::TypeId>,
     ) {
-        reads.push(TypeId::of::<ChangedMarker<T>>());
+        reads.push(TypeId::of::<ChangedState<T>>());
         register_changed_tracked_component::<T>();
     }
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        archetype.column::<ChangedMarker<T>>()
+        archetype.column::<ChangedState<T>>()
     }
 
     unsafe fn fetch_read_only<'w, 'b>(
@@ -205,7 +231,7 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
     #[inline(always)]
     unsafe fn fetch_mut<'w, 'b>(fetch: &Self::Fetch<'b>, index: usize) -> Self::Item<'w> {
         let mut_item = unsafe { <&mut T as QueryData>::fetch_mut(fetch, index) };
-        let changed = unsafe { (&*mut_item.changed_marker).read };
+        let changed = unsafe { (&*mut_item.changed_state).read };
         ChangedRefMut {
             value: mut_item,
             changed,
@@ -254,13 +280,13 @@ impl<T: Component> QueryData for ChangedRefMut<'_, T> {
 pub struct Changed<T: Component>(std::marker::PhantomData<T>);
 
 impl<T: Component> QueryFilter for Changed<T> {
-    type FilterData<'w> = ComponentColumnRead<'w, ChangedMarker<T>>;
+    type FilterData<'w> = ComponentColumnRead<'w, ChangedState<T>>;
     fn matches(archetype: &Archetype) -> bool {
         archetype.has_column::<T>()
     }
 
     fn init_filter_data<'w>(archetype: &Archetype) -> Self::FilterData<'w> {
-        archetype.column::<ChangedMarker<T>>()
+        archetype.column::<ChangedState<T>>()
     }
 
     fn matches_row<'w>(filter_data: &Self::FilterData<'w>, row_idx: usize) -> bool {
@@ -268,18 +294,18 @@ impl<T: Component> QueryFilter for Changed<T> {
     }
 
     fn collect_filter(withs: &mut AccessVec<TypeId>, _withouts: &mut AccessVec<TypeId>) {
-        withs.push(TypeId::of::<ChangedMarker<T>>());
+        withs.push(TypeId::of::<ChangedState<T>>());
         register_changed_tracked_component::<T>();
     }
 
     fn collect_filter_access(reads: &mut AccessVec<TypeId>, _writes: &mut AccessVec<TypeId>) {
-        reads.push(TypeId::of::<ChangedMarker<T>>());
+        reads.push(TypeId::of::<ChangedState<T>>());
     }
 }
 
 pub struct Mut<'w, T: Component> {
     pub(crate) value: *mut T,
-    pub(crate) changed_marker: *mut ChangedMarker<T>,
+    pub(crate) changed_state: *mut ChangedState<T>,
     pub(crate) _marker: std::marker::PhantomData<&'w mut T>,
 }
 
@@ -291,9 +317,9 @@ impl<'w, T: Component> Mut<'w, T> {
 
     #[inline(always)]
     pub fn trigger_change_detection(&mut self) {
-        if !self.changed_marker.is_null() {
+        if !self.changed_state.is_null() {
             unsafe {
-                (*self.changed_marker).write = true;
+                (*self.changed_state).write = true;
             }
         }
     }

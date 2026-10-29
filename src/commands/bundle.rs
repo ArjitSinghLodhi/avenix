@@ -6,7 +6,7 @@ use std::any::{TypeId, type_name};
 use crate::{
     component::hooks::GLOBAL_HOOK_REGISTRY,
     ecs::component::Component,
-    reactivity::changed::ChangedMarker,
+    reactivity::changed::ChangedState,
     world::archetypes::{Archetype, ComponentColumn},
 };
 
@@ -67,9 +67,9 @@ impl<T: Component> ComponentBundle for T {
             }
         }
 
-        if let Some(mut changed_marker_column) = archetype.get_column_mut::<ChangedMarker<T>>() {
-            let marker = unsafe { changed_marker_column.get_unchecked_mut(row_idx) };
-            marker.write = true;
+        if let Some(mut changed_state_column) = archetype.get_column_mut::<ChangedState<T>>() {
+            let state = unsafe { changed_state_column.get_unchecked_mut(row_idx) };
+            state.set_write(true);
         }
     }
     type NamesArray = [&'static str; 1];

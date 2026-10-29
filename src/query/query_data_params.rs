@@ -1,5 +1,5 @@
 use crate::ecs::component::Component;
-use crate::reactivity::changed::{ChangedMarker, Mut};
+use crate::reactivity::changed::{ChangedState, Mut};
 use crate::world::archetypes::ComponentColumnWrite;
 use crate::world::archetypes::{ComponentColumnRead, EntitiesRead};
 use crate::{entity::Entity, query::QueryData, system::AccessVec, world::archetypes::Archetype};
@@ -39,7 +39,7 @@ impl<T: Component> QueryData for &mut T {
     type ReadOnlyItem<'w> = &'w T;
     type Fetch<'w> = (
         ComponentColumnWrite<'w, T>,
-        Option<ComponentColumnWrite<'w, ChangedMarker<T>>>,
+        Option<ComponentColumnWrite<'w, ChangedState<T>>>,
     );
 
     fn matches(archetype: &Archetype) -> bool {
@@ -48,7 +48,7 @@ impl<T: Component> QueryData for &mut T {
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
         let data_writer = archetype.column_mut::<T>();
-        let marker_writer_opt = archetype.get_column_mut::<ChangedMarker<T>>();
+        let marker_writer_opt = archetype.get_column_mut::<ChangedState<T>>();
 
         if let Some(marker_writer) = marker_writer_opt {
             (data_writer, Some(marker_writer))
@@ -65,14 +65,14 @@ impl<T: Component> QueryData for &mut T {
             .1
             .as_ref()
             .map(|marker_column| unsafe {
-                (marker_column.as_ptr() as *mut ChangedMarker<T>).add(index)
+                (marker_column.as_ptr() as *mut ChangedState<T>).add(index)
             })
             .unwrap_or(std::ptr::null_mut());
 
         unsafe {
             Mut {
                 value: val_ptr.add(index),
-                changed_marker: final_marker,
+                changed_state: final_marker,
                 _marker: std::marker::PhantomData,
             }
         }
@@ -87,7 +87,7 @@ impl<T: Component> QueryData for &mut T {
 
     fn collect_access(_reads: &mut AccessVec<TypeId>, writes: &mut AccessVec<TypeId>) {
         writes.push(TypeId::of::<T>());
-        writes.push(TypeId::of::<ChangedMarker<T>>());
+        writes.push(TypeId::of::<ChangedState<T>>());
     }
 }
 
@@ -160,7 +160,7 @@ impl<T: Component> QueryData for Option<&mut T> {
     type ReadOnlyItem<'w> = Option<&'w T>;
     type Fetch<'w> = Option<(
         ComponentColumnWrite<'w, T>,
-        Option<ComponentColumnWrite<'w, ChangedMarker<T>>>,
+        Option<ComponentColumnWrite<'w, ChangedState<T>>>,
     )>;
 
     fn matches(_archetype: &Archetype) -> bool {
@@ -169,11 +169,11 @@ impl<T: Component> QueryData for Option<&mut T> {
 
     fn collect_access(_reads: &mut AccessVec<TypeId>, writes: &mut AccessVec<TypeId>) {
         writes.push(TypeId::of::<T>());
-        writes.push(TypeId::of::<ChangedMarker<T>>());
+        writes.push(TypeId::of::<ChangedState<T>>());
     }
 
     unsafe fn init_fetch<'w>(archetype: &'w Archetype) -> Self::Fetch<'w> {
-        let marker_writer_opt = archetype.get_column_mut::<ChangedMarker<T>>();
+        let marker_writer_opt = archetype.get_column_mut::<ChangedState<T>>();
         let data_writer_opt = archetype.get_column_mut::<T>();
         if let Some(data_writer) = data_writer_opt {
             if let Some(marker_writer) = marker_writer_opt {
@@ -196,13 +196,13 @@ impl<T: Component> QueryData for Option<&mut T> {
                     .1
                     .as_ref()
                     .map(|marker_column| {
-                        (marker_column.as_ptr() as *mut ChangedMarker<T>).add(index)
+                        (marker_column.as_ptr() as *mut ChangedState<T>).add(index)
                     })
                     .unwrap_or(std::ptr::null_mut());
 
                 Some(Mut {
                     value: data_ptr.add(index),
-                    changed_marker: final_marker,
+                    changed_state: final_marker,
                     _marker: std::marker::PhantomData,
                 })
             } else {

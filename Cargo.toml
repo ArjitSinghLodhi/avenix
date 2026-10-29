@@ -1,6 +1,6 @@
 [package]
 name = "avenix"
-version = "0.27.0"
+version = "0.27.2"
 edition = "2024"
 description = "A concurrent ECS application framework"
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["ecs", "archetype", "framework", "parallel", "concurrency"]
 categories = ["development-tools"]
 
 [dependencies]
-avenix_macros = "0.9.0"
+avenix_macros = "0.9.1"
 indexmap = "2.14.2"
 rayon = "1.12.0"
 orx-concurrent-bag = "4.0.1"

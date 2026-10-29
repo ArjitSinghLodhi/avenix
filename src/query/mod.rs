@@ -1,26 +1,26 @@
 pub mod filter;
 pub(crate) mod parallel_query;
-mod params;
+mod query_data_params;
 pub(crate) mod single;
 
 use dashmap::DashMap;
-pub use params::Has;
+pub use query_data_params::Has;
 
 pub use filter::*;
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLockReadGuard};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use std::{
     any::{TypeId, type_name},
+    mem::transmute,
     sync::Arc,
 };
 
 use crate::{
-    entity::Entity,
-    entity_registry::REGISTRY,
+    entity::{ENTITY_LOCATION_REGISTRY, Entity, RegistryData},
     system::{AccessVec, SystemMeta, SystemParam},
     world::{
         World,
@@ -130,6 +130,7 @@ pub enum QuerySingleError {
 pub struct Query<'q, Q: QueryData, F: QueryFilter = EmptyQueryFilter> {
     cached_fetches: Vec<Option<Q::Fetch<'q>>>,
     cached_archetypes: Vec<Option<MatchedArchetypeData<'q, F>>>,
+    entity_location_registry_guard: RwLockReadGuard<'q, Vec<RegistryData>>,
 }
 
 unsafe impl<'q, Q: QueryData, F: QueryFilter> Sync for Query<'q, Q, F> {}
@@ -170,9 +171,17 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
             }
         }
 
+        let entity_location_registry_guard = unsafe {
+            transmute::<
+                RwLockReadGuard<'_, Vec<RegistryData>>,
+                RwLockReadGuard<'q, Vec<RegistryData>>,
+            >(ENTITY_LOCATION_REGISTRY.read())
+        };
+
         Self {
             cached_fetches,
             cached_archetypes,
+            entity_location_registry_guard,
         }
     }
 
@@ -415,12 +424,10 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// Note: it does not respect dynamic filters like `Changed<T>` or `Added<T>`
     pub fn get<'w>(&'w self, entity: &Entity) -> Option<Q::ReadOnlyItem<'w>> {
         unsafe {
-            let cell_ptr = REGISTRY.get_ptr(entity.registry_index as usize);
-            let arch_id = (*cell_ptr).archetype_id;
-            let row_idx = (*cell_ptr).idx;
+            let (arch_id, row_index) = self.get_row_and_arch(entity);
 
             let fetch = self.cached_fetches.get(arch_id.id() as usize)?.as_ref()?;
-            Some(Q::fetch_read_only(fetch, row_idx as usize))
+            Some(Q::fetch_read_only(fetch, row_index as usize))
         }
     }
 
@@ -429,12 +436,10 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// Note: it does not respect dynamic filters like `Changed<T>` or `Added<T>`
     pub fn get_mut<'w>(&'w mut self, entity: &Entity) -> Option<Q::Item<'w>> {
         unsafe {
-            let cell_ptr = REGISTRY.get_ptr(entity.registry_index as usize);
-            let arch_id = (*cell_ptr).archetype_id;
-            let row_idx = (*cell_ptr).idx;
+            let (arch_id, row_index) = self.get_row_and_arch(entity);
 
             let fetch = self.cached_fetches.get(arch_id.id() as usize)?.as_ref()?;
-            Some(Q::fetch_mut(fetch, row_idx as usize))
+            Some(Q::fetch_mut(fetch, row_index as usize))
         }
     }
 
@@ -445,16 +450,13 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// The caller must ensure that the entity handle belongs to a matching archetype of the query.
     pub unsafe fn get_unchecked<'w>(&'w self, entity: &Entity) -> Q::ReadOnlyItem<'w> {
         unsafe {
-            let cell_ptr = REGISTRY.get_ptr(entity.registry_index as usize);
-            let arch_id = (*cell_ptr).archetype_id;
-            let row_idx = (*cell_ptr).idx;
-
+            let (arch_id, row_index) = self.get_row_and_arch(entity);
             let fetch = self
                 .cached_fetches
                 .get_unchecked(arch_id.id() as usize)
                 .as_ref()
                 .unwrap_unchecked();
-            Q::fetch_read_only(fetch, row_idx as usize)
+            Q::fetch_read_only(fetch, row_index as usize)
         }
     }
 
@@ -465,15 +467,23 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// The caller must ensure that the entity handle belongs to a matching archetype of the query.
     pub unsafe fn get_mut_unchecked<'w>(&'w mut self, entity: &Entity) -> Q::Item<'w> {
         unsafe {
-            let cell_ptr = REGISTRY.get_ptr(entity.registry_index as usize);
-
-            let arch_id = (*cell_ptr).archetype_id;
-            let row_idx = (*cell_ptr).idx;
-
+            let (arch_id, row_index) = self.get_row_and_arch(entity);
             let fetch = self.cached_fetches[arch_id.id() as usize]
                 .as_ref()
                 .unwrap_unchecked();
-            Q::fetch_mut(fetch, row_idx as usize)
+            Q::fetch_mut(fetch, row_index as usize)
+        }
+    }
+
+    fn get_row_and_arch(&self, entity: &Entity) -> (ArchetypeId, u32) {
+        unsafe {
+            let cell_ptr = self
+                .entity_location_registry_guard
+                .as_ptr()
+                .add(entity.registry_index() as usize);
+            let arch_id = (*cell_ptr).archetype_id();
+            let row_index = (*cell_ptr).index();
+            (arch_id, row_index)
         }
     }
 
@@ -534,7 +544,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
         &self,
         fetch: &Q::Fetch<'q>,
         index: usize,
-    ) -> Q::ReadOnlyItem<'q> {
+    ) -> Q::ReadOnlyItem<'_> {
         unsafe { Q::fetch_read_only(fetch, index) }
     }
 
@@ -546,7 +556,7 @@ impl<'q, Q: QueryData, F: QueryFilter> Query<'q, Q, F> {
     /// * **Strict Aliasing Rule:** You must guarantee absolute exclusive access to this row. No other
     ///   thread or task may hold a read-only or mutable reference to this exact element simultaneously.
     #[inline(always)]
-    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'q>, index: usize) -> Q::Item<'q> {
+    pub unsafe fn fetch_mut(&self, fetch: &Q::Fetch<'q>, index: usize) -> Q::Item<'_> {
         unsafe { Q::fetch_mut(fetch, index) }
     }
 }

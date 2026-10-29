@@ -6,7 +6,6 @@ mod app_impl;
 mod commands;
 mod component;
 mod entity;
-mod entity_registry;
 mod events;
 mod query;
 mod reactivity;
@@ -50,12 +49,12 @@ pub mod prelude {
         ScheduleLabel, States, SystemParam, SystemSet,
     };
     pub use crate::ecs::reactivity::{
-        added::{Added, AddedTracker},
-        changed::{Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut},
+        added::{Added, AddedState, AddedTracker},
+        changed::{Changed, ChangedRef, ChangedRefMut, ChangedState, ChangedTracker, Mut},
         removed::{RemovedComponents, RemovedComponentsBuffer},
     };
     pub use crate::ecs::{
-        commands::{Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
+        commands::{Command, Commands, EntityCommands, ParallelCommands, bundle::ComponentBundle},
         component::{
             Component, ComponentMut, ComponentRef,
             hooks::{ComponentHook, ComponentHooksRegisterer, ExclusiveWorld},
@@ -144,18 +143,18 @@ pub mod ecs {
     pub mod reactivity {
         pub mod changed {
             pub use crate::reactivity::changed::{
-                Changed, ChangedRef, ChangedRefMut, ChangedTracker, Mut,
+                Changed, ChangedRef, ChangedRefMut, ChangedState, ChangedTracker, Mut,
             };
         }
         pub mod added {
-            pub use crate::reactivity::added::{Added, AddedTracker};
+            pub use crate::reactivity::added::{Added, AddedState, AddedTracker};
         }
         pub mod removed {
             pub use crate::reactivity::removed::{RemovedComponents, RemovedComponentsBuffer};
         }
     }
     pub mod commands {
-        pub use crate::commands::{Commands, EntityCommands, ParallelCommands};
+        pub use crate::commands::{Command, Commands, EntityCommands, ParallelCommands};
         pub mod bundle {
             pub use crate::commands::bundle::ComponentBundle;
         }
@@ -203,6 +202,26 @@ pub mod app {
             };
         }
     }
+    /// Core scheduling systems, executors, and stage labels.
+    ///
+    /// # Default Schedule Execution Order
+    /// When initializing an application with `App::new()`, the schedules execute in the following precise sequence:
+    ///
+    /// * **[`Startup`]** (Runs once)
+    /// * **[`First`]**
+    /// * **[`PreUpdate`]**
+    /// * **[`Update`]**
+    /// * **[`PostUpdate`]**
+    /// * **[`Last`]**
+    /// * **[`CleanupHandles`]**
+    ///
+    /// [`Startup`]: crate::schedule::Startup
+    /// [`First`]: crate::schedule::First
+    /// [`PreUpdate`]: crate::schedule::PreUpdate
+    /// [`Update`]: crate::schedule::Update
+    /// [`PostUpdate`]: crate::schedule::PostUpdate
+    /// [`Last`]: crate::schedule::Last
+    /// [`CleanupHandles`]: crate::schedule::CleanupHandles
     pub mod schedule {
         pub use crate::schedule::{
             CleanupHandles, DefaultSchedulesPlugin, First, Last, PostUpdate, PreUpdate, Schedule,
@@ -216,6 +235,12 @@ pub mod app {
     pub mod plugin {
         pub use crate::app_impl::{Plugin, PluginsBuildAll};
     }
+    /// Core state management primitives and transition filters.
+    ///
+    /// # State Transitions
+    /// State transitions are executed during [`World::start_frame_sync`], before any schedules have run.
+    ///
+    /// [`World::start_frame_sync`]: crate::world::World::start_frame_sync
     pub mod states {
         pub use crate::states::{NextState, State, States, entered_state, exited_state, in_state};
     }

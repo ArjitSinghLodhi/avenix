@@ -1,6 +1,9 @@
 use parking_lot::RwLock;
 use rustc_hash::{FxBuildHasher, FxHashMap};
-use std::any::{TypeId, type_name};
+use std::{
+    any::{TypeId, type_name},
+    marker::PhantomData,
+};
 
 use crate::{
     commands::bundle::ComponentBundle,
@@ -168,13 +171,13 @@ impl HookRegistry {
 pub(crate) static GLOBAL_HOOK_REGISTRY: RwLock<HookRegistry> = RwLock::new(HookRegistry::new());
 
 pub struct ComponentHooksRegisterer<'a, T: Component> {
-    _marker: std::marker::PhantomData<&'a mut T>,
+    _marker: PhantomData<(&'a mut T, &'a mut World)>,
 }
 
 impl<'a, T: Component> ComponentHooksRegisterer<'a, T> {
     pub(crate) fn new() -> Self {
         Self {
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 

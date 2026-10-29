@@ -15,11 +15,11 @@ use std::{marker::PhantomData, sync::Arc};
 ///
 /// # Deadlock Safety Rules
 /// Cross-thread parallel access is entirely safe. However, because the underlying storage utilizes synchronous
-/// locking primitives to manage concurrent access, nesting access scopes incorrectly on the *same thread*
-/// will freeze execution:
-/// * **Same-Thread Deadlocks:** Nesting scopes on a single thread will cause a freeze if standard borrowing and lock aliasing rules are broken.
-/// * **Overlapping Access:** Attempting to open a mutable scope while another active scope (mutable or immutable)
-///   targets that same resource on the same thread will trigger a deadlock.
+/// locking primitives to manage concurrent access, nesting access scopes on the *same thread*
+/// behaves exactly like **Standard Rust borrow rules** enforced at runtime:
+/// * **Aliasing Violations:** Nesting scopes on a single thread will cause a freeze if they violate standard aliasing laws.
+/// * **Exclusive Access (Unique Borrow):** Attempting to open a mutable scope while another active scope (mutable or immutable)
+///   targets that same resource on the same thread will trigger a deadlock, equivalent to violating `&mut` exclusivity.
 ///
 /// [`.par_resource_accessor()`]: crate::world::World::par_resource_accessor
 pub struct ParallelResourceAccessor<T: Resource + Send + Sync> {

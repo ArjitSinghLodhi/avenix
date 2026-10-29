@@ -1,4 +1,4 @@
-use crate::{commands::WorldCommand, world::World};
+use crate::{commands::Command, world::World};
 use orx_concurrent_bag::ConcurrentBag;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
 
@@ -32,7 +32,7 @@ impl CommandQueue {
         Self::default()
     }
 
-    pub(crate) fn queue<C: WorldCommand>(&self, command: C) {
+    pub(crate) fn queue<C: Command>(&self, command: C) {
         let meta = CommandMeta {
             consume_and_advance: |chunks_iter, world| unsafe {
                 let mut local_buffer = MaybeUninit::<C>::uninit();
@@ -65,13 +65,6 @@ impl CommandQueue {
 
         let stream_iter = StackCommandIterator::new(meta, command);
         self.chunks.extend(stream_iter);
-    }
-
-    pub(crate) fn push_fn<F>(&self, f: F)
-    where
-        F: FnOnce(&mut World) + Send + 'static,
-    {
-        self.queue(FunctionCommand { func: f });
     }
 
     pub(crate) fn apply(&mut self, world: &mut World) {
@@ -115,14 +108,14 @@ impl Drop for CommandQueue {
     }
 }
 
-struct StackCommandIterator<C: WorldCommand> {
+struct StackCommandIterator<C: Command> {
     meta: ManuallyDrop<CommandMeta>,
     command: ManuallyDrop<C>,
     current_chunk_idx: usize,
     total_chunks: usize,
 }
 
-impl<C: WorldCommand> StackCommandIterator<C> {
+impl<C: Command> StackCommandIterator<C> {
     fn new(meta: CommandMeta, command: C) -> Self {
         let payload_size = mem::size_of::<C>();
         let total_chunks = 1 + payload_size.div_ceil(16);
@@ -135,7 +128,7 @@ impl<C: WorldCommand> StackCommandIterator<C> {
     }
 }
 
-impl<C: WorldCommand> Iterator for StackCommandIterator<C> {
+impl<C: Command> Iterator for StackCommandIterator<C> {
     type Item = BufferChunk;
 
     #[inline(always)]
@@ -184,17 +177,13 @@ impl<C: WorldCommand> Iterator for StackCommandIterator<C> {
     }
 }
 
-impl<C: WorldCommand> ExactSizeIterator for StackCommandIterator<C> {}
+impl<C: Command> ExactSizeIterator for StackCommandIterator<C> {}
 
-struct FunctionCommand<F>
+impl<F: FnOnce(&mut World) + Send + 'static> Command for F
 where
     F: FnOnce(&mut World) + Send + 'static,
 {
-    func: F,
-}
-
-impl<F: FnOnce(&mut World) + Send + 'static> WorldCommand for FunctionCommand<F> {
     fn apply(self, world: &mut World) {
-        (self.func)(world)
+        self(world)
     }
 }

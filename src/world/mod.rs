@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     commands::{
-        CommandBuffer, Commands, DespawnCommand, ParallelCommands, WorldCommand,
+        Command, CommandBuffer, Commands, DespawnCommand, ParallelCommands,
         bundle::ComponentBundle,
         command_types::{
             BatchSpawnCommand, InsertComponentsCommand, RemoveComponentsCommand, SpawnCommand,
@@ -22,10 +22,9 @@ use crate::{
         ComponentMut, ComponentRef,
         hooks::{ComponentHooksRegisterer, GLOBAL_HOOK_REGISTRY},
     },
-    entity::Entity,
-    entity_registry::{REGISTRY, REGISTRY_HANDLE_COUNT},
+    entity::{ENTITY_HANDLE_COUNT_REGISTRY, ENTITY_LOCATION_REGISTRY, Entity},
     events::{EventReader, EventWriter},
-    reactivity::changed::{ChangedMarker, Mut},
+    reactivity::changed::{ChangedState, Mut},
     resources::{
         ConcurrentResourceRegistry, NonSend, NonSendMut, ParallelResourceAccessor, Res, ResMut,
         Resource,
@@ -324,9 +323,14 @@ impl World {
     }
 
     pub fn get<'a, C: Component>(&'a self, entity: &Entity) -> Option<ComponentRef<'a, C>> {
-        let cell_ptr = unsafe { REGISTRY.get_ptr(entity.registry_index() as usize) };
-        let arch_id = unsafe { (*cell_ptr).archetype_id };
-        let row_index = unsafe { (*cell_ptr).idx };
+        let cell_ptr = unsafe {
+            ENTITY_LOCATION_REGISTRY
+                .read()
+                .as_ptr()
+                .add(entity.registry_index() as usize)
+        };
+        let arch_id = unsafe { (*cell_ptr).archetype_id() };
+        let row_index = unsafe { (*cell_ptr).index() };
         let arch = self.archetypes_manager.get_mut(arch_id).unwrap();
         let component_column = arch.get_column::<C>()?;
         let component = unsafe { component_column.get_unchecked(row_index as usize) as *const C };
@@ -337,29 +341,33 @@ impl World {
     }
 
     pub fn get_mut<'a, C: Component>(&'a mut self, entity: &Entity) -> Option<ComponentMut<'a, C>> {
-        let cell_ptr = unsafe { REGISTRY.get_ptr(entity.registry_index() as usize) };
-        let arch_id = unsafe { (*cell_ptr).archetype_id };
-        let row_index = unsafe { (*cell_ptr).idx };
+        let cell_ptr = unsafe {
+            ENTITY_LOCATION_REGISTRY
+                .read()
+                .as_ptr()
+                .add(entity.registry_index() as usize)
+        };
+        let arch_id = unsafe { (*cell_ptr).archetype_id() };
+        let row_index = unsafe { (*cell_ptr).index() };
         let arch = self.archetypes_manager.get_mut(arch_id).unwrap();
         let mut component_column = arch.get_column_mut::<C>()?;
         let component = unsafe { component_column.get_unchecked_mut(row_index as usize) as *mut C };
-        let mut changed_marker_column_opt = arch.get_column_mut::<ChangedMarker<C>>();
-        let changed_marker = if let Some(ref mut changed_marker_column) = changed_marker_column_opt
-        {
+        let mut changed_state_column_opt = arch.get_column_mut::<ChangedState<C>>();
+        let changed_state = if let Some(ref mut changed_state_column) = changed_state_column_opt {
             unsafe {
-                changed_marker_column.get_unchecked_mut(row_index as usize) as *mut ChangedMarker<C>
+                changed_state_column.get_unchecked_mut(row_index as usize) as *mut ChangedState<C>
             }
         } else {
             std::ptr::null_mut()
         };
         let item = Mut {
             value: component,
-            changed_marker,
+            changed_state,
             _marker: PhantomData,
         };
         Some(ComponentMut {
             _guard_val: component_column,
-            _guard_marker: changed_marker_column_opt,
+            _guard_marker: changed_state_column_opt,
             item,
         })
     }
@@ -383,7 +391,7 @@ impl World {
         C: ComponentBundle,
         I: Iterator<Item = C> + Send + 'static,
     {
-        let cmd = BatchSpawnCommand { components_iter };
+        let cmd = BatchSpawnCommand::<C, I> { components_iter };
         cmd.apply(self);
     }
 
@@ -417,7 +425,8 @@ pub(crate) fn apply_despawns(
         let mut lock = shard.write();
         for (entity, _) in lock.drain() {
             unsafe {
-                REGISTRY_HANDLE_COUNT.decrement_handle(entity.registry_index as usize);
+                (*ENTITY_HANDLE_COUNT_REGISTRY.get_ptr(entity.registry_index() as usize))
+                    .decrement();
             }
             let cmd = DespawnCommand { entity };
             cmd.apply(world);

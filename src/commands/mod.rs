@@ -26,7 +26,7 @@ use crate::{
     world::World,
 };
 
-pub(crate) trait WorldCommand: 'static + Send {
+pub trait Command: 'static + Send {
     fn apply(self, world: &mut World);
 }
 
@@ -45,12 +45,12 @@ impl CommandBuffer {
 }
 
 pub struct Commands<'a> {
-    pub(crate) queue: parking_lot::RwLockReadGuard<'a, CommandQueue>,
+    pub(crate) queue: RwLockReadGuard<'a, CommandQueue>,
     pub(crate) despawns: RwLockReadGuard<'a, DashSet<Entity, FxBuildHasher>>,
 }
 
 impl<'a> Commands<'a> {
-    fn queue<C: WorldCommand + 'static>(&self, command: C) {
+    pub fn queue<C: Command>(&self, command: C) {
         self.queue.queue(command);
     }
 
@@ -58,7 +58,7 @@ impl<'a> Commands<'a> {
     ///
     /// Because this command is deferred, no `Entity` identifier is returned immediately. The
     /// entity is generated and populated during the command execution phase.
-    pub fn spawn<C: ComponentBundle + Send>(&self, components: C) {
+    pub fn spawn<C: ComponentBundle>(&self, components: C) {
         self.queue(SpawnCommand { components });
     }
 
@@ -101,7 +101,7 @@ impl<'a> Commands<'a> {
     /// [`for_each_despawn`]: Commands::for_each_despawn
     pub fn par_for_each_despawn<F>(&self, f: F)
     where
-        F: for<'b> Fn(&'b Entity) + Send + Sync,
+        F: for<'b> Fn(&'b Entity) + Sync,
     {
         self.despawns
             .iter()
@@ -129,19 +129,12 @@ impl<'a> Commands<'a> {
         self.despawns.contains(entity)
     }
 
-    fn queue_fn<F>(&self, f: F)
-    where
-        F: FnOnce(&mut World) + Send + 'static,
-    {
-        self.queue.push_fn(f);
-    }
-
     /// Schedules a command to insert a global resource into the world.
     ///
     /// This command transfers ownership of the resource to the world during the command execution
     /// phase. If a resource of type `T` already exists, it is unconditionally dropped and replaced.
     pub fn insert_resource<T: Resource + Send + Sync>(&self, resource: T) {
-        self.queue_fn(|world| {
+        self.queue(|world: &mut World| {
             world.insert_resource(resource);
         });
     }
@@ -151,7 +144,7 @@ impl<'a> Commands<'a> {
     /// The resource is dropped during the command execution phase. If the resource does not
     /// exist in the world, the engine handles it gracefully and silently does nothing.
     pub fn remove_resource<T: Resource + Send + Sync>(&self) {
-        self.queue_fn(|world| {
+        self.queue(|world: &mut World| {
             world.remove_resource::<T>();
         });
     }
@@ -173,7 +166,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     ///
     /// [`Added<T>`]: crate::reactivity::added::Added
     /// [`Changed<T>`]: crate::reactivity::changed::Changed
-    pub fn insert<C: ComponentBundle + Send>(&self, components: C) -> &Self {
+    pub fn insert<C: ComponentBundle>(&self, components: C) -> &Self {
         self.commands.queue(InsertComponentsCommand {
             entity: self.entity_id.clone(),
             components,
@@ -188,7 +181,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     /// The specified component types are queued for removal and will be removed from the entity
     /// during command execution. If a component type in the bundle is not present on
     /// the entity, the engine handles it gracefully and silently does nothing.
-    pub fn remove<C: ComponentBundle + Send>(&self) -> &Self {
+    pub fn remove<C: ComponentBundle>(&self) -> &Self {
         self.commands.queue(RemoveComponentsCommand::<C> {
             entity: self.entity_id.clone(),
             _marker: PhantomData,

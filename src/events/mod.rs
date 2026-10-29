@@ -16,7 +16,6 @@ use crate::{
 
 pub use orx_parallel::{EnumeratePar, Par};
 
-#[doc(hidden)]
 pub trait Event: Send + Sync + 'static {}
 
 pub(crate) struct TrackedEventsMeta {

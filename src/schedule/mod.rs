@@ -110,8 +110,21 @@ impl Schedule {
         }
     }
 
+    pub fn with_executor(self, executor: impl SystemExecutor + 'static) -> Self {
+        self.with_executor_boxed(Box::new(executor))
+    }
+
+    pub fn with_executor_boxed(mut self, executor: Box<dyn SystemExecutor + 'static>) -> Self {
+        self.set_executor_boxed(executor);
+        self
+    }
+
     pub fn set_executor(&mut self, executor: impl SystemExecutor + 'static) {
-        self.executor = Box::new(executor);
+        self.set_executor_boxed(Box::new(executor));
+    }
+
+    pub fn set_executor_boxed(&mut self, executor: Box<dyn SystemExecutor + 'static>) {
+        self.executor = executor;
     }
 
     pub fn add_system(&mut self, system: impl System + 'static) {

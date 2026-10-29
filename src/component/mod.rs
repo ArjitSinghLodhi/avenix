@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::{
     component::hooks::ComponentHook,
-    reactivity::changed::{ChangedMarker, Mut},
+    reactivity::changed::{ChangedState, Mut},
     world::archetypes::{ComponentColumnRead, ComponentColumnWrite},
 };
 
@@ -88,7 +88,7 @@ impl<'a, T: Component> Deref for ComponentRef<'a, T> {
 
 pub struct ComponentMut<'a, T: Component> {
     pub(crate) _guard_val: ComponentColumnWrite<'a, T>,
-    pub(crate) _guard_marker: Option<ComponentColumnWrite<'a, ChangedMarker<T>>>,
+    pub(crate) _guard_marker: Option<ComponentColumnWrite<'a, ChangedState<T>>>,
     pub(crate) item: Mut<'a, T>,
 }
 

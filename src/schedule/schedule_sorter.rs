@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 
 use crate::schedule::{CleanupHandles, Schedule, ScheduleConstraint, Startup};
 
+const SCHEDULE_ERROR_STR: &str = "SchedulesSortingError";
+
 pub(crate) fn sort_schedules(
     unarranged_schedules: Vec<Schedule>,
     schedule_order_constraints: &Vec<ScheduleConstraint>,
@@ -14,7 +16,7 @@ pub(crate) fn sort_schedules(
             .iter()
             .any(|existing| (*existing.schedule()).dyn_eq(s.schedule()))
         {
-            panic!("❌ CONFIGURATION ERROR: Duplicate Schedule detected!");
+            panic!("{}\nDuplicate Schedule detected!", SCHEDULE_ERROR_STR);
         }
         unique_schedules.push(s);
     }
@@ -26,26 +28,36 @@ pub(crate) fn sort_schedules(
     for ScheduleConstraint { before, after } in schedule_order_constraints {
         if before.dyn_eq(&Startup) || after.dyn_eq(&Startup) {
             panic!(
-                "❌ CONFIGURATION ERROR: Ordering constraint references the 'Startup' root! Startup is completely isolated from dynamic ordering rules."
+                "{}\nOrdering constraint references the 'Startup' root! Startup is completely isolated from dynamic ordering rules.",
+                SCHEDULE_ERROR_STR
             );
         }
         if before.dyn_eq(&CleanupHandles) || after.dyn_eq(&CleanupHandles) {
-            panic!("CleanupHandles cannot be used for ordering schedules")
+            panic!(
+                "{}\nCleanupHandles cannot be used for ordering schedules",
+                SCHEDULE_ERROR_STR
+            )
         }
 
-        let before_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**before)).or_else(|| {
-            panic!(
-                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
-                before
-            );
-        });
+        let before_idx = unique_schedules
+            .iter()
+            .position(|s| (*s.schedule()).dyn_eq(&**before))
+            .or_else(|| {
+                panic!(
+                    "{}\nOrdering constraint references an unregistered schedule: '{:?}'",
+                    SCHEDULE_ERROR_STR, before
+                );
+            });
 
-        let after_idx = unique_schedules.iter().position(|s| (*s.schedule()).dyn_eq(&**after)).or_else(|| {
-            panic!(
-                "❌ CONFIGURATION ERROR: Ordering constraint references an unregistered schedule: '{:?}'",
-                after
-            );
-        });
+        let after_idx = unique_schedules
+            .iter()
+            .position(|s| (*s.schedule()).dyn_eq(&**after))
+            .or_else(|| {
+                panic!(
+                    "{}\nOrdering constraint references an unregistered schedule: '{:?}'",
+                    SCHEDULE_ERROR_STR, after
+                );
+            });
 
         let b_idx = before_idx.unwrap();
         let a_idx = after_idx.unwrap();
@@ -81,7 +93,8 @@ pub(crate) fn sort_schedules(
             }
         }
         panic!(
-            "❌ CONFIGURATION ERROR: Circular dependency deadlock detected in Schedule constraints!\n\nThe following schedules are deadlocked in the cycle:\n{}\n",
+            "{}\nCircular dependency deadlock detected in Schedule constraints!\n\nThe following schedules are deadlocked in the cycle:\n{}\n",
+            SCHEDULE_ERROR_STR,
             trapped_schedules.join("\n")
         );
     }
